@@ -6,9 +6,10 @@ import { User } from '../typeorm/entities/User';
 import { UsersController } from './controllers//users.controller';
 import { UsersService } from './services/users.service';
 import { Project } from 'src/typeorm/entities/Project';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project])],
+  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, ProjectPeer])],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

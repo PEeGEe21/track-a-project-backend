@@ -12,6 +12,6 @@ export class Post {
   @Column()
   description: string;
 
-  @ManyToOne(() => User, (user) => user.posts)
-  user: User;
+  // @ManyToOne(() => User, (user) => user.posts)
+  // user: User;
 }

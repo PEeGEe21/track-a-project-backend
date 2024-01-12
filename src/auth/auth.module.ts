@@ -12,20 +12,30 @@ import { UsersModule } from '../users/users.module';
 import { config } from 'src/config';
 import { JwtStrategy } from './guards/jwt.strategy';
 import { LocalStrategy } from './guards/local.strategy';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeersService } from 'src/project-peers/services/project-peers.service';
+import { ProjectPeersModule } from 'src/project-peers/project-peers.module';
+import { ProjectsService } from 'src/projects/services/projects.service';
+import { ProjectsModule } from 'src/projects/projects.module';
+import { Task } from 'src/typeorm/entities/Task';
+import { TasksModule } from 'src/tasks/tasks.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
+    ProjectPeersModule,
+    TasksModule,
+    ProjectsModule,
     JwtModule.register({
       secret: config.secret,
       signOptions: {
         expiresIn: 86400, // 1 week
       },
     }),
-    TypeOrmModule.forFeature([User, Profile]),
+    TypeOrmModule.forFeature([User, Profile, Project, ProjectPeer, Task]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy]
+  providers: [AuthService, LocalStrategy, JwtStrategy, ProjectsService, ProjectPeersService]
 })
 export class AuthModule {}

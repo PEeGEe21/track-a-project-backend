@@ -4,10 +4,12 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   OneToMany,
-  JoinColumn
+  JoinColumn,
+  ManyToMany,
 } from 'typeorm';
 import { User } from './User';
 import { Task } from './Task';
+import { ProjectPeer } from './ProjectPeers';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -20,13 +22,15 @@ export class Project {
   @Column()
   description: string;
 
-//   @ManyToOne(() => User, (user) => user.posts)
-//   post_user: User;
+  //   @ManyToOne(() => User, (user) => user.posts)
+  //   post_user: User;
+  @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.project)
+  projectPeers: ProjectPeer[];
 
   @ManyToOne(() => User, (user) => user.projects)
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @OneToMany(() => Project, (project) => project.tasks)
+  @OneToMany(() => Task, (task) => task.project)
   tasks: Task[];
 }

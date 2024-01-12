@@ -41,6 +41,10 @@ import { RequestEmailOtpDto } from '../dtos/request-email-otp.dto';
 import { CreateUserDto } from '../dtos/create-user.dto';
 import { SignUpResponseDto } from '../dtos/signup-response.dto';
 import { User } from 'src/typeorm/entities/User';
+import { PeerSignupResponseDto } from '../dtos/peer-signup-response.dto';
+import { Project } from 'src/typeorm/entities/Project';
+import { ProjectsService } from 'src/projects/services/projects.service';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -61,8 +65,11 @@ export class AuthService {
     // @InjectRepository(EmailVerification) private emailRepository: Repository<EmailVerification>,
     // @InjectRepository(PasswordRecovery) private passwordRepository: Repository<PasswordRecovery>,
     private usersService: UsersService,
+    private projectsService: ProjectsService,
 
     @InjectRepository(User) private userRepository: Repository<User>,
+    @InjectRepository(Project) private projectRepository: Repository<Project>,
+    @InjectRepository(ProjectPeer) private projectPeerRepository: Repository<ProjectPeer>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -292,7 +299,7 @@ export class AuthService {
         'SignIn Failed!, Incorrect login credentials',
       );
     }
-    if (!passwordLess) {
+    // if (!passwordLess) {
       const userPassword = await this.usersService.getUserAccountPassword(
         user.email,
       );
@@ -304,7 +311,7 @@ export class AuthService {
           'SignIn Failed!, Incorrect login credentials',
         );
       }
-    }
+    // }
     let profileImage: any;
 
     let updateUser = null;
@@ -326,7 +333,7 @@ export class AuthService {
 
     const payload = {
       email: user.email,
-      sub: user._id,
+      sub: user.id,
       // phoneNumber: user.phoneNumber,
     };
 
@@ -336,17 +343,91 @@ export class AuthService {
 
     return {
       accessToken: this.jwt.sign(payload),
+      success: 'success',
+      message: 'Logged in successfully',
       user: {
         ...user,
         // tailorLink: `${config.sendGrid.TAILOR_LINK}/tailor/${storeAlias}`,
-        location,
-        passwordChanged,
-        profileImage,
+        // location,
+        // passwordChanged,
+        // profileImage,
       },
     };
   }
 
+  // sign up as peer
+  async signupAsPeer(
+    peerSignupDto: CreateUserDto,
+    host: any,
+    project_id: number,
+  ): Promise<PeerSignupResponseDto> {
 
+    peerSignupDto.email = peerSignupDto.email.toLowerCase();
+
+    await this.checkUserAccountEmailExists(peerSignupDto.email);
+
+    await this.checkUserAccountEmailExists(host);
+
+    const user = await this.usersService.getUserAccountByEmail(host);
+
+    const project = await this.projectsService.getProjectById(project_id);
+    
+    if (peerSignupDto.password) {
+      const saltOrRounds = 10;
+      peerSignupDto.password = await bcrypt.hash(
+        peerSignupDto.password,
+        saltOrRounds,
+      );
+    }
+
+    const peer: any = await this.createUser(
+      peerSignupDto,
+    );
+
+
+    await this.createPeerAccount(
+      peer,
+      project,
+      user,
+    );
+
+    const payload = {
+      email: peer.email,
+      sub: peer.id,
+    };
+
+    return {
+      accessToken: this.jwt.sign(payload),
+      message: 'Logged in successfully',
+      peer,
+      project,
+      user,
+    };
+  }
+
+  async createPeerAccount(
+    peerSignupDto: CreateUserDto,
+    project: any,
+    added_by: any,
+  ): Promise<ProjectPeer> {
+
+    const newUser = this.projectPeerRepository.create({
+      ...peerSignupDto,
+      project,
+      addedBy: added_by
+    });
+    return this.projectPeerRepository.save(newUser);
+
+    // const newPeerUserAccount: User = await this.createPeerAccount(
+    //   { ...peerSignupDto},
+    //   false,
+    // );
+    // let newOutfitBuyerAccount: any = {
+    //   userAccount: newUserAccount,
+    // };
+    // newOutfitBuyerAccount = new this.OutfitBuyerModel(newOutfitBuyerAccount);
+    // return newOutfitBuyerAccount.save();
+  }
 
   async generatePassword(length): Promise<any> {
     let result = '';
@@ -363,10 +444,29 @@ export class AuthService {
   async signUp(
     userdetails: CreateUserDto,
   ): Promise<SignUpResponseDto> {
+
+    if(!userdetails.email || !userdetails.password){
+        throw new BadRequestException(
+          `password and email fields are required`,
+        );
+    }
+
+    // console.log('herer')
+
     await this.checkUserAccountEmailExists(userdetails.email);
+    console.log('4444')
+
+    if (userdetails.password) {
+      const saltOrRounds = 10;
+      userdetails.password = await bcrypt.hash(
+        userdetails.password,
+        saltOrRounds,
+      );
+    }
     // await this.checkUserAccountPhoneNumberExists(tailorSignupDto.phoneNumber);
     // await this.verifyOtp(tailorSignupDto.otp, tailorSignupDto.phoneNumber);
     const user: any = await this.createUser(userdetails);
+    console.log('herer')
 
     const payload = {
       email: user.email,
@@ -385,8 +485,10 @@ export class AuthService {
     // }
 
     return {
+      status: 'ok',
       accessToken: this.jwt.sign(payload),
       user,
+      message: 'Sign Up Succesful'
     };
   }
 

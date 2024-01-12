@@ -2,6 +2,7 @@ import {
   Column,
   Entity,
   JoinColumn,
+  ManyToMany,
   OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
@@ -9,6 +10,7 @@ import {
 import { Post } from './Post';
 import { Profile } from './Profile';
 import { Project } from './Project';
+import { ProjectPeer } from './ProjectPeers';
 
 @Entity({ name: 'users' })
 export class User {
@@ -34,9 +36,12 @@ export class User {
   @JoinColumn()
   profile: Profile;
 
-  @OneToMany(() => Post, (post) => post.user)
-  posts: Post[];
+  // @OneToMany(() => Post, (post) => post.user)
+  // posts: Post[];
 
   @OneToMany(() => Project, (project) => project.user)
   projects: Project[];
+
+  @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
+  projectPeers: ProjectPeer[];
 }

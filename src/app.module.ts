@@ -13,6 +13,10 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import configuration from './config/configuration';
 import { config } from './config';
+import { ProjectsModule } from './projects/projects.module';
+import { TasksModule } from './tasks/tasks.module';
+import { ProjectPeersModule } from './project-peers/project-peers.module';
+import { ProjectPeer } from './typeorm/entities/ProjectPeers';
 
 @Module({
   imports: [
@@ -27,10 +31,13 @@ import { config } from './config';
       username: 'root2',
       password: '123456',
       database: 'track_project_db2',
-      entities: [User, Profile, Post, Project, Task, Tag],
+      entities: [User, Profile, Post, Project, Task, Tag, ProjectPeer],
       synchronize: true,
     }),
     UsersModule,
+    ProjectsModule,
+    TasksModule,
+    ProjectPeersModule,
     AuthModule,
   ],
   controllers: [AppController],

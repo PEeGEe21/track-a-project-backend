@@ -10,6 +10,7 @@ import {
   CreateUserProfileParams,
   UpdateUserParams,
 } from '../../utils/types';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +18,7 @@ export class UsersService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Post) private postRepository: Repository<Post>,
+    @InjectRepository(ProjectPeer) private projectPeerRepository: Repository<ProjectPeer>,
   ) {}
 
   async getUserAccountById(id: string): Promise<User | undefined> {
@@ -32,9 +34,9 @@ export class UsersService {
 
   async getUserAccountByEmail(email: string) {
     const user = await this.userRepository.findOneBy({ email });
-    if (!user) {
-      throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
-    }
+    // if (!user) {
+    //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
+    // }
     return user;
   }
 
@@ -55,8 +57,15 @@ export class UsersService {
     return user?.password;
   }
 
-  findUsers() {
-    return this.userRepository.find({ relations: ['profile', 'posts'] });
+  async findUsers() {
+    const users = await this.userRepository.find({ relations: ['profile',  'projects'] });
+     const res = {
+      success: 'ok',
+      message: 'sucessfull',
+      data: users
+     }
+
+     return res
   }
 
   createUser(userDetails: CreateUserParams) {
@@ -108,4 +117,25 @@ export class UsersService {
     }
     return result;
   }
+
+  async getUserPeersById(id: string): Promise<any> {
+    const user = await this.userRepository.findOneBy({ id });
+    if (!user)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+    const project_peers = await this.projectPeerRepository.find({
+      where: {
+        addedBy: user,
+      },
+      relations: ['addedBy', 'projects'],
+    });
+    console.log(project_peers, 'project_peer');
+
+    let data = {
+      success: 'success',
+      data: project_peers,
+    };
+    return data;
+  }
+
 }

@@ -43,10 +43,10 @@ export class AuthController {
   }
 
   @Post('/signup')
-  async tailorSignup(
-    @Body() tailorSignupDto: any,
+  async userSignup(
+    @Body() userSignupDto: any,
   ): Promise<SignUpResponseDto> {
-    return this.authService.signUp(tailorSignupDto);
+    return this.authService.signUp(userSignupDto);
   }
 
 

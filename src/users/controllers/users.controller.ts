@@ -27,7 +27,12 @@ export class UsersController {
     return this.userService.getUserAccountById(id);
   }
 
-  @Post('./create-user')
+  @Get(':id/peers')
+  getUserPeers(@Param('id', ParseIntPipe) id: string) {
+    return this.userService.getUserPeersById(id);
+  }
+
+  @Post('/create-user')
   createUser(@Body() createUserDto: CreateUserDto) {
     return this.userService.createUser(createUserDto);
   }
@@ -45,7 +50,7 @@ export class UsersController {
     await this.userService.deleteUser(id);
   }
 
-  @Post(':id/profiles')
+  @Post(':id/profile')
   createUserProfile(
     @Param('id', ParseIntPipe) id: string,
     @Body() createUserProfileDto: CreateUserProfileDto,

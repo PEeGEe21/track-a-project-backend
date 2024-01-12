@@ -1,4 +1,12 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, ManyToMany, JoinTable } from 'typeorm';
+import {
+  Column,
+  Entity,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  ManyToMany,
+  JoinTable,
+  JoinColumn,
+} from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
 import { Tag } from './Tag';
@@ -15,7 +23,7 @@ export class Task {
   description: string;
 
   @Column({
-    default: false
+    default: false,
   })
   priority: Boolean;
 
@@ -30,5 +38,6 @@ export class Task {
   createdAt: Date;
 
   @ManyToOne(() => Project, (project) => project.tasks)
+  @JoinColumn({ name: 'project_id' })
   project: Project;
 }

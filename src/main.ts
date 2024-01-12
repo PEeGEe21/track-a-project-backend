@@ -18,11 +18,8 @@ async function bootstrap() {
       config.env === 'development'
         ? '*'
         : [
-            'https://groups.fitted.ng',
-            'https://tailors.fitted.ng',
-            'https://admin.fitted.ng',
-            'https://staging--outfit-groups.netlify.app',
-            /--tailorsportal\.netlify\.app$/,
+            // 'https://groups.fitted.ng',
+            // /--tailorsportal\.netlify\.app$/,
           ],
     optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204
   };
