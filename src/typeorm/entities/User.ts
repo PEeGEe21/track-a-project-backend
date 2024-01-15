@@ -39,7 +39,7 @@ export class User {
   // @OneToMany(() => Post, (post) => post.user)
   // posts: Post[];
 
-  @OneToMany(() => Project, (project) => project.user)
+  @OneToMany(() => Project, (project) => project.user, { cascade: true })
   projects: Project[];
 
   @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)

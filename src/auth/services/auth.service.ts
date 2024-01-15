@@ -299,6 +299,9 @@ export class AuthService {
         'SignIn Failed!, Incorrect login credentials',
       );
     }
+
+    // await this.checkUserAccountEmailExists(user.email);
+
     // if (!passwordLess) {
       const userPassword = await this.usersService.getUserAccountPassword(
         user.email,
@@ -337,8 +340,8 @@ export class AuthService {
       // phoneNumber: user.phoneNumber,
     };
 
-    console.log(payload);
-
+    // console.log(payload);
+    delete user.password;
     // user = portal && updateUser ? updateUser : user;
 
     return {
@@ -483,12 +486,13 @@ export class AuthService {
     //   };
     //   await this.messagingService.tailorSignUpNotification(data);
     // }
+    delete user.password;
 
     return {
-      status: 'ok',
+      success: "success",
       accessToken: this.jwt.sign(payload),
       user,
-      message: 'Sign Up Succesful'
+      message: 'Account was successfully created',
     };
   }
 
