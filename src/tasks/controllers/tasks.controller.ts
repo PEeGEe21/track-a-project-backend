@@ -44,9 +44,9 @@ export class TasksController {
   }
 
 
-  @Post(':id/task')
+  @Post(':projectId/new-task')
   createProjectTask(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('projectId', ParseIntPipe) id: number,
     @Body() CreateTaskDto: CreateTaskDto,
   ) {
     return this.taskService.createTask(id, CreateTaskDto);

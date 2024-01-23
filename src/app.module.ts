@@ -17,6 +17,8 @@ import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ProjectPeersModule } from './project-peers/project-peers.module';
 import { ProjectPeer } from './typeorm/entities/ProjectPeers';
+import { Status } from './typeorm/entities/Status';
+import { StatusModule } from './status/status.module';
 
 @Module({
   imports: [
@@ -31,11 +33,12 @@ import { ProjectPeer } from './typeorm/entities/ProjectPeers';
       username: 'root2',
       password: '123456',
       database: 'track_project_db2',
-      entities: [User, Profile, Post, Project, Task, Tag, ProjectPeer],
+      entities: [User, Profile, Post, Project, Task, Tag, ProjectPeer, Status],
       synchronize: true,
     }),
     UsersModule,
     ProjectsModule,
+    StatusModule,
     TasksModule,
     ProjectPeersModule,
     AuthModule,

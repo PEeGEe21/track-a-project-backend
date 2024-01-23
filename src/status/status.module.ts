@@ -4,15 +4,15 @@ import { Post } from '../typeorm/entities/Post';
 import { Profile } from '../typeorm/entities/Profile';
 import { User } from '../typeorm/entities/User';
 import { Project } from 'src/typeorm/entities/Project';
-import { TasksController } from './controllers/tasks.controller';
-import { TasksService } from './services/tasks.service';
+import { StatusController } from './controllers/status.controller';
 import { Task } from 'src/typeorm/entities/Task';
 import { Status } from 'src/typeorm/entities/Status';
+import { StatusService } from './services/status.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, Task, Status])],
-  controllers: [TasksController],
-  providers: [TasksService],
-  exports: [TasksService],
+  controllers: [StatusController],
+  providers: [StatusService],
+  exports: [StatusService],
 })
-export class TasksModule {}
+export class StatusModule {}

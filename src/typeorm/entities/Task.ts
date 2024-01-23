@@ -10,6 +10,7 @@ import {
 import { User } from './User';
 import { Project } from './Project';
 import { Tag } from './Tag';
+import { Status } from './Status';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -29,15 +30,19 @@ export class Task {
 
   @ManyToMany(() => Tag)
   @JoinTable()
-  tags: Tag[];
+  tags?: Tag[];
 
   @Column()
   dueDate: Date;
 
   @Column()
-  createdAt: Date;
+  createdAt: Date = new Date();;
 
   @ManyToOne(() => Project, (project) => project.tasks)
   @JoinColumn({ name: 'project_id' })
   project: Project;
+
+  @ManyToOne(() => Status, (status) => status.tasks)
+  @JoinColumn({ name: 'status_id' })
+  status: Status;
 }

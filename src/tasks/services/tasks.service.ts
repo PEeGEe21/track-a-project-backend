@@ -48,7 +48,7 @@ export class TasksService {
     const task = this.taskRepository.findOneBy({ id });
     if (!task)
       throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
-    return this.projectRepository.update({ id }, { ...updateTaskDetails });
+    return this.taskRepository.update({ id }, { ...updateTaskDetails });
   }
 
   deleteTask(id: number) {
@@ -71,6 +71,7 @@ export class TasksService {
       success: 'success',
       data: tasks,
     };
+    
     return data;
   }
 

@@ -2,9 +2,8 @@ import { Tag } from "src/typeorm/entities/Tag";
 import { Task } from "../../typeorm/entities/Task";
 import { User } from "../../typeorm/entities/User";
 import { Project } from "src/typeorm/entities/Project";
-import { Status } from "src/typeorm/entities/Status";
 
-export class CreateTaskDto {
+export class CreateStatusDto {
   title: string;
   description: string;
   priority: Boolean;
@@ -12,5 +11,4 @@ export class CreateTaskDto {
   createdAt: Date;
   project: Project;
   tags: Tag[];
-  status?: Status;
 }

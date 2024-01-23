@@ -11,6 +11,7 @@ import { Post } from './Post';
 import { Profile } from './Profile';
 import { Project } from './Project';
 import { ProjectPeer } from './ProjectPeers';
+import { Status } from './Status';
 
 @Entity({ name: 'users' })
 export class User {
@@ -41,6 +42,9 @@ export class User {
 
   @OneToMany(() => Project, (project) => project.user, { cascade: true })
   projects: Project[];
+
+  @OneToMany(() => Status, (status) => status.user, { cascade: true })
+  status: Status;
 
   @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
   projectPeers: ProjectPeer[];

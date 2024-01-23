@@ -2,6 +2,7 @@ import { Project } from 'src/typeorm/entities/Project';
 import { Task } from '../typeorm/entities/Task';
 import { User } from '../typeorm/entities/User';
 import { Tag } from 'src/typeorm/entities/Tag';
+import { Status } from 'src/typeorm/entities/Status';
 
 export type CreateUserParams = {
   username: string;
@@ -34,7 +35,15 @@ export type CreateTaskParams = {
   dueDate: Date;
   createdAt: Date;
   project: Project;
+  status?: Status;
   tags: Tag[];
+};
+
+export type CreateStatusParams = {
+  title: string;
+  description: string;
+  createdAt: Date;
+  tasks?: Task[];
 };
 
 export type CreateUserPostParams = {
