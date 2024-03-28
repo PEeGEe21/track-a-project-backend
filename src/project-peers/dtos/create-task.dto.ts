@@ -7,7 +7,7 @@ import { Status } from "src/typeorm/entities/Status";
 export class CreateTaskDto {
   title: string;
   description: string;
-  priority: Boolean;
+  priority: Number;
   dueDate: Date;
   createdAt: Date;
   project: Project;

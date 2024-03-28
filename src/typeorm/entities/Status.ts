@@ -34,6 +34,6 @@ export class Status {
   @Column()
   createdAt: Date = new Date();
 
-  @Column()
-  depth: string;
+  // @Column()
+  // depth: string;
 }

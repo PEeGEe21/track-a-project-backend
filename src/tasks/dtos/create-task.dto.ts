@@ -6,7 +6,7 @@ import { Project } from "src/typeorm/entities/Project";
 export class CreateTaskDto {
   title: string;
   description: string;
-  priority: Boolean;
+  priority: Number;
   dueDate: Date;
   createdAt: Date;
   project: Project;

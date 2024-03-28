@@ -24,19 +24,19 @@ export class Task {
   description: string;
 
   @Column({
-    default: false,
+    default: 0,
   })
-  priority: Boolean;
+  priority: number;
 
   @ManyToMany(() => Tag)
   @JoinTable()
   tags?: Tag[];
 
   @Column()
-  dueDate: Date;
+  dueDate: Date = new Date();
 
   @Column()
-  createdAt: Date = new Date();;
+  createdAt: Date = new Date();
 
   @ManyToOne(() => Project, (project) => project.tasks)
   @JoinColumn({ name: 'project_id' })

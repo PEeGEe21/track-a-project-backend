@@ -20,21 +20,29 @@ export class TasksController {
   }
 
   @Get(':id')
-  getProject(@Param('id', ParseIntPipe) id: number) {
+  getTask(@Param('id', ParseIntPipe) id: number) {
     return this.taskService.getTaskById(id);
   }
 
   @Put(':id')
-  async updateTaskById(
+  updateTaskById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateTaskDto: CreateTaskDto,
   ) {
-    await this.taskService.updateTask(id, updateTaskDto);
+    return this.taskService.updateTask(id, updateTaskDto);
   }
 
-  @Delete(':id')
-  async deleteTask(@Param('id', ParseIntPipe) id: number) {
-    await this.taskService.deleteTask(id);
+  @Put(':id/update-priority')
+  updateTaskPriority(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() priorityStatus: any,
+  ) {
+    return this.taskService.updateTaskPriority(id, priorityStatus);
+  }
+
+  @Post(':id')
+  deleteTask(@Param('id', ParseIntPipe) id: number) {
+    return this.taskService.deleteTask(id);
   }
 
 
@@ -47,8 +55,8 @@ export class TasksController {
   @Post(':projectId/new-task')
   createProjectTask(
     @Param('projectId', ParseIntPipe) id: number,
-    @Body() CreateTaskDto: CreateTaskDto,
+    @Body() payload: any,
   ) {
-    return this.taskService.createTask(id, CreateTaskDto);
+    return this.taskService.createTask(id, payload);
   }
 }

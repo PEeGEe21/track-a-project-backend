@@ -90,10 +90,11 @@ export class ProjectPeersService {
         'Project not found. Cannot create Task',
         HttpStatus.BAD_REQUEST,
       );
-    const newTask = this.taskRepository.create({
-      ...CreateTaskDetails,
-      project,
-    });
+    const newTask = null
+    // const newTask = this.taskRepository.create({
+    //   ...CreateTaskDetails,
+    //   project,
+    // });
 
     return this.taskRepository.save(newTask);
   }

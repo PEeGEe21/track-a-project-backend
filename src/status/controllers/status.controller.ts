@@ -14,9 +14,10 @@ import { StatusService } from '../services/status.service';
 @Controller('status')
 export class StatusController {
   constructor(private statusService: StatusService) {}
-  @Get(':id/status')
-  getTasks(@Param('id', ParseIntPipe) id: string) {
-    return this.statusService.findStatuses(id);
+  @Get(':userId/:projectId/status')
+  getTasks(@Param('userId', ParseIntPipe) userId: string,
+  @Param('projectId', ParseIntPipe) projectId: number) {
+    return this.statusService.findStatuses(userId, projectId);
   }
 
   @Get(':id')
@@ -25,16 +26,18 @@ export class StatusController {
   }
 
   @Put(':id')
-  async updateTaskById(
+  updateStatusById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateStatusDto: CreateStatusDto,
   ) {
-    await this.statusService.updateStatus(id, updateStatusDto);
+    return this.statusService.updateStatus(id, updateStatusDto);
   }
 
-  @Delete(':id')
-  async deleteStatus(@Param('id', ParseIntPipe) id: number) {
-    await this.statusService.deleteStatus(id);
+  @Post(':id')
+  deleteStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() type: number) {
+    return this.statusService.deleteStatus(id, type);
   }
 
 

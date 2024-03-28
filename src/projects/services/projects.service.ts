@@ -13,6 +13,7 @@ import {
 } from '../../utils/types';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { Task } from 'src/typeorm/entities/Task';
 
 @Injectable()
 export class ProjectsService {
@@ -20,6 +21,7 @@ export class ProjectsService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Project) private projectRepository: Repository<Project>,
+    @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(ProjectPeer)
     private projectPeerRepository: Repository<ProjectPeer>,
 
@@ -97,6 +99,28 @@ export class ProjectsService {
     };
 
     return data;
+  }
+
+  async getProjectTasks(id: number): Promise<any> {
+    // console.log(id);
+    const project = await this.projectRepository.findOneBy({ id });
+    if (!project)
+      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+
+    const tasks = await this.taskRepository.find({
+      where: {
+        project: project,
+      },
+      relations: ['tags', 'project', 'status'],
+    });
+
+    
+    let resp = {
+      success: 'success',
+      data: tasks,
+    };
+    console.log(resp)
+    return resp;
   }
 
   async getUserProjects(id: string) {

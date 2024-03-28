@@ -65,6 +65,11 @@ export class ProjectsController {
     return this.projectService.getProjectsPeer(projectId);
   }
 
+  @Get(':projectId/tasks')
+  getProjectTasks(@Param('projectId', ParseIntPipe) projectId: number) {
+    return this.projectService.getProjectTasks(projectId);
+  }
+
   @Get(':id/projects')
   getUserProjects(@Param('id', ParseIntPipe) id: string) {
     return this.projectService.getUserProjects(id);

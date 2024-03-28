@@ -31,12 +31,12 @@ export type CreateProjectParams = {
 export type CreateTaskParams = {
   title: string;
   description: string;
-  priority: Boolean;
-  dueDate: Date;
-  createdAt: Date;
-  project: Project;
+  priority?: Number;
+  dueDate?: Date;
+  createdAt?: Date;
+  project?: Project;
   status?: Status;
-  tags: Tag[];
+  tags?: Tag[];
 };
 
 export type CreateStatusParams = {
