@@ -54,6 +54,75 @@ export class ProjectsService {
     return res;
   }
 
+  // async findProjectsByUserId(userId: string, page: number = 1, limit: number = 10): Promise<{
+  //   data: Project[];
+  //   nextPage?: number;
+  // }> {
+  //   console.log('heree')
+
+  //   const userFound = this.userRepository.findOneBy({id: userId});
+
+  //   console.log(userFound, 'user')
+  //   const queryBuilder = this.projectRepository.createQueryBuilder('project');
+
+  //   const projects = await this.projectRepository.find({
+  //     where: {user : userFound},
+  //     relations: ['user', 'tasks'],
+  //   });
+    
+  //   queryBuilder
+  //     // .where('project.user.id = :userId', { userId })
+  //     // .leftJoinAndSelect('project.user', 'user') // Include user relationship
+  //     // .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
+  //     // .skip((page - 1) * limit) // Apply pagination based on page and limit
+  //     // .take(limit); // Set the limit for results per page
+
+  //   // const [projects, total] = await queryBuilder.getManyAndCount();
+
+  //   const nextPage = total > page * limit ? page + 1 : undefined;
+
+  //   console.log(nextPage, 'eeeeerrere');
+  //   return {
+  //     data: projects,
+  //     nextPage,
+  //   };
+  // }
+
+  async findProjectsByUserId(userId: string, page: number = 1, limit: number = 10): Promise<any> {
+    console.log('heree');
+
+    // 1. Await the user search result
+    const userFound = await this.userRepository.findOneBy({id: userId});
+
+    console.log(userFound, 'user');
+
+    // 2. Use the query builder
+    const queryBuilder = this.projectRepository.createQueryBuilder('project');
+
+    // 3. Apply where condition and relations using the query builder
+    const projects = await queryBuilder
+        .where('project.user.id = :userId', { userId })
+        .leftJoinAndSelect('project.user', 'user') // Include user relationship
+        .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
+        .skip((page - 1) * limit) // Apply pagination based on page and limit
+        .take(limit)// Set the limit for results per page
+        .orderBy('project.createdAt', 'DESC')
+        .getMany(); // Execute the query
+
+    // Calculate next page based on total count and pagination
+    const total = await queryBuilder.getCount();
+    console.log(total, projects, 'total')
+    const nextPage = total > page * limit ? page + 1 : undefined;
+
+    console.log(nextPage, 'eeeeerrere');
+    
+    return {
+        data: projects,
+        nextPage,
+        success: 'success'
+    };
+}
+
   updateProject(id: number, updateProjectDetails: CreateProjectParams) {
     return this.projectRepository.update({ id }, { ...updateProjectDetails });
   }
@@ -166,6 +235,7 @@ export class ProjectsService {
 
       const res = {
         success: 'successfull',
+        message: `${savedProject.title} Project created successfully`,
         data: savedProject,
       };
 

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Query,
   ParseIntPipe,
   Post,
   Put,
@@ -34,19 +35,18 @@ export class ProjectsController {
 
   @Delete(':id')
   async deleteProject(@Param('id', ParseIntPipe) id: number) {
-
     const project = await this.projectService.deleteProject(id);
 
-    if(project){
+    if (project) {
       return {
         success: 'success',
-        message: 'successfully deleted'
-      }
-    } else{
+        message: 'successfully deleted',
+      };
+    } else {
       return {
         success: false,
-        message: 'An error occurred'
-      }
+        message: 'An error occurred',
+      };
     }
   }
 
@@ -59,9 +59,7 @@ export class ProjectsController {
   // }
 
   @Get('/:projectId/peers')
-  getUserProjectsPeer(
-    @Param('projectId', ParseIntPipe) projectId: number,
-  ) {
+  getUserProjectsPeer(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.projectService.getProjectsPeer(projectId);
   }
 
@@ -74,8 +72,17 @@ export class ProjectsController {
   getUserProjects(@Param('id', ParseIntPipe) id: string) {
     return this.projectService.getUserProjects(id);
   }
+  @Get(':userId/user-projects')
+  getUserProjectsQuery(
+    @Param('userId', ParseIntPipe) userId: string,
+    @Query('page', ParseIntPipe) page: number = 1,
+    @Query('limit', ParseIntPipe) limit: number = 10,
+  ) {
+    console.log('hereeee');
+    return this.projectService.findProjectsByUserId(userId, page, limit);
+  }
 
-  @Post(':id/project')
+  @Post(':id/new-project')
   createUserProject(
     @Param('id', ParseIntPipe) id: string,
     @Body() CreateProjectDto: CreateProjectDto,

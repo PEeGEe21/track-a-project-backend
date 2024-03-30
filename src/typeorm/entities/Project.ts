@@ -33,4 +33,7 @@ export class Project {
 
   @OneToMany(() => Task, (task) => task.project)
   tasks: Task[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' }) // Added created_at column
+  createdAt: Date;
 }

@@ -34,6 +34,8 @@ import { StatusModule } from './status/status.module';
       password: '123456',
       database: 'track_project_db2',
       entities: [User, Profile, Post, Project, Task, Tag, ProjectPeer, Status],
+      // migrations: ['src/database/migrations/**/*.ts'], // Path to your migration files
+
       synchronize: true,
     }),
     UsersModule,
