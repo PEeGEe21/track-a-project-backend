@@ -48,7 +48,7 @@ export class TasksService {
 
   async updateTask(id: number, updateTaskDetails: CreateTaskParams) {
     try {
-      const task = this.taskRepository.findOneBy({ id });
+      const task = await this.taskRepository.findOneBy({ id });
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
@@ -163,9 +163,7 @@ export class TasksService {
         return { error: 'error', message: 'Task not found' }; // Or throw a NotFoundException
       }
 
-      const deletedStatus = await this.taskRepository.delete(id);
-
-      console.log(task, deletedStatus);
+      const deletedTask = await this.taskRepository.delete(id);
 
       return { success: 'success', message: 'Task deleted successfully' };
     } catch (err) {

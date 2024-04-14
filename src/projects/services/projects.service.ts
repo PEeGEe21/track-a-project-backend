@@ -29,16 +29,24 @@ export class ProjectsService {
   ) {}
 
   async getProjectById(id: number): Promise<any | undefined> {
-    const project = await this.projectRepository.findOneBy({ id });
-    if (!project)
-      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+    try {
+      const project = await this.projectRepository.findOneBy({ id });
+      if (!project)
+        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-    // if()
-    let data = {
-      project,
-      success: "sucess"
-    }
-    return data;
+      const project_tasks = await this.taskRepository.find({
+        where: { project: project },
+      });
+
+      project.tasks = project_tasks;
+
+      let data = {
+        project,
+        tasks: project_tasks,
+        success: 'success',
+      };
+      return data;
+    } catch (err) {}
   }
 
   async findProjects() {
@@ -69,7 +77,7 @@ export class ProjectsService {
   //     where: {user : userFound},
   //     relations: ['user', 'tasks'],
   //   });
-    
+
   //   queryBuilder
   //     // .where('project.user.id = :userId', { userId })
   //     // .leftJoinAndSelect('project.user', 'user') // Include user relationship
@@ -88,11 +96,15 @@ export class ProjectsService {
   //   };
   // }
 
-  async findProjectsByUserId(userId: string, page: number = 1, limit: number = 10): Promise<any> {
+  async findProjectsByUserId(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<any> {
     console.log('heree');
 
     // 1. Await the user search result
-    const userFound = await this.userRepository.findOneBy({id: userId});
+    const userFound = await this.userRepository.findOneBy({ id: userId });
 
     console.log(userFound, 'user');
 
@@ -101,34 +113,102 @@ export class ProjectsService {
 
     // 3. Apply where condition and relations using the query builder
     const projects = await queryBuilder
-        .where('project.user.id = :userId', { userId })
-        .leftJoinAndSelect('project.user', 'user') // Include user relationship
-        .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
-        .skip((page - 1) * limit) // Apply pagination based on page and limit
-        .take(limit)// Set the limit for results per page
-        .orderBy('project.createdAt', 'DESC')
-        .getMany(); // Execute the query
+      .where('project.user.id = :userId', { userId })
+      .leftJoinAndSelect('project.user', 'user') // Include user relationship
+      .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
+      .skip((page - 1) * limit) // Apply pagination based on page and limit
+      .take(limit) // Set the limit for results per page
+      .orderBy('project.createdAt', 'DESC')
+      .getMany(); // Execute the query
 
     // Calculate next page based on total count and pagination
     const total = await queryBuilder.getCount();
-    console.log(total, projects, 'total')
+    console.log(total, projects, 'total');
     const nextPage = total > page * limit ? page + 1 : undefined;
 
     console.log(nextPage, 'eeeeerrere');
-    
-    return {
-        data: projects,
-        nextPage,
-        success: 'success'
-    };
-}
 
-  updateProject(id: number, updateProjectDetails: CreateProjectParams) {
-    return this.projectRepository.update({ id }, { ...updateProjectDetails });
+    return {
+      data: projects,
+      nextPage,
+      success: 'success',
+    };
   }
 
-  deleteProject(id: number) {
-    return this.projectRepository.delete({ id });
+  // updateProject(id: number, updateProjectDetails: CreateProjectParams) {
+  //   return this.projectRepository.update({ id }, { ...updateProjectDetails });
+  // }
+
+  async updateProject(id: number, updateProjectDetails: CreateProjectParams) {
+    try {
+      console.log(id);
+      const project = await this.projectRepository.findOneBy({ id });
+      if (!project)
+        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+
+      console.log(project, updateProjectDetails, 'Project');
+      const data = {
+        description: updateProjectDetails.description,
+        title: updateProjectDetails.title,
+      };
+
+      const updatedResult = await this.projectRepository.update(
+        { id },
+        { ...data },
+      );
+
+      console.log(updatedResult, 'rererr');
+
+      if (updatedResult.affected < 1) {
+        return {
+          error: 'error',
+          message: 'Project update failed',
+        };
+      }
+
+      const updatedProject = await this.projectRepository.findOne({
+        where: { id },
+        relations: ['user'],
+      });
+
+      return {
+        success: 'success',
+        message: 'Project updated successfully',
+        data: {
+          id: updatedProject.id,
+          title: updatedProject.title,
+          description: updatedProject.description,
+        },
+      };
+    } catch (error) {}
+
+    // return this.taskRepository.update({ id }, { ...updateTaskDetails });
+  }
+
+  // deleteProject(id: number) {
+  //   return this.projectRepository.delete({ id });
+  // }
+
+  async deleteProject(id: number): Promise<any> {
+    try {
+      const project = await this.projectRepository.findOne({
+        where: { id: id },
+      });
+
+      if (!project) {
+        return { error: 'error', message: 'Project not found' };
+      }
+
+      const deletedProject = await this.projectRepository.delete(id);
+
+      return { success: 'success', message: 'Project deleted successfully' };
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      throw new HttpException(
+        'Error deleting project',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   // async getUserProjectsPeer(userId: string, projectId: string) {
@@ -183,12 +263,11 @@ export class ProjectsService {
       relations: ['tags', 'project', 'status'],
     });
 
-    
     let resp = {
       success: 'success',
       data: tasks,
     };
-    console.log(resp)
+    console.log(resp);
     return resp;
   }
 
@@ -199,7 +278,6 @@ export class ProjectsService {
 
     delete user.password;
 
-
     const projects = await this.projectRepository.find({
       where: {
         user: user,
@@ -207,7 +285,6 @@ export class ProjectsService {
       relations: ['user', 'tasks'],
     });
 
-  
     let data = {
       success: 'success',
       data: projects,

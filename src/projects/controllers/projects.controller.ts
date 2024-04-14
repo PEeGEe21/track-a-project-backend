@@ -26,29 +26,18 @@ export class ProjectsController {
   }
 
   @Put(':id')
-  async updateProjectById(
+  updateProjectById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProjectDto: CreateProjectDto,
   ) {
-    await this.projectService.updateProject(id, updateProjectDto);
+    return this.projectService.updateProject(id, updateProjectDto);
   }
 
-  @Delete(':id')
-  async deleteProject(@Param('id', ParseIntPipe) id: number) {
-    const project = await this.projectService.deleteProject(id);
-
-    if (project) {
-      return {
-        success: 'success',
-        message: 'successfully deleted',
-      };
-    } else {
-      return {
-        success: false,
-        message: 'An error occurred',
-      };
-    }
+  @Post(':id')
+  deleteProject(@Param('id', ParseIntPipe) id: number) {
+    return this.projectService.deleteProject(id);
   }
+
 
   // @Get(':userId/projects/:projectId')
   // getUserProjectsPeer(
