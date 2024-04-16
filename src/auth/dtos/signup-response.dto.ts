@@ -3,5 +3,6 @@ export class SignUpResponseDto {
   user: any;
   message: any;
   status?: any;
+  profile?: any;
   success: any;
 }

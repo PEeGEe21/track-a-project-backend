@@ -50,12 +50,26 @@ export class UsersController {
     await this.userService.deleteUser(id);
   }
 
-  @Post(':id/profile')
-  createUserProfile(
+  @Post(':id/save-profile')
+  updateUserProfile(
     @Param('id', ParseIntPipe) id: string,
-    @Body() createUserProfileDto: CreateUserProfileDto,
+    @Body() updateUserProfileDto: CreateUserProfileDto,
   ) {
-    return this.userService.createUserProfile(id, createUserProfileDto);
+    return this.userService.updateUserProfile(id, updateUserProfileDto);
+  }
+  // @Post(':id/profile')
+  // createUserProfile(
+  //   @Param('id', ParseIntPipe) id: string,
+  //   @Body() upadteUserProfileDto: CreateUserProfileDto,
+  // ) {
+  //   return this.userService.updateUserProfile(id, upadteUserProfileDto);
+  // }
+
+  @Get(':id/settings')
+  getUserSettings(
+    @Param('id', ParseIntPipe) id: string
+  ) {
+    return this.userService.getUserSettings(id);
   }
 
   //   @Post(':id/posts')

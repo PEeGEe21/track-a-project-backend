@@ -45,6 +45,7 @@ import { PeerSignupResponseDto } from '../dtos/peer-signup-response.dto';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectsService } from 'src/projects/services/projects.service';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { CreateUserProfileDto } from '../dtos/create-profile-peer.dto';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -68,6 +69,7 @@ export class AuthService {
     private projectsService: ProjectsService,
 
     @InjectRepository(User) private userRepository: Repository<User>,
+    @InjectRepository(Profile) private userProfileRepository: Repository<Profile>,
     @InjectRepository(Project) private projectRepository: Repository<Project>,
     @InjectRepository(ProjectPeer) private projectPeerRepository: Repository<ProjectPeer>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
@@ -471,12 +473,24 @@ export class AuthService {
     const user: any = await this.createUser(userdetails);
     console.log('herer')
 
+    const userprofilepayload = {
+      user: user,
+      email: user.email,
+      profile_created: 1
+      // phoneNumber: user.phoneNumber,
+    };
+
+    const userProfileDetails = await this.createUserProfile(user.id, userprofilepayload)
+
     const payload = {
       email: user.email,
       sub: user.id,
       // phoneNumber: tailor.userAccount.phoneNumber,
     };
+    user.profile = userProfileDetails
+    const profile = userProfileDetails
 
+    console.log(profile, 'profile details')
     // if (config.env === 'production') {
     //   const data = {
     //     env: 'Production',
@@ -492,6 +506,7 @@ export class AuthService {
       success: "success",
       accessToken: this.jwt.sign(payload),
       user,
+      profile:profile,
       message: 'Account was successfully created',
     };
   }
@@ -502,6 +517,13 @@ export class AuthService {
       createdAt: new Date(),
     });
     return this.userRepository.save(newUser);
+  }
+
+  createUserProfile(user_id: number, userProfileDetails: CreateUserProfileDto) {
+    const newUserProfile = this.userProfileRepository.create({
+      ...userProfileDetails,
+    });
+    return this.userProfileRepository.save(newUserProfile);
   }
 
   private async checkUserAccountEmailExists(email: string): Promise<void> {

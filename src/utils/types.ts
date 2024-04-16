@@ -15,10 +15,16 @@ export type UpdateUserParams = {
 };
 
 export type CreateUserProfileParams = {
-  firstName: string;
-  lastName: string;
-  age: number;
-  dob: string;
+  firstname?: string;
+  lastname?: string;
+  username?: string;
+  email: string;
+  phonenumber?: string;
+  country?: string;
+  state?: string;
+  address?: string;
+  profile_created: number;
+  user: User
 };
 
 export type CreateProjectParams = {

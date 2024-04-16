@@ -1,19 +1,56 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { User } from './User';
 
 @Entity({ name: 'user_profiles' })
 export class Profile {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  firstName: string;
+  @OneToOne(() => User, (user) => user.profile)
+  @JoinColumn({ name: 'user_id' })
+  user: User;
+
+  @Column({
+    default: '',
+  })
+  firstname?: string;
+
+  @Column({
+    default: '',
+  })
+  lastname?: string;
+
+  @Column({
+    default: '',
+  })
+  username?: string;
 
   @Column()
-  lastName: string;
+  email: string;
 
-  @Column()
-  age: number;
+  @Column({
+    default: '',
+  })
+  phonenumber?: string;
 
-  @Column()
-  dob: string;
+  @Column({
+    default: '',
+  })
+  country?: string;
+
+  @Column({
+    default: '',
+  })
+  state?: string;
+
+  @Column({
+    default: '',
+  })
+  address?: string;
+
+  @Column({
+    default: 0,
+  })
+  profile_created: number;
+
 }

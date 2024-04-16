@@ -18,7 +18,8 @@ export class UsersService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Post) private postRepository: Repository<Post>,
-    @InjectRepository(ProjectPeer) private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(ProjectPeer)
+    private projectPeerRepository: Repository<ProjectPeer>,
   ) {}
 
   async getUserAccountById(id: string): Promise<User | undefined> {
@@ -52,20 +53,109 @@ export class UsersService {
   //   ).password;
   // }
 
+  async getUserSettings(id: string): Promise<any | undefined> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: {
+          id: id,
+        },
+        relations: ['profile'],
+      });
+
+      if (!user) {
+        throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
+      }
+
+      const userProfileDetails = await this.profileRepository.findOne({
+        where: { user: user },
+        relations: ['user'],
+      });
+
+      delete userProfileDetails.user.password;
+      delete user.password;
+
+      return {
+        profile: userProfileDetails,
+        user: user,
+        success: 'success',
+      };
+    } catch (err) {}
+  }
+
+  async updateUserProfile(
+    id: string,
+    createUserProfileDetails: CreateUserProfileParams,
+  ) {
+    try {
+      const user = await this.userRepository.findOneBy({ id });
+      if (!user)
+        throw new HttpException(
+          'User not found. Cannot create Profile',
+          HttpStatus.BAD_REQUEST,
+        );
+
+
+      const userProfile = await this.profileRepository.findOne({
+        where: { user: user },
+      });
+
+      const userData = {
+        profile: userProfile,
+        email: createUserProfileDetails.email,
+      };
+
+      const updatedUserDetailResult = await this.userRepository.update(
+        { id: id },
+        { ...userData },
+      );
+
+      if (updatedUserDetailResult.affected < 1) {
+        return {
+          error: 'error',
+          message: 'User Profile Update Failed',
+        };
+      }
+
+      const updatedResult = await this.profileRepository.update(
+        { id: userProfile.id },
+        { ...createUserProfileDetails },
+      );
+
+      console.log(updatedResult, 'rererr');
+
+      if (updatedResult.affected < 1) {
+        return {
+          error: 'error',
+          message: 'User Profile Update Failed',
+        };
+      }
+      const settings = await this.getUserSettings(id);
+
+      return {
+        profile: settings.profile,
+        user: settings.user,
+        success: 'success',
+        message: 'Successfully updated profile!',
+      };
+    } catch (err) {}
+  }
+
   async getUserAccountPassword(email: string): Promise<string | undefined> {
     const user = await this.userRepository.findOneBy({ email });
     return user?.password;
   }
 
   async findUsers() {
-    const users = await this.userRepository.find({ relations: ['profile',  'projects'] });
-     const res = {
+    const users = await this.userRepository.find({
+      relations: ['profile', 'projects'],
+    });
+    const res = {
       success: 'ok',
       message: 'sucessfull',
-      data: users
-     }
+      data: users,
+    };
 
-     return res
+    return res;
   }
 
   createUser(userDetails: CreateUserParams) {
@@ -84,21 +174,21 @@ export class UsersService {
     return this.userRepository.delete({ id });
   }
 
-  async createUserProfile(
-    id: string,
-    createUserProfileDetails: CreateUserProfileParams,
-  ) {
-    const user = await this.userRepository.findOneBy({ id });
-    if (!user)
-      throw new HttpException(
-        'User not found. Cannot create Profile',
-        HttpStatus.BAD_REQUEST,
-      );
-    const newProfile = this.profileRepository.create(createUserProfileDetails);
-    const savedProfile = await this.profileRepository.save(newProfile);
-    user.profile = savedProfile;
-    return this.userRepository.save(user);
-  }
+  // async createUserProfile(
+  //   id: string,
+  //   createUserProfileDetails: CreateUserProfileParams,
+  // ) {
+  //   const user = await this.userRepository.findOneBy({ id });
+  //   if (!user)
+  //     throw new HttpException(
+  //       'User not found. Cannot create Profile',
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   const newProfile = this.profileRepository.create(createUserProfileDetails);
+  //   const savedProfile = await this.profileRepository.save(newProfile);
+  //   user.profile = savedProfile;
+  //   return this.userRepository.save(user);
+  // }
 
   async checkUserAccountEmailExists(email: string): Promise<boolean> {
     const user = await this.getUserAccountByEmail(email);
@@ -137,5 +227,4 @@ export class UsersService {
     };
     return data;
   }
-
 }
