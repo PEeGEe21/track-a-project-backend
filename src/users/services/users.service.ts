@@ -1,9 +1,10 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
+import * as bcrypt from 'bcryptjs';
 import {
   CreateUserParams,
   CreateUserPostParams,
@@ -11,6 +12,7 @@ import {
   UpdateUserParams,
 } from '../../utils/types';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
 
 @Injectable()
 export class UsersService {
@@ -52,6 +54,75 @@ export class UsersService {
   //     await this.userRepository.findBy({ email }, { password: 1 }).exec()
   //   ).password;
   // }
+
+  async updateUserPassword(id: string, updateUserPasswordDto: UpdateUserPasswordDto): Promise<any> {
+    try{
+
+      if(updateUserPasswordDto.confirm_password !== updateUserPasswordDto.new_password){
+        return {
+          error: 'error',
+          message: 'Confirm Password and New Password do not match',
+        };
+      }
+
+      const user = await this.getUserAccountById(id);
+
+      const userPassword = await this.getUserAccountPassword(
+        user.email,
+      );
+
+      console.log(user, userPassword);
+
+
+      const isCorrectPassword = await bcrypt.compare(updateUserPasswordDto.current_password, userPassword);
+
+      if (!isCorrectPassword) {
+        return {
+          error: 'error',
+          message: 'Your Password is Incorrect',
+        };
+      }
+
+      console.log(isCorrectPassword,updateUserPasswordDto.new_password )
+
+      if (updateUserPasswordDto.new_password) {
+        const saltOrRounds = 10;
+        updateUserPasswordDto.new_password = await bcrypt.hash(
+          updateUserPasswordDto.new_password,
+          saltOrRounds,
+        );
+      }
+
+      const data = {
+        password: updateUserPasswordDto.new_password
+      }
+
+      const updatedUserResult = await this.userRepository.update(
+        { id: user.id },
+        { ...data },
+      );
+
+      if (updatedUserResult.affected < 1) {
+        return {
+          error: 'error',
+          message: 'User Update Failed',
+        };
+      }
+
+      const settings = await this.getUserSettings(user.id);
+
+      return {
+        profile: settings.profile,
+        user: settings.user,
+        success: 'success',
+        message: 'Successfully updated user!',
+      };
+      
+    } catch(err){
+
+    }
+
+  }
 
   async getUserSettings(id: string): Promise<any | undefined> {
     try {
