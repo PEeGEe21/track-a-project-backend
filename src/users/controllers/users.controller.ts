@@ -75,9 +75,7 @@ export class UsersController {
   // }
 
   @Get(':id/settings')
-  getUserSettings(
-    @Param('id', ParseIntPipe) id: string
-  ) {
+  getUserSettings(@Param('id', ParseIntPipe) id: string) {
     return this.userService.getUserSettings(id);
   }
 

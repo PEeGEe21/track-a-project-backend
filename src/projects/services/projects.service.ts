@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
+import { randomBytes } from 'crypto';
+
 import {
   CreateProjectParams,
   CreateUserParams,
@@ -14,10 +16,17 @@ import {
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 import { Task } from 'src/typeorm/entities/Task';
+import { UsersService } from 'src/users/services/users.service';
+import { MailingService } from 'src/utils/mailing/mailing.service';
+import { json } from 'body-parser';
 
 @Injectable()
 export class ProjectsService {
   constructor(
+    private usersService: UsersService,
+    private MailingService: MailingService,
+
+    
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Project) private projectRepository: Repository<Project>,
@@ -328,4 +337,126 @@ export class ProjectsService {
       }
     }
   }
-}
+
+  generateInviteCode(): string {
+    return randomBytes(20).toString('hex').slice(0, 8);
+  }
+
+  // async sendProjectInvite(userId: string, projectId: number, peeremails: { emails: string[] }) {
+  //   try {
+  //     const user = await this.userRepository.findOne({ where: { id: userId }, relations: ['profile'] });
+  //     const userProfile = await this.profileRepository.findOne({ where: { user } });
+  
+  //     if (!userProfile) {
+  //       return {
+  //         error: 'error',
+  //         message: 'Your user Profile not found, please update your profile'
+  //       };
+  //     }
+  
+  //     const project = await this.projectRepository.findOne({ where: { id: projectId } });
+  
+  //     console.log(peeremails.emails, 'peeremails.emails');
+  //     for (const userEmail of peeremails.emails) {
+  //       const checkUserAccount = await this.usersService.getUserAccountByEmail(userEmail);
+  //       const inviteCode = this.generateInviteCode(); // Assuming you have this function
+  
+  //       console.log(userEmail, 'emails');
+  
+  //       let peerEmail;
+  //       let eventLink;
+  //       let peerAccount = false;
+  
+  //       if (checkUserAccount) {
+  //         peerEmail = ` You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK}/auth/login)`;
+  //         eventLink = `${process.env.PEER_LINK}/auth/login`;
+  //         peerAccount = true;
+  //       } else {
+  //         peerEmail = ` You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK}/peerinvites/${inviteCode}/${project.id}`;
+  //         eventLink = `${process.env.PEER_LINK}/peerinvites/${inviteCode}/${project.id}`;
+  //       }
+  
+  //       console.log(userEmail, user, eventLink, peerAccount, peerEmail);
+  //       // await this.MailingService.sendPeerProject(userEmail, user, eventLink, peerAccount, peerEmail);
+  //     }
+  
+  //     return 'Success'; // Assuming you want to return a success message
+  //   } catch (error) {
+  //     console.error('An error occurred:', error);
+  //     return {
+  //       error: 'error',
+  //       message: 'An error occurred while sending project invites'
+  //     };
+  //   }
+  // }
+
+  
+  async sendProjectInvite(userId: string, projectId: number, emails: any[]) {
+    // const {emails } = peeremails   
+
+    // const peeremails = json.parse(emails);
+    try{
+
+    
+
+    const user = await this.userRepository.findOne({ where : { id: userId}, relations: ['profile'] });
+    const userProfile = await this.profileRepository.findOne({ where : { user: user} });
+
+    if(!userProfile) {
+      return {
+        error: 'error',
+        message: 'Your user Profile not found, please update your profile'
+      }
+    }
+
+
+    const project = await this.projectRepository.findOne({ where : { id: projectId} });
+
+    console.log( emails, 'peeremails.emails')
+    // for (const userEmail of emails) {
+    //   console.log(userEmail, 'here')
+    // }
+    for (const userEmail of emails) {
+
+
+      console.log(userEmail, 'emails')
+
+      const checkUserAccount = await this.usersService.getUserAccountByEmail(userEmail);
+
+
+      const inviteCode = this.generateInviteCode(); // Assuming you have this function
+
+      console.log(inviteCode, userEmail,checkUserAccount, 'emails')
+
+      let peerEmail;
+      let eventLink;
+      let peerAccount = false;
+
+      if (checkUserAccount) {
+        peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK_MAIN}/auth/login)`;
+        eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
+        peerAccount = true;
+      } else {
+        peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+        eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+      }
+
+      const sentEmail = await this.MailingService.sendPeerProject(userEmail, user, eventLink, peerAccount, peerEmail);
+    }
+    return {
+      success:'success',
+      message: 'Project invites sent successfully'
+    }
+    
+  } catch (err) {
+    console.log(err)
+    return {
+      error: 'error',
+      message: 'An error occurred while sending project invites'
+    }
+  }
+
+  }
+
+
+ }

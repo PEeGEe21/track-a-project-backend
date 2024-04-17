@@ -19,6 +19,7 @@ import { ProjectPeersModule } from './project-peers/project-peers.module';
 import { ProjectPeer } from './typeorm/entities/ProjectPeers';
 import { Status } from './typeorm/entities/Status';
 import { StatusModule } from './status/status.module';
+import { MailingModule } from './utils/mailing/mailing.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { StatusModule } from './status/status.module';
     //   isGlobal: true,
     //   load: [configuration],
     // }),
+    ConfigModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: 'localhost',
@@ -43,6 +45,7 @@ import { StatusModule } from './status/status.module';
     StatusModule,
     TasksModule,
     ProjectPeersModule,
+    MailingModule,
     AuthModule,
   ],
   controllers: [AppController],

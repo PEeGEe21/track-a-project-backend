@@ -1,4 +1,9 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
@@ -37,6 +42,8 @@ export class UsersService {
 
   async getUserAccountByEmail(email: string) {
     const user = await this.userRepository.findOneBy({ email });
+    console.log(user, email, 'userr')
+
     // if (!user) {
     //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
     // }
@@ -55,10 +62,15 @@ export class UsersService {
   //   ).password;
   // }
 
-  async updateUserPassword(id: string, updateUserPasswordDto: UpdateUserPasswordDto): Promise<any> {
-    try{
-
-      if(updateUserPasswordDto.confirm_password !== updateUserPasswordDto.new_password){
+  async updateUserPassword(
+    id: string,
+    updateUserPasswordDto: UpdateUserPasswordDto,
+  ): Promise<any> {
+    try {
+      if (
+        updateUserPasswordDto.confirm_password !==
+        updateUserPasswordDto.new_password
+      ) {
         return {
           error: 'error',
           message: 'Confirm Password and New Password do not match',
@@ -67,14 +79,14 @@ export class UsersService {
 
       const user = await this.getUserAccountById(id);
 
-      const userPassword = await this.getUserAccountPassword(
-        user.email,
-      );
+      const userPassword = await this.getUserAccountPassword(user.email);
 
       console.log(user, userPassword);
 
-
-      const isCorrectPassword = await bcrypt.compare(updateUserPasswordDto.current_password, userPassword);
+      const isCorrectPassword = await bcrypt.compare(
+        updateUserPasswordDto.current_password,
+        userPassword,
+      );
 
       if (!isCorrectPassword) {
         return {
@@ -83,7 +95,7 @@ export class UsersService {
         };
       }
 
-      console.log(isCorrectPassword,updateUserPasswordDto.new_password )
+      console.log(isCorrectPassword, updateUserPasswordDto.new_password);
 
       if (updateUserPasswordDto.new_password) {
         const saltOrRounds = 10;
@@ -94,8 +106,8 @@ export class UsersService {
       }
 
       const data = {
-        password: updateUserPasswordDto.new_password
-      }
+        password: updateUserPasswordDto.new_password,
+      };
 
       const updatedUserResult = await this.userRepository.update(
         { id: user.id },
@@ -117,11 +129,7 @@ export class UsersService {
         success: 'success',
         message: 'Successfully updated user!',
       };
-      
-    } catch(err){
-
-    }
-
+    } catch (err) {}
   }
 
   async getUserSettings(id: string): Promise<any | undefined> {
@@ -164,7 +172,6 @@ export class UsersService {
           'User not found. Cannot create Profile',
           HttpStatus.BAD_REQUEST,
         );
-
 
       const userProfile = await this.profileRepository.findOne({
         where: { user: user },

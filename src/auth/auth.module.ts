@@ -19,6 +19,7 @@ import { ProjectsService } from 'src/projects/services/projects.service';
 import { ProjectsModule } from 'src/projects/projects.module';
 import { Task } from 'src/typeorm/entities/Task';
 import { TasksModule } from 'src/tasks/tasks.module';
+import { MailingModule } from 'src/utils/mailing/mailing.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { TasksModule } from 'src/tasks/tasks.module';
     ProjectPeersModule,
     TasksModule,
     ProjectsModule,
+    MailingModule,
     JwtModule.register({
       secret: config.secret,
       signOptions: {

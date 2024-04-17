@@ -38,7 +38,6 @@ export class ProjectsController {
     return this.projectService.deleteProject(id);
   }
 
-
   // @Get(':userId/projects/:projectId')
   // getUserProjectsPeer(
   //   @Param('userId', ParseIntPipe) userId: string,
@@ -69,6 +68,15 @@ export class ProjectsController {
   ) {
     console.log('hereeee');
     return this.projectService.findProjectsByUserId(userId, page, limit);
+  }
+
+  @Post('/invite/:userId/:projectId')
+  getTasks(
+    @Param('userId', ParseIntPipe) userId: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() { emails }: { emails: string[] }, // Destructure and rename
+  ) {
+    return this.projectService.sendProjectInvite(userId, projectId, emails);
   }
 
   @Post(':id/new-project')
