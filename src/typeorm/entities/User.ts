@@ -16,7 +16,17 @@ import { Status } from './Status';
 @Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: string;
+  id: number;
+
+  @Column({
+    default: '',
+  })
+  first_name?: string;
+
+  @Column({
+    default: '',
+  })
+  last_name?: string;
 
   @Column({ unique: true, nullable: true })
   username: string;
@@ -33,8 +43,11 @@ export class User {
   @Column({ nullable: true })
   authStrategy: string;
 
-  @OneToOne(() => Profile)
-  @JoinColumn()
+  @Column({ default: false })
+  logged_in: boolean;
+
+  @OneToOne(() => Profile, (profile)=>profile.user)
+  @JoinColumn({ name: 'profile_id'})
   profile: Profile;
 
   // @OneToMany(() => Post, (post) => post.user)

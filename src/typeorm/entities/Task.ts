@@ -11,6 +11,7 @@ import { User } from './User';
 import { Project } from './Project';
 import { Tag } from './Tag';
 import { Status } from './Status';
+import { Category } from './Category';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -31,6 +32,10 @@ export class Task {
   @ManyToMany(() => Tag)
   @JoinTable()
   tags?: Tag[];
+
+  @ManyToMany(() => Category)
+  @JoinTable()
+  categories?: Category[];
 
   @Column()
   dueDate: Date = new Date();

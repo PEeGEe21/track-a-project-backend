@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpStatus,
+  Param,
   Post,
   Query,
   Req,
@@ -49,22 +50,22 @@ export class AuthController {
     return this.authService.signUp(userSignupDto);
   }
 
+  @Get('/access-token')
+  async refresh(
+    @Query('refreshToken') refreshToken: string,
+  ): Promise<any> {
+    return this.authService.refreshToken(refreshToken);
+  }
+  
+  @Post('/logout')
+  async logout(
+    @Body('refreshToken') refreshToken: string,
+  ): Promise<any> {
+    return this.authService.logOut(refreshToken);
+  }
+  
 
 
-
-  // @Post('/tailor/signup-password')
-  // async tailorSIgnUpPassword(
-  //   @Body() tailorSignUpasswordpDto: TailorSignupPasswordDto,
-  // ): Promise<TailorSignupPasswordResponseDto> {
-  //   return this.authService.signupAsTailorPassword(tailorSignUpasswordpDto);
-  // }
-
-  // @Post('/embroiderer/signup')
-  // async embroidererSignup(
-  //   @Body() embroidererSignupDto: EmbroidererSignupDto,
-  // ): Promise<Embroiderer> {
-  //   return this.authService.signupAsEmbroiderer(embroidererSignupDto);
-  // }
 
   // @Post('/send-signup-otp')
   // async sendSignupOTP(@Body() otpDto: RequestOtpDto): Promise<boolean> {
@@ -110,13 +111,6 @@ export class AuthController {
   //   return this.authService.resetPasswordWithRecoveryCode(
   //     passwordResetWithCodeDto,
   //   );
-  // }
-
-  // @Post('/change-tailor-password')
-  // async resetTailorPassword(
-  //   @Body() tailorPasswordChange: TailorPasswordChange,
-  // ): Promise<boolean> {
-  //   return this.authService.changeTailorPassword(tailorPasswordChange);
   // }
 
   // @Post('/recover-password')

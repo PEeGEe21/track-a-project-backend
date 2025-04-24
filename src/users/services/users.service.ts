@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +19,7 @@ import {
 } from '../../utils/types';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class UsersService {
@@ -27,9 +29,10 @@ export class UsersService {
     @InjectRepository(Post) private postRepository: Repository<Post>,
     @InjectRepository(ProjectPeer)
     private projectPeerRepository: Repository<ProjectPeer>,
+    private jwtService: JwtService,
   ) {}
 
-  async getUserAccountById(id: string): Promise<User | undefined> {
+  async getUserAccountById(id: number): Promise<User | undefined> {
     const user = await this.userRepository.findOneBy({ id });
 
     console.log(user);
@@ -42,7 +45,7 @@ export class UsersService {
 
   async getUserAccountByEmail(email: string) {
     const user = await this.userRepository.findOneBy({ email });
-    console.log(user, email, 'userr')
+    console.log(user, email, 'userr');
 
     // if (!user) {
     //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
@@ -63,7 +66,7 @@ export class UsersService {
   // }
 
   async updateUserPassword(
-    id: string,
+    id: number,
     updateUserPasswordDto: UpdateUserPasswordDto,
   ): Promise<any> {
     try {
@@ -132,7 +135,7 @@ export class UsersService {
     } catch (err) {}
   }
 
-  async getUserSettings(id: string): Promise<any | undefined> {
+  async getUserSettings(id: number): Promise<any | undefined> {
     try {
       const user = await this.userRepository.findOne({
         where: {
@@ -162,7 +165,7 @@ export class UsersService {
   }
 
   async updateUserProfile(
-    id: string,
+    id: number,
     createUserProfileDetails: CreateUserProfileParams,
   ) {
     try {
@@ -244,11 +247,11 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  updateUser(id: string, updateUserDetails: UpdateUserParams) {
+  updateUser(id: number, updateUserDetails: UpdateUserParams) {
     return this.userRepository.update({ id }, { ...updateUserDetails });
   }
 
-  deleteUser(id: string) {
+  deleteUser(id: number) {
     return this.userRepository.delete({ id });
   }
 
@@ -286,7 +289,7 @@ export class UsersService {
     return result;
   }
 
-  async getUserPeersById(id: string): Promise<any> {
+  async getUserPeersById(id: number): Promise<any> {
     const user = await this.userRepository.findOneBy({ id });
     if (!user)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -304,5 +307,25 @@ export class UsersService {
       data: project_peers,
     };
     return data;
+  }
+
+  async getUserProfile(user: any): Promise<any> {
+    try {
+      const foundUser = await this.getUserAccountById(user.userId);
+
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      delete foundUser.password;
+
+      return {
+        success: true,
+        data: foundUser,
+      };
+    } catch (err) {
+      console.error('Error in getUserProfile:', err);
+      throw new UnauthorizedException('Could not fetch user profile');
+    }
   }
 }

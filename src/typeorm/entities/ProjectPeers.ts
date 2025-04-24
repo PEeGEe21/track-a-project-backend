@@ -6,7 +6,7 @@ import { Project } from './Project';
 export class ProjectPeer {
 
   @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: string;
+  id: number;
 
   @ManyToOne(() => User, (user) => user.projectPeers, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

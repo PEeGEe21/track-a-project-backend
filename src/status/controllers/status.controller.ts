@@ -44,7 +44,7 @@ export class StatusController {
 
   @Post(':id/new-status')
   createProjectTask(
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() CreateStatusDto: CreateStatusDto,
   ) {
     return this.statusService.createStatus(id, CreateStatusDto);

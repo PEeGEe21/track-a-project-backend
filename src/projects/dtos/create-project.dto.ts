@@ -4,6 +4,6 @@ import { User } from "../../typeorm/entities/User";
 export class CreateProjectDto {
   title: string;
   description: string;
-  user: User;
-  tasks: Task[];
+  user?: User;
+  tasks?: Task[];
 }

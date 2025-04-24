@@ -6,10 +6,15 @@ import {
   OneToMany,
   JoinColumn,
   ManyToMany,
+  JoinTable,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from './User';
 import { Task } from './Task';
 import { ProjectPeer } from './ProjectPeers';
+import { Tag } from './Tag';
+import { Category } from './Category';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -21,6 +26,26 @@ export class Project {
 
   @Column()
   description: string;
+
+  @ManyToMany(() => Tag)
+  @JoinTable()
+  tags?: Tag[];
+
+  @ManyToMany(() => Category)
+  @JoinTable()
+  categories?: Category[];
+
+  @Column({ nullable: true })
+  category: string;
+
+  @Column({ nullable: true })
+  color: string;
+
+  @Column({ nullable: true })
+  icon: string;
+
+  @Column({ nullable: true}) // Added created_at column
+  due_date: Date = new Date();
 
   //   @ManyToOne(() => User, (user) => user.posts)
   //   post_user: User;
@@ -34,6 +59,9 @@ export class Project {
   @OneToMany(() => Task, (task) => task.project)
   tasks: Task[];
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' }) // Added created_at column
-  createdAt: Date;
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
 }

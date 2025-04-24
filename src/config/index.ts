@@ -19,11 +19,13 @@ const envVarsSchema = joi
       .string()
       .allow(...['error', 'warning', 'info', 'debug', 'silly', ''])
       .default('silly'),
-    JWT_SECRET: joi.string().required(),
+    JWT_ACCESS_TOKEN_SECRET: joi.string().required(),
+    JWT_ACCESS_EXPIRES_IN: joi.string().required(),
+    JWT_REFRESH_TOKEN_SECRET: joi.string().required(),
     FRONTEND_URL: joi.string().required(),
 
     // database config
-    MONGODB_URI: joi.string().required(),
+    // MONGODB_URI: joi.string().required(),
     DATABASE_LOGGING: joi
       .boolean()
       .truthy('TRUE')
@@ -34,10 +36,7 @@ const envVarsSchema = joi
 
     // // emails
     // SENDGRID_API_KEY: joi.string().required(),
-    // OUTFIT_BUYER_AFTER_FIRST_EVENT_EMAIL: joi.string().required(),
     // RECIPIENT_INVITE_EMAIL_TEMPLATE: joi.string().required(),
-    // EXISTING_TAILOR_INVITE_EMAIL_TEMPLATE: joi.string().required(),
-    // UNREGISTERED_TAILOR_INVITE_EMAIL_TEMPLATE: joi.string().required(),
     // RECIPIENT_INVITE_NEW_USER_EMAIL_TEMPLATE: joi.string().required(),
     // SENDGRID_FROM_EMAIL: joi.string().required(),
     // EARLIEST_EVENT_DATE_GAP: joi.number().required(),
@@ -78,7 +77,9 @@ export const config = {
   url: envVars.APP_URL,
   port: envVars.PORT,
   logLevel: envVars.LOG_LEVEL,
-  secret: envVars.JWT_SECRET,
+  secret: envVars.JWT_ACCESS_TOKEN_SECRET,
+  expiresIn: envVars.JWT_ACCESS_EXPIRES_IN,
+  refreshSecret: envVars.JWT_REFRESH_TOKEN_SECRET,
   feBaseUrl: envVars.FE_BASE_URL,
   accountVerificationTtl: envVars.ACCOUNT_VERIFICATION_TTL,
   accountVerificationUrl: envVars.ACCOUNT_VERIFICATION_URL,
@@ -99,26 +100,14 @@ export const config = {
   //   inviteEmailTemplate: envVars.SENDGRID_INVITE_EMAIL_TEMPLATE,
   //   outfitBuyerFirstEventEmail: envVars.OUTFIT_BUYER_AFTER_FIRST_EVENT_EMAIL,
   //   recipientInviteEmail: envVars.RECIPIENT_INVITE_EMAIL_TEMPLATE,
-  //   existingTailorInviteEmail: envVars.EXISTING_TAILOR_INVITE_EMAIL_TEMPLATE,
   //   newUserRecipientInviteEmail:
   //     envVars.RECIPIENT_INVITE_NEW_USER_EMAIL_TEMPLATE,
-  //   unregisteredTailorInviteEmail:
-  //     envVars.UNREGISTERED_TAILOR_INVITE_EMAIL_TEMPLATE,
   //   fromEmail: envVars.SENDGRID_FROM_EMAIL,
-  //   noReply: 'no-reply@fitted.ng',
   //   passwordRecoveryEmail: envVars.PASSWORD_RECOVERY_EMAIL,
   //   memberSignUpEmail: envVars.MEMBER_SIGNUP,
   //   accountVerificationEmail: envVars.ACCOUNT_VERIFICATION_EMAIL_TEMPLATE,
   //   existingUserCreateEventEmail:
   //     envVars.EXISTING_USER_CREATE_EVENT_EMAIL_TEMPLATE,
-  //   TAILOR_SIGNUP_EMAIL_PASSWORD_ID: envVars.TAILOR_SIGNUP_EMAIL_PASSWORD_ID,
-  //   TAILOR_SIGNUP_EMAIL_NO_PASSWORD_ID:
-  //     envVars.TAILOR_SIGNUP_EMAIL_NO_PASSWORD_ID,
-  //   TAILOR_RESET_PASSWORD: envVars.TAILOR_RESET_PASSWORD,
-  //   TAILOR_SIGN_UP: envVars.TAILOR_SIGN_UP,
-  //   TAILOR_INVITE: envVars.TAILOR_INVITE,
-  //   TAILOR_INVITE_EXISTING: envVars.TAILOR_INVITE_EXISTING,
-  //   TAILOR_LINK: envVars.TAILOR_LINK,
   //   VETTED_APPROVED: envVars.VETTED_APPROVED,
   //   VETTED_DECLINED: envVars.VETTED_DECLINED,
   //   EVENT_PLANNER_WITH_EVENT: envVars.EVENT_PLANNER_WITH_EVENT,
@@ -153,7 +142,6 @@ export const config = {
   //   instanceId: envVars.PUSHER_INSTANCE_ID,
   // },
   // klaviyo: {
-  //   tailorId: envVars.KLAVIYO_TAILOR,
   //   fabricId: envVars.KLAVIYO_FABRIC_SELLER,
   //   generalId: envVars.KLAVIYO_GENERAL,
   //   GroupsId: envVars.KLAVIYO_GROUPS,
@@ -173,23 +161,12 @@ export const config = {
   // fund_transfer: {
   //   fund_group_from_personl: envVars.FUND_TRANSFER_PERSONAL_GROUP,
   // },
-  // tailor_send_measurement: {
-  //   fitted_otp_email: envVars.FITTED_OTP_EMAIL,
-  //   tailor_measurement_new: envVars.TAILOR_MEASUREMENT_NEW,
-  //   tailor_measurement_existing: envVars.TAILOR_MEASUREMENT_EXISTING,
-  //   tailor_input_measurement_for_user:
-  //     envVars.TAILOR_INPUT_MEASUREMENT_FOR_USER,
-  //   measurement_input_request: envVars.FITTED_MEASUREMENT_INPUT_REQUEST,
-  // },
   // tentMeasurementMail: envVars.TENTH_MEASUREMENT,
   // uncompleted_measurement: envVars.UNCOMPLETED_MEASUREMENT,
   // orderProcessing: envVars.ORDER_PROCESSING,
   // groupOrder: envVars.GROUP_ORDER,
   // paymentDone: envVars.PAYMENT_DONE,
-  // sewingInProgress: envVars.SEWING_IN_PROGRESS,
-  // sewingCompleted: envVars.SEWING_COMPLETED,
   // deliveryInProgress: envVars.DELIVERY_PROGRESS,
-  // fulfiltWithFitted: envVars.FULFIL_WITH_FITTED,
   // auto_size_price: envVars.AUTOSIZE_PRICE,
   // TERMI_SECRET_KEY: envVars.TERMI_SECRET_KEY,
   // TERMI_API_KEY: envVars.TERMI_API_KEY,

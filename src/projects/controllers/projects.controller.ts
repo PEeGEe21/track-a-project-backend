@@ -8,13 +8,28 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ProjectsService } from '../services/projects.service';
 import { CreateProjectDto } from '../dtos/create-project.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('projects')
 export class ProjectsController {
   constructor(private projectService: ProjectsService) {}
+
+  @Get('/my-projects')
+  getUserProjectsQuery(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Req() req: any,
+  ) {
+    return this.projectService.findUserProjects(req.user, page, limit, search);
+  }
+
   @Get('/')
   getProjects() {
     return this.projectService.findProjects();
@@ -57,22 +72,13 @@ export class ProjectsController {
   }
 
   @Get(':id/projects')
-  getUserProjects(@Param('id', ParseIntPipe) id: string) {
+  getUserProjects(@Param('id', ParseIntPipe) id: number) {
     return this.projectService.getUserProjects(id);
-  }
-  @Get(':userId/user-projects')
-  getUserProjectsQuery(
-    @Param('userId', ParseIntPipe) userId: string,
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 10,
-  ) {
-    console.log('hereeee');
-    return this.projectService.findProjectsByUserId(userId, page, limit);
   }
 
   @Post('/invite/:userId/:projectId')
   getTasks(
-    @Param('userId', ParseIntPipe) userId: string,
+    @Param('userId', ParseIntPipe) userId: number,
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body() { emails }: { emails: string[] }, // Destructure and rename
   ) {
@@ -81,7 +87,7 @@ export class ProjectsController {
 
   @Post(':id/new-project')
   createUserProject(
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() CreateProjectDto: CreateProjectDto,
   ) {
     return this.projectService.createProject(id, CreateProjectDto);

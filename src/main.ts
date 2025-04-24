@@ -6,6 +6,7 @@ import * as helmet from 'helmet';
 
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as csurf from 'csurf';
+import { SeederService } from './seeder/seeder.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,8 +19,6 @@ async function bootstrap() {
       config.env === 'development'
         ? '*'
         : [
-            // 'https://groups.fitted.ng',
-            // /--tailorsportal\.netlify\.app$/,
           ],
     optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204
   };
@@ -27,12 +26,15 @@ async function bootstrap() {
   // app.use(csurf());
   app.setGlobalPrefix('/api/');
 
+  // const seederService = app.get(SeederService);
+  // await seederService.seedUserPeers();
+
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Group Orders')
     .setDescription('The Group Orders API description')
     .setVersion('1.0')
     .addBearerAuth()
-    .setExternalDoc('Group API & Tailor Postman Collection', '/api/docs-json')
+    .setExternalDoc('Trackr Postman Collection', '/api/docs-json')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);

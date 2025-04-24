@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Post } from '../typeorm/entities/Post';
 import { Profile } from '../typeorm/entities/Profile';
 import { User } from '../typeorm/entities/User';
 import { Project } from 'src/typeorm/entities/Project';
@@ -20,6 +19,14 @@ import { ProjectsModule } from 'src/projects/projects.module';
 import { Task } from 'src/typeorm/entities/Task';
 import { TasksModule } from 'src/tasks/tasks.module';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { UsersService } from 'src/users/services/users.service';
+import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { Status } from 'src/typeorm/entities/Status';
+import { Tag } from 'src/typeorm/entities/Tag';
+import { Post } from 'src/typeorm/entities/Post';
+import { UserpeersService } from 'src/user-peers/services/userpeers.service';
+import { UserPeersModule } from 'src/user-peers/userpeers.module';
 
 @Module({
   imports: [
@@ -29,15 +36,43 @@ import { MailingModule } from 'src/utils/mailing/mailing.module';
     TasksModule,
     ProjectsModule,
     MailingModule,
-    JwtModule.register({
-      secret: config.secret,
-      signOptions: {
-        expiresIn: 86400, // 1 week
-      },
+    UserPeersModule,
+    // JwtModule.register({
+    //   secret: config.secret,
+    //   signOptions: {
+    //     expiresIn: config.expiresIn, // 1 week
+    //   },
+    // }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: config.secret,
+        signOptions: { expiresIn: config.expiresIn },
+      }),
     }),
-    TypeOrmModule.forFeature([User, Profile, Project, ProjectPeer, Task]),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Post,
+      Project,
+      Task,
+      Tag,
+      ProjectPeer,
+      Status,
+      UserPeer,
+    ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, ProjectsService, ProjectPeersService]
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    ProjectsService,
+    ProjectPeersService,
+    ConfigService,
+    UsersService,
+  ],
+  exports: [JwtModule, AuthService],
 })
 export class AuthModule {}

@@ -196,7 +196,7 @@ export class StatusService {
   }
 
   async createStatus(
-    id: string,
+    id: number,
     CreateStatusDetails: CreateStatusParams,
   ): Promise<any> {
     try {

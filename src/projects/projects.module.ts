@@ -14,7 +14,12 @@ import { MailingService } from 'src/utils/mailing/mailing.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer]), UsersModule, MailingModule, ConfigModule],
+  imports: [
+    TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer]),
+    UsersModule,
+    MailingModule,
+    ConfigModule,
+  ],
   controllers: [ProjectsController],
   providers: [ProjectsService, MailingService, ConfigService],
   exports: [ProjectsService],

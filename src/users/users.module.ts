@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Post } from '../typeorm/entities/Post';
 import { Profile } from '../typeorm/entities/Profile';
@@ -7,11 +7,33 @@ import { UsersController } from './controllers//users.controller';
 import { UsersService } from './services/users.service';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { JwtModule } from '@nestjs/jwt';
+import { config } from 'src/config';
+import { UserPeersModule } from 'src/user-peers/userpeers.module';
+import { UserpeersService } from 'src/user-peers/services/userpeers.service';
+import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { Status } from 'src/typeorm/entities/Status';
+import { Tag } from 'src/typeorm/entities/Tag';
+import { Task } from 'src/typeorm/entities/Task';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, ProjectPeer])],
+  imports: [
+    JwtModule,
+    // forwardRef(() => UserPeersModule),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Post,
+      Project,
+      Task,
+      Tag,
+      ProjectPeer,
+      Status,
+      UserPeer,
+    ]),
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],
 })
-export class UsersModule {} 
+export class UsersModule {}

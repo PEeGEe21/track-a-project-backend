@@ -12,8 +12,8 @@ import { User } from './User';
 import { Project } from './Project';
 import { Task } from './Task';
 
-@Entity({ name: 'tags' })
-export class Tag {
+@Entity({ name: 'categories' })
+export class Category {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -23,13 +23,10 @@ export class Tag {
   @Column({ nullable: true })
   description: string;
 
-  @Column({ nullable: true })
-  color: string;
-
-  @ManyToMany(() => Task, (task) => task.tags)
+  @ManyToMany(() => Task, (task) => task.categories)
   tasks: Task[];
 
-  @ManyToMany(() => Project, (project) => project.tags)
+  @ManyToMany(() => Project, (project) => project.categories)
   projects: Project[];
 
   @CreateDateColumn()

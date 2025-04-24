@@ -26,7 +26,6 @@ export class ProjectsService {
     private usersService: UsersService,
     private MailingService: MailingService,
 
-    
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Project) private projectRepository: Repository<Project>,
@@ -105,41 +104,57 @@ export class ProjectsService {
   //   };
   // }
 
-  async findProjectsByUserId(
-    userId: string,
+  async findUserProjects(
+    user: any,
     page: number = 1,
     limit: number = 10,
+    search?: string,
   ): Promise<any> {
     console.log('heree');
 
     // 1. Await the user search result
-    const userFound = await this.userRepository.findOneBy({ id: userId });
-
-    console.log(userFound, 'user');
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
 
     // 2. Use the query builder
     const queryBuilder = this.projectRepository.createQueryBuilder('project');
 
     // 3. Apply where condition and relations using the query builder
     const projects = await queryBuilder
-      .where('project.user.id = :userId', { userId })
+      .where('project.user.id = :id', { id: userFound.id })
       .leftJoinAndSelect('project.user', 'user') // Include user relationship
       .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
-      .skip((page - 1) * limit) // Apply pagination based on page and limit
-      .take(limit) // Set the limit for results per page
-      .orderBy('project.createdAt', 'DESC')
-      .getMany(); // Execute the query
+      .leftJoinAndSelect('project.tags', 'tags') // Include tasks relationship
+      .leftJoinAndSelect('project.categories', 'categories'); // Include tasks relationship
 
-    // Calculate next page based on total count and pagination
-    const total = await queryBuilder.getCount();
-    console.log(total, projects, 'total');
-    const nextPage = total > page * limit ? page + 1 : undefined;
+    if (search) {
+      const lowered = `%${search.toLowerCase()}%`;
+      projects.andWhere(
+        `(LOWER(project.title) LIKE :search OR LOWER(project.description) LIKE :search)`,
+        { search: lowered },
+      );
+    }
 
-    console.log(nextPage, 'eeeeerrere');
+    projects.skip((page - 1) * limit); // Apply pagination based on page and limit
+    projects.take(limit); // Set the limit for results per page
+    projects.orderBy('project.created_at', 'DESC');
+
+    const [result, total] = await projects.getManyAndCount();
+
+    const lastPage = Math.ceil(total / limit);
 
     return {
-      data: projects,
-      nextPage,
+      data: result,
+      meta: {
+        current_page: Number(page),
+        from: (page - 1) * limit + 1,
+        last_page: lastPage,
+        per_page: Number(limit),
+        to: (page - 1) * limit + result.length,
+        total: total,
+      },
       success: 'success',
     };
   }
@@ -280,7 +295,7 @@ export class ProjectsService {
     return resp;
   }
 
-  async getUserProjects(id: string) {
+  async getUserProjects(id: number) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -301,7 +316,7 @@ export class ProjectsService {
     return data;
   }
 
-  async createProject(id: string, CreateProjectDetails: CreateProjectParams) {
+  async createProject(id: number, CreateProjectDetails: CreateProjectParams) {
     try {
       const user = await this.userRepository.findOneBy({ id });
 
@@ -311,6 +326,8 @@ export class ProjectsService {
           HttpStatus.BAD_REQUEST,
         );
       }
+
+      console.log(user, 'user2');
 
       const newProject = this.projectRepository.create({
         ...CreateProjectDetails,
@@ -346,27 +363,27 @@ export class ProjectsService {
   //   try {
   //     const user = await this.userRepository.findOne({ where: { id: userId }, relations: ['profile'] });
   //     const userProfile = await this.profileRepository.findOne({ where: { user } });
-  
+
   //     if (!userProfile) {
   //       return {
   //         error: 'error',
   //         message: 'Your user Profile not found, please update your profile'
   //       };
   //     }
-  
+
   //     const project = await this.projectRepository.findOne({ where: { id: projectId } });
-  
+
   //     console.log(peeremails.emails, 'peeremails.emails');
   //     for (const userEmail of peeremails.emails) {
   //       const checkUserAccount = await this.usersService.getUserAccountByEmail(userEmail);
   //       const inviteCode = this.generateInviteCode(); // Assuming you have this function
-  
+
   //       console.log(userEmail, 'emails');
-  
+
   //       let peerEmail;
   //       let eventLink;
   //       let peerAccount = false;
-  
+
   //       if (checkUserAccount) {
   //         peerEmail = ` You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK}/auth/login)`;
   //         eventLink = `${process.env.PEER_LINK}/auth/login`;
@@ -375,11 +392,11 @@ export class ProjectsService {
   //         peerEmail = ` You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK}/peerinvites/${inviteCode}/${project.id}`;
   //         eventLink = `${process.env.PEER_LINK}/peerinvites/${inviteCode}/${project.id}`;
   //       }
-  
+
   //       console.log(userEmail, user, eventLink, peerAccount, peerEmail);
   //       // await this.MailingService.sendPeerProject(userEmail, user, eventLink, peerAccount, peerEmail);
   //     }
-  
+
   //     return 'Success'; // Assuming you want to return a success message
   //   } catch (error) {
   //     console.error('An error occurred:', error);
@@ -390,73 +407,75 @@ export class ProjectsService {
   //   }
   // }
 
-  
-  async sendProjectInvite(userId: string, projectId: number, emails: any[]) {
-    // const {emails } = peeremails   
+  async sendProjectInvite(userId: number, projectId: number, emails: any[]) {
+    // const {emails } = peeremails
 
     // const peeremails = json.parse(emails);
-    try{
+    try {
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+        relations: ['profile'],
+      });
+      const userProfile = await this.profileRepository.findOne({
+        where: { user: user },
+      });
 
-    
+      if (!userProfile) {
+        return {
+          error: 'error',
+          message: 'Your user Profile not found, please update your profile',
+        };
+      }
 
-    const user = await this.userRepository.findOne({ where : { id: userId}, relations: ['profile'] });
-    const userProfile = await this.profileRepository.findOne({ where : { user: user} });
+      const project = await this.projectRepository.findOne({
+        where: { id: projectId },
+      });
 
-    if(!userProfile) {
+      console.log(emails, 'peeremails.emails');
+      // for (const userEmail of emails) {
+      //   console.log(userEmail, 'here')
+      // }
+      for (const userEmail of emails) {
+        console.log(userEmail, 'emails');
+
+        const checkUserAccount =
+          await this.usersService.getUserAccountByEmail(userEmail);
+
+        const inviteCode = this.generateInviteCode(); // Assuming you have this function
+
+        console.log(inviteCode, userEmail, checkUserAccount, 'emails');
+
+        let peerEmail;
+        let eventLink;
+        let peerAccount = false;
+
+        if (checkUserAccount) {
+          peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK_MAIN}/auth/login)`;
+          eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
+          peerAccount = true;
+        } else {
+          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+          eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+        }
+
+        const sentEmail = await this.MailingService.sendPeerProject(
+          userEmail,
+          user,
+          eventLink,
+          peerAccount,
+          peerEmail,
+        );
+      }
+      return {
+        success: 'success',
+        message: 'Project invites sent successfully',
+      };
+    } catch (err) {
+      console.log(err);
       return {
         error: 'error',
-        message: 'Your user Profile not found, please update your profile'
-      }
-    }
-
-
-    const project = await this.projectRepository.findOne({ where : { id: projectId} });
-
-    console.log( emails, 'peeremails.emails')
-    // for (const userEmail of emails) {
-    //   console.log(userEmail, 'here')
-    // }
-    for (const userEmail of emails) {
-
-
-      console.log(userEmail, 'emails')
-
-      const checkUserAccount = await this.usersService.getUserAccountByEmail(userEmail);
-
-
-      const inviteCode = this.generateInviteCode(); // Assuming you have this function
-
-      console.log(inviteCode, userEmail,checkUserAccount, 'emails')
-
-      let peerEmail;
-      let eventLink;
-      let peerAccount = false;
-
-      if (checkUserAccount) {
-        peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK_MAIN}/auth/login)`;
-        eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
-        peerAccount = true;
-      } else {
-        peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
-        eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
-      }
-
-      const sentEmail = await this.MailingService.sendPeerProject(userEmail, user, eventLink, peerAccount, peerEmail);
-    }
-    return {
-      success:'success',
-      message: 'Project invites sent successfully'
-    }
-    
-  } catch (err) {
-    console.log(err)
-    return {
-      error: 'error',
-      message: 'An error occurred while sending project invites'
+        message: 'An error occurred while sending project invites',
+      };
     }
   }
-
-  }
-
-
- }
+}

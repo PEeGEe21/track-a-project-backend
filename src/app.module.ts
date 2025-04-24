@@ -20,6 +20,11 @@ import { ProjectPeer } from './typeorm/entities/ProjectPeers';
 import { Status } from './typeorm/entities/Status';
 import { StatusModule } from './status/status.module';
 import { MailingModule } from './utils/mailing/mailing.module';
+import { UserPeer } from './typeorm/entities/UserPeer';
+import { UserPeersModule } from './user-peers/userpeers.module';
+import { SeederService } from './seeder/seeder.service';
+import { UserpeersService } from './user-peers/services/userpeers.service';
+import { Category } from './typeorm/entities/Category';
 
 @Module({
   imports: [
@@ -30,16 +35,43 @@ import { MailingModule } from './utils/mailing/mailing.module';
     ConfigModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      username: 'root2',
-      password: '123456',
-      database: 'track_project_db2',
-      entities: [User, Profile, Post, Project, Task, Tag, ProjectPeer, Status],
-      // migrations: ['src/database/migrations/**/*.ts'], // Path to your migration files
-
+      host: process.env.DATABASE_HOST,
+      port: Number(process.env.DATABASE_PORT),
+      username: process.env.DATABASE_USERNAME,
+      password: process.env.DATABASE_PASSWORD,
+      database: process.env.DATABASE_NAME,
+      timezone: 'Z', // Add this line for UTC
+      ssl: { rejectUnauthorized: false },
+      entities: [
+        User,
+        Profile,
+        Post,
+        Project,
+        Task,
+        Tag,
+        ProjectPeer,
+        Status,
+        UserPeer,
+        Category,
+      ],
       synchronize: true,
+      autoLoadEntities: true,
+      extra: {
+        timezone: '+00:00',
+      },
     }),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Post,
+      Project,
+      Task,
+      Tag,
+      ProjectPeer,
+      Status,
+      UserPeer,
+      Category,
+    ]),
     UsersModule,
     ProjectsModule,
     StatusModule,
@@ -47,8 +79,9 @@ import { MailingModule } from './utils/mailing/mailing.module';
     ProjectPeersModule,
     MailingModule,
     AuthModule,
+    UserPeersModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SeederService],
 })
 export class AppModule {}

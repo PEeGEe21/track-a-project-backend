@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -16,7 +18,6 @@ import { use } from 'passport';
 // import { AdminService } from 'src/admin/admin.service';
 import { config } from '../../config/index';
 // import { userRoles } from '../../users/models/roles.enum';
-// import { Tailor, TailorDocument } from '../../users/models/tailor.schema';
 // import {
 //   UserAccount,
 //   UserAccountDocument,
@@ -26,10 +27,10 @@ import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import {
-CreateUserParams,
-CreateUserPostParams,
-CreateUserProfileParams,
-UpdateUserParams,
+  CreateUserParams,
+  CreateUserPostParams,
+  CreateUserProfileParams,
+  UpdateUserParams,
 } from '../../utils/types';
 import { UsersService } from '../../users/services/users.service';
 import { EmailLoginDto } from '../dtos/email-login.dto';
@@ -69,9 +70,11 @@ export class AuthService {
     private projectsService: ProjectsService,
 
     @InjectRepository(User) private userRepository: Repository<User>,
-    @InjectRepository(Profile) private userProfileRepository: Repository<Profile>,
+    @InjectRepository(Profile)
+    private userProfileRepository: Repository<Profile>,
     @InjectRepository(Project) private projectRepository: Repository<Project>,
-    @InjectRepository(ProjectPeer) private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(ProjectPeer)
+    private projectPeerRepository: Repository<ProjectPeer>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -143,7 +146,7 @@ export class AuthService {
   //       );
   //     }
   //   } else {
-  //     throw new BadRequestException('Email is not registered on fitted');
+  //     throw new BadRequestException('Email is not registered');
   //   }
 
   //   return true;
@@ -152,7 +155,6 @@ export class AuthService {
   // resetPassword(user: UserAccount, passwordResetDto: PasswordResetDto): void {
   //   throw new Error('Method not implemented.');
   // }
-
 
   // async sendConfirmationEmail(email: string): Promise<string> {
   //   if (!isEmail(email.trim())) {
@@ -241,7 +243,7 @@ export class AuthService {
   //       email: user.email,
   //       firstName: user.firstName,
   //       otp: otpCode,
-  //       template_id: config.tailor_send_measurement.fitted_otp_email,
+  //       template_id: config.send_otp_email,
   //     });
   //     return true;
   //   } else {
@@ -305,59 +307,59 @@ export class AuthService {
     // await this.checkUserAccountEmailExists(user.email);
 
     // if (!passwordLess) {
-      const userPassword = await this.usersService.getUserAccountPassword(
-        user.email,
+    const userPassword = await this.usersService.getUserAccountPassword(
+      user.email,
+    );
+
+    const isCorrectPassword = await bcrypt.compare(password, userPassword);
+
+    if (!isCorrectPassword) {
+      throw new BadRequestException(
+        'SignIn Failed!, Incorrect login credentials',
       );
-
-      const isCorrectPassword = await bcrypt.compare(password, userPassword);
-
-      if (!isCorrectPassword) {
-        throw new BadRequestException(
-          'SignIn Failed!, Incorrect login credentials',
-        );
-      }
+    }
     // }
     let profileImage: any;
 
     let updateUser = null;
-    // if (portal === 'outfit-buyer' && !user.role.includes('outfit-buyer')) {
-    //   const outfitBuyer = await this.OutfitBuyerModel.findOne({
-    //     userAccount: user._id,
-    //   });
-    //   if (!outfitBuyer) {
-    //     let data = { userAccount: user._id };
-    //     await this.OutfitBuyerModel.create(data);
-    //   }
-
-    //   updateUser = await this.UserAccountModel.updateOne(
-    //     { _id: user._id },
-    //     { $push: { role: 'outfit-buyer' } },
-    //     { new: true, useFindAndModify: false },
-    //   );
-    // }
 
     const payload = {
       email: user.email,
       sub: user.id,
-      // phoneNumber: user.phoneNumber,
     };
 
-    // console.log(payload);
+    await this.setUserLoggedIn(user.id, true);
+    const tokens = await this.getTokens(user.id, user.email);
+
     delete user.password;
     // user = portal && updateUser ? updateUser : user;
 
     return {
-      accessToken: this.jwt.sign(payload),
+      // accessToken: this.jwt.sign(payload),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       success: 'success',
       message: 'Logged in successfully',
       user: {
         ...user,
-        // tailorLink: `${config.sendGrid.TAILOR_LINK}/tailor/${storeAlias}`,
-        // location,
-        // passwordChanged,
-        // profileImage,
       },
     };
+  }
+
+  async setUserLoggedIn(id: number, loggedIn: boolean) {
+    const user = await this.userRepository.findOneById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updatedUser = await this.userRepository.update(
+      { id: id },
+      { logged_in: loggedIn },
+    );
+
+    const userupdate = await this.userRepository.findOneById(id);
+
+    return userupdate;
   }
 
   // sign up as peer
@@ -366,7 +368,6 @@ export class AuthService {
     host: any,
     project_id: number,
   ): Promise<PeerSignupResponseDto> {
-
     peerSignupDto.email = peerSignupDto.email.toLowerCase();
 
     await this.checkUserAccountEmailExists(peerSignupDto.email);
@@ -376,7 +377,7 @@ export class AuthService {
     const user = await this.usersService.getUserAccountByEmail(host);
 
     const project = await this.projectsService.getProjectById(project_id);
-    
+
     if (peerSignupDto.password) {
       const saltOrRounds = 10;
       peerSignupDto.password = await bcrypt.hash(
@@ -385,16 +386,9 @@ export class AuthService {
       );
     }
 
-    const peer: any = await this.createUser(
-      peerSignupDto,
-    );
+    const peer: any = await this.createUser(peerSignupDto);
 
-
-    await this.createPeerAccount(
-      peer,
-      project,
-      user,
-    );
+    await this.createPeerAccount(peer, project, user);
 
     const payload = {
       email: peer.email,
@@ -415,11 +409,10 @@ export class AuthService {
     project: any,
     added_by: any,
   ): Promise<ProjectPeer> {
-
     const newUser = this.projectPeerRepository.create({
       ...peerSignupDto,
       project,
-      addedBy: added_by
+      addedBy: added_by,
     });
     return this.projectPeerRepository.save(newUser);
 
@@ -446,20 +439,15 @@ export class AuthService {
     return result;
   }
 
-  async signUp(
-    userdetails: CreateUserDto,
-  ): Promise<SignUpResponseDto> {
-
-    if(!userdetails.email || !userdetails.password){
-        throw new BadRequestException(
-          `password and email fields are required`,
-        );
+  async signUp(userdetails: CreateUserDto): Promise<SignUpResponseDto> {
+    if (!userdetails.email || !userdetails.password) {
+      throw new BadRequestException(`password and email fields are required`);
     }
 
     // console.log('herer')
 
+
     await this.checkUserAccountEmailExists(userdetails.email);
-    console.log('4444')
 
     if (userdetails.password) {
       const saltOrRounds = 10;
@@ -468,45 +456,52 @@ export class AuthService {
         saltOrRounds,
       );
     }
-    // await this.checkUserAccountPhoneNumberExists(tailorSignupDto.phoneNumber);
-    // await this.verifyOtp(tailorSignupDto.otp, tailorSignupDto.phoneNumber);
+    // await this.checkUserAccountPhoneNumberExists(userdetails.phoneNumber);
+    // await this.verifyOtp(userdetails.otp, userdetails.phoneNumber);
     const user: any = await this.createUser(userdetails);
-    console.log('herer')
 
     const userprofilepayload = {
       user: user,
       email: user.email,
-      profile_created: 1
+      profile_created: 1,
       // phoneNumber: user.phoneNumber,
     };
 
-    const userProfileDetails = await this.createUserProfile(user.id, userprofilepayload)
+    const userProfileDetails = await this.createUserProfile(
+      user.id,
+      userprofilepayload,
+    );
 
     const payload = {
       email: user.email,
       sub: user.id,
-      // phoneNumber: tailor.userAccount.phoneNumber,
     };
-    user.profile = userProfileDetails
-    const profile = userProfileDetails
 
-    console.log(profile, 'profile details')
+    user.profile = userProfileDetails;
+    const profile = userProfileDetails;
+
+    console.log(profile, 'profile details');
+    const tokens = await this.getTokens(user.id, user.email);
+
+    console.log(tokens, 'rotke');
     // if (config.env === 'production') {
     //   const data = {
     //     env: 'Production',
-    //     name: `${tailorSignupDto.firstName} ${tailorSignupDto.lastName}`,
-    //     email: tailorSignupDto.email,
-    //     phone: tailorSignupDto.phoneNumber,
+    //     name: `${user.firstName} ${user.lastName}`,
+    //     email: user.email,
+    //     phone: user.phoneNumber,
     //   };
-    //   await this.messagingService.tailorSignUpNotification(data);
+    //   await this.messagingService.userSignUpNotification(data);
     // }
     delete user.password;
 
     return {
-      success: "success",
-      accessToken: this.jwt.sign(payload),
+      success: 'success',
+      // accessToken: this.jwt.sign(payload),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user,
-      profile:profile,
+      profile: profile,
       message: 'Account was successfully created',
     };
   }
@@ -557,10 +552,10 @@ export class AuthService {
     return parseInt(otp, 10);
   }
 
-  async validate(id: string): Promise<any> {
-    const user = (await this.usersService.getUserAccountById(id))
-      // ? await this.usersService.getUserAccountById(id)
-      // : await this.AdminAccountModel.findById(id);
+  async validate(id: number): Promise<any> {
+    const user = await this.usersService.getUserAccountById(id);
+    // ? await this.usersService.getUserAccountById(id)
+    // : await this.AdminAccountModel.findById(id);
     if (!user) {
       throw new UnauthorizedException(`User with id ${id} does not exist!`);
     }
@@ -654,7 +649,6 @@ export class AuthService {
   //     const dto = await this.loginUser(user, '', false);
   //     return { ...dto, action: 'login' };
   //   }
-
 
   //   await this.checkUserAccountEmailExists(user.email);
   //   const payload = {
@@ -764,4 +758,84 @@ export class AuthService {
   //     outfitBuyer,
   //   };
   // }
+
+  async getTokens(userId: number, email: string) {
+    try {
+      const payload = { sub: userId, email };
+
+      const accessToken = await this.jwt.signAsync(payload, {
+        secret: process.env.JWT_ACCESS_TOKEN_SECRET,
+        expiresIn: process.env.JWT_ACCESS_EXPIRES_IN,
+      });
+
+      const refreshToken = await this.jwt.signAsync(payload, {
+        secret: process.env.JWT_REFRESH_TOKEN_SECRET,
+        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
+      });
+
+      return {
+        accessToken,
+        refreshToken,
+      };
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async hashRefreshToken(refreshToken: string) {
+    const saltOrRounds = 10;
+    return await bcrypt.hash(refreshToken, saltOrRounds);
+  }
+
+  // auth.controller.ts
+  async refreshToken(refreshToken: string) {
+    try {
+      const payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: process.env.JWT_REFRESH_TOKEN_SECRET,
+      });
+
+      const tokens = await this.getTokens(payload.sub, payload.email);
+      return {
+        success: 'success',
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  // log out
+  async logOut(refreshToken: string) {
+    try {
+      const payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: process.env.JWT_REFRESH_TOKEN_SECRET,
+      });
+
+      const user = await this.getUserAccountById(payload.sub);
+      if (!user)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      await this.setUserLoggedIn(user.id, false);
+
+      console.log(user, 'logged out user')
+      return {
+        success: 'success',
+        message: 'Logged out successfully',
+      };
+    } catch (error) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  async getUserAccountById(id: number): Promise<User | undefined> {
+    const user = await this.userRepository.findOneBy({ id });
+
+    console.log(user);
+    if (!user) {
+      throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
+    }
+
+    return user;
+  }
 }
