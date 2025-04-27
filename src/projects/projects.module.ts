@@ -12,13 +12,16 @@ import { UsersModule } from 'src/users/users.module';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
 import { MailingService } from 'src/utils/mailing/mailing.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Category } from 'src/typeorm/entities/Category';
+import { CategoriesModule } from 'src/categories/categories.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer]),
+    TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer, Category]),
     UsersModule,
     MailingModule,
     ConfigModule,
+    CategoriesModule
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService, MailingService, ConfigService],

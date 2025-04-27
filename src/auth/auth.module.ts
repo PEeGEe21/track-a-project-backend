@@ -27,6 +27,8 @@ import { Tag } from 'src/typeorm/entities/Tag';
 import { Post } from 'src/typeorm/entities/Post';
 import { UserpeersService } from 'src/user-peers/services/userpeers.service';
 import { UserPeersModule } from 'src/user-peers/userpeers.module';
+import { CategoriesModule } from 'src/categories/categories.module';
+import { Category } from 'src/typeorm/entities/Category';
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { UserPeersModule } from 'src/user-peers/userpeers.module';
     ProjectsModule,
     MailingModule,
     UserPeersModule,
+    CategoriesModule,
     // JwtModule.register({
     //   secret: config.secret,
     //   signOptions: {
@@ -61,6 +64,7 @@ import { UserPeersModule } from 'src/user-peers/userpeers.module';
       ProjectPeer,
       Status,
       UserPeer,
+      Category
     ]),
   ],
   controllers: [AuthController],

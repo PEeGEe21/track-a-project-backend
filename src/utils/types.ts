@@ -30,7 +30,6 @@ export type CreateUserProfileParams = {
 export type CreateProjectParams = {
   title: string;
   description: string;
-  user?: User;
   tasks?: Task[];
 };
 

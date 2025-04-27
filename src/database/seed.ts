@@ -5,6 +5,7 @@ import { seedTags } from './seeds/tag.seed';
 import { AppDataSource } from '../data-source';
 import { seedProjects } from './seeds/project.seed';
 import { seedUserPeers } from './seeds/userpeers.seed';
+import { seedProjectPeers } from './seeds/projectpeers.seed';
 
 
 const runSeed = async () => {
@@ -17,6 +18,7 @@ const runSeed = async () => {
     // await seedTags(AppDataSource);
     // await seedProjects(AppDataSource);
     // await seedUserPeers(AppDataSource);
+    // await seedProjectPeers(AppDataSource);
     
     console.log('Database seeding completed successfully');
     process.exit(0);

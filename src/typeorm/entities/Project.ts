@@ -35,8 +35,8 @@ export class Project {
   @JoinTable()
   categories?: Category[];
 
-  @Column({ nullable: true })
-  category: string;
+  // @Column({ nullable: true })
+  // category: string;
 
   @Column({ nullable: true })
   color: string;
@@ -44,12 +44,18 @@ export class Project {
   @Column({ nullable: true })
   icon: string;
 
+  @Column({ default: 'active' })
+  status: string;
+
   @Column({ nullable: true}) // Added created_at column
   due_date: Date = new Date();
 
   //   @ManyToOne(() => User, (user) => user.posts)
   //   post_user: User;
-  @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.project)
+  // @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.project)
+  // projectPeers: ProjectPeer[];
+
+  @OneToMany(() => ProjectPeer, (projectPeer) => projectPeer.project)
   projectPeers: ProjectPeer[];
 
   @ManyToOne(() => User, (user) => user.projects)

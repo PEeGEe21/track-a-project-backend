@@ -47,7 +47,8 @@ export class ProjectPeersService {
     const task = this.taskRepository.findOneBy({ id });
     if (!task)
       throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
-    return this.projectRepository.update({ id }, { ...updateTaskDetails });
+    // return this.projectRepository.update({ id }, { ...updateTaskDetails });
+    return;
   }
 
   deleteTask(id: number) {

@@ -1,11 +1,11 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
 import { randomBytes } from 'crypto';
-
+import * as moment from 'moment';
 import {
   CreateProjectParams,
   CreateUserParams,
@@ -19,6 +19,7 @@ import { Task } from 'src/typeorm/entities/Task';
 import { UsersService } from 'src/users/services/users.service';
 import { MailingService } from 'src/utils/mailing/mailing.service';
 import { json } from 'body-parser';
+import { Category } from 'src/typeorm/entities/Category';
 
 @Injectable()
 export class ProjectsService {
@@ -32,6 +33,8 @@ export class ProjectsService {
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(ProjectPeer)
     private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -109,9 +112,10 @@ export class ProjectsService {
     page: number = 1,
     limit: number = 10,
     search?: string,
+    status?: string,
+    due_date?: string,
+    group: string = 'all',
   ): Promise<any> {
-    console.log('heree');
-
     // 1. Await the user search result
     const userFound = await this.usersService.getUserAccountById(user.userId);
     if (!userFound) {
@@ -124,10 +128,44 @@ export class ProjectsService {
     // 3. Apply where condition and relations using the query builder
     const projects = await queryBuilder
       .where('project.user.id = :id', { id: userFound.id })
-      .leftJoinAndSelect('project.user', 'user') // Include user relationship
+      .leftJoinAndSelect('project.user', 'owner') // Include user relationship
       .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
       .leftJoinAndSelect('project.tags', 'tags') // Include tasks relationship
-      .leftJoinAndSelect('project.categories', 'categories'); // Include tasks relationship
+      .leftJoinAndSelect('project.categories', 'categories') // Include tasks relationship
+      // .leftJoin('projectPeers.user', 'peerUser'); // The peer's user
+      .leftJoinAndSelect('project.projectPeers', 'projectPeers')
+      .leftJoin('projectPeers.user', 'peerUser', 'peerUser.id = :userId', {
+        userId: userFound.id,
+      });
+
+    switch (group) {
+      case 'my':
+        projects.where('owner.id = :userId', { userId: userFound.id });
+        break;
+
+      case 'peer':
+        projects.where('peerUser.id = :userId', {
+          userId: userFound.id,
+        });
+        break;
+      case 'all':
+      default:
+        projects.where(
+          new Brackets(qb => {
+            qb.where('owner.id = :userId', { userId: userFound.id })
+              .orWhere('projectPeers.user.id = :userId', { userId: userFound.id });
+          })
+        );
+        break;
+
+            
+      // case 'all':
+      // default:
+      //   console.log(search.toLowerCase(), 'heeer')
+      //   projects.where('owner.id = :userId', { userId: userFound.id })
+      //   .orWhere('projectPeers.user.id = :userId', { userId: userFound.id });
+      //   break;
+    }
 
     if (search) {
       const lowered = `%${search.toLowerCase()}%`;
@@ -135,6 +173,23 @@ export class ProjectsService {
         `(LOWER(project.title) LIKE :search OR LOWER(project.description) LIKE :search)`,
         { search: lowered },
       );
+    }
+
+    // Handle status
+    if (status && status !== 'all') {
+      const loweredStatus = status.toLowerCase();
+      projects.andWhere(
+        `LOWER(project.status) = :status`, // assuming you have a `status` column
+        { status: loweredStatus },
+      );
+    }
+
+    // Handle due_date
+    if (due_date) {
+      // const formattedDueDate = moment(due_date).utc().format('YYYY-MM-DD'); // Make sure it's UTC date
+      projects.andWhere(`DATE(project.due_date) = DATE(:due_date)`, {
+        due_date: due_date,
+      });
     }
 
     projects.skip((page - 1) * limit); // Apply pagination based on page and limit
@@ -158,10 +213,6 @@ export class ProjectsService {
       success: 'success',
     };
   }
-
-  // updateProject(id: number, updateProjectDetails: CreateProjectParams) {
-  //   return this.projectRepository.update({ id }, { ...updateProjectDetails });
-  // }
 
   async updateProject(id: number, updateProjectDetails: CreateProjectParams) {
     try {
@@ -209,21 +260,25 @@ export class ProjectsService {
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
   }
 
-  // deleteProject(id: number) {
-  //   return this.projectRepository.delete({ id });
-  // }
-
-  async deleteProject(id: number): Promise<any> {
+  async deleteProject(user: any, id: number): Promise<any> {
     try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
       const project = await this.projectRepository.findOne({
-        where: { id: id },
+        where: { id: id, user: { id: userFound.id } },
       });
 
       if (!project) {
         return { error: 'error', message: 'Project not found' };
       }
 
-      const deletedProject = await this.projectRepository.delete(id);
+      // console.log(project);
+
+      // return;
+      await this.projectRepository.delete(id);
 
       return { success: 'success', message: 'Project deleted successfully' };
     } catch (err) {
@@ -316,29 +371,55 @@ export class ProjectsService {
     return data;
   }
 
-  async createProject(id: number, CreateProjectDetails: CreateProjectParams) {
+  async createProject(user: any, CreateProjectDetails: any) {
     try {
-      const user = await this.userRepository.findOneBy({ id });
-
-      if (!user) {
-        throw new HttpException(
-          'User not found. Cannot create Project',
-          HttpStatus.BAD_REQUEST,
-        );
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log(user, 'user2');
+      console.log(CreateProjectDetails);
+      // return;
+      // Parse the incoming category names
+      let categoryIds = this.formatParseCategoryIds(
+        CreateProjectDetails.category,
+      );
 
-      const newProject = this.projectRepository.create({
-        ...CreateProjectDetails,
-        user,
-      });
+      // const categoryArray = JSON.parse(CreateProjectDetails.category || '[]'); // It's a string, parse it into array
+
+      // Get Categories from the database
+      let categories = await this.getCategoriesByIds(categoryIds);
+
+      console.log(
+        CreateProjectDetails.deadline,
+        moment(CreateProjectDetails.deadline).format('YYYY-MM-DD'),
+        'testig heree',
+      );
+      // build payload
+      const payload = {
+        title: CreateProjectDetails.title,
+        description: CreateProjectDetails.description,
+        // due_date: moment(CreateProjectDetails.deadline).format('YYYY-MM-DD HH:mm:ss'),
+        due_date: moment.utc(CreateProjectDetails.deadline).toDate(),
+        // due_date: new Date(CreateProjectDetails.deadline), // map deadline to due_date
+        color: CreateProjectDetails.color,
+        icon: CreateProjectDetails.icon,
+        status: CreateProjectDetails.status,
+        user: userFound,
+        categories: categories ?? [], // Attach real Category entities here
+        // category: categoryArray.join(','), // Save categories also as string (if you want)
+      };
+
+      // console.log(payload, 'fde');
+      // return;
+      // create the project
+      const newProject = this.projectRepository.create(payload);
 
       const savedProject = await this.projectRepository.save(newProject);
 
       const res = {
-        success: 'successfull',
-        message: `${savedProject.title} Project created successfully`,
+        success: 'success',
+        message: `Project created successfully`,
         data: savedProject,
       };
 
@@ -353,6 +434,39 @@ export class ProjectsService {
         );
       }
     }
+  }
+
+  async getCategoriesByIds(categoryIds: string[]) {
+    let categories: Category[] = [];
+    if (categoryIds.length > 0) {
+      categories = await this.categoryRepository.find({
+        where: categoryIds.map((id) => ({ id: parseInt(id) })),
+      });
+
+      if (categories.length !== categoryIds.length) {
+        throw new HttpException(
+          'Some categories not found',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    return categories;
+  }
+
+  formatParseCategoryIds(category: string) {
+    let categoryIds: string[] = [];
+    if (category) {
+      try {
+        categoryIds = JSON.parse(category);
+      } catch (err) {
+        throw new HttpException(
+          'Invalid categories format',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    return categoryIds;
   }
 
   generateInviteCode(): string {

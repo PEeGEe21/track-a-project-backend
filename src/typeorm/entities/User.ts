@@ -59,6 +59,9 @@ export class User {
   @OneToMany(() => Status, (status) => status.user, { cascade: true })
   status: Status;
 
-  @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
+  // @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
+  // projectPeers: ProjectPeer[];
+
+  @OneToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
   projectPeers: ProjectPeer[];
 }

@@ -25,9 +25,30 @@ export class ProjectsController {
     @Query('page') page: number,
     @Query('limit') limit: number,
     @Query('search') search: string,
+    @Query('status') status: string,
+    @Query('due_date') due_date: string,
+    @Query('group') group: string,
     @Req() req: any,
   ) {
-    return this.projectService.findUserProjects(req.user, page, limit, search);
+    return this.projectService.findUserProjects(
+      req.user,
+      page,
+      limit,
+      search,
+      status,
+      due_date,
+      group
+    );
+  }
+
+  @Post('/new-project')
+  createUserProject(@Body() CreateProjectDto: any, @Req() req: any) {
+    return this.projectService.createProject(req.user, CreateProjectDto);
+  }
+
+  @Post('/delete/:id')
+  deleteProject(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.projectService.deleteProject(req.user, id);
   }
 
   @Get('/')
@@ -46,11 +67,6 @@ export class ProjectsController {
     @Body() updateProjectDto: CreateProjectDto,
   ) {
     return this.projectService.updateProject(id, updateProjectDto);
-  }
-
-  @Post(':id')
-  deleteProject(@Param('id', ParseIntPipe) id: number) {
-    return this.projectService.deleteProject(id);
   }
 
   // @Get(':userId/projects/:projectId')
@@ -83,13 +99,5 @@ export class ProjectsController {
     @Body() { emails }: { emails: string[] }, // Destructure and rename
   ) {
     return this.projectService.sendProjectInvite(userId, projectId, emails);
-  }
-
-  @Post(':id/new-project')
-  createUserProject(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() CreateProjectDto: CreateProjectDto,
-  ) {
-    return this.projectService.createProject(id, CreateProjectDto);
   }
 }

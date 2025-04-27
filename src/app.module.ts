@@ -25,6 +25,7 @@ import { UserPeersModule } from './user-peers/userpeers.module';
 import { SeederService } from './seeder/seeder.service';
 import { UserpeersService } from './user-peers/services/userpeers.service';
 import { Category } from './typeorm/entities/Category';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -56,9 +57,9 @@ import { Category } from './typeorm/entities/Category';
       ],
       synchronize: true,
       autoLoadEntities: true,
-      extra: {
-        timezone: '+00:00',
-      },
+      // extra: {
+      //   timezone: '+00:00',
+      // },
     }),
     TypeOrmModule.forFeature([
       User,
@@ -80,6 +81,7 @@ import { Category } from './typeorm/entities/Category';
     MailingModule,
     AuthModule,
     UserPeersModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],
