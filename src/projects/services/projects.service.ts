@@ -116,102 +116,104 @@ export class ProjectsService {
     due_date?: string,
     group: string = 'all',
   ): Promise<any> {
-    // 1. Await the user search result
-    const userFound = await this.usersService.getUserAccountById(user.userId);
-    if (!userFound) {
-      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-    }
+    try {
+      // 1. Await the user search result
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
 
-    // 2. Use the query builder
-    const queryBuilder = this.projectRepository.createQueryBuilder('project');
+      // 2. Use the query builder
+      const queryBuilder = this.projectRepository.createQueryBuilder('project');
 
-    // 3. Apply where condition and relations using the query builder
-    const projects = await queryBuilder
-      .where('project.user.id = :id', { id: userFound.id })
-      .leftJoinAndSelect('project.user', 'owner') // Include user relationship
-      .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
-      .leftJoinAndSelect('project.tags', 'tags') // Include tasks relationship
-      .leftJoinAndSelect('project.categories', 'categories') // Include tasks relationship
-      // .leftJoin('projectPeers.user', 'peerUser'); // The peer's user
-      .leftJoinAndSelect('project.projectPeers', 'projectPeers')
-      .leftJoin('projectPeers.user', 'peerUser', 'peerUser.id = :userId', {
-        userId: userFound.id,
-      });
-
-    switch (group) {
-      case 'my':
-        projects.where('owner.id = :userId', { userId: userFound.id });
-        break;
-
-      case 'peer':
-        projects.where('peerUser.id = :userId', {
+      // 3. Apply where condition and relations using the query builder
+      const projects = await queryBuilder
+        .where('project.user.id = :id', { id: userFound.id })
+        .leftJoinAndSelect('project.user', 'owner') // Include user relationship
+        .leftJoinAndSelect('project.tasks', 'tasks') // Include tasks relationship
+        .leftJoinAndSelect('project.tags', 'tags') // Include tags relationship
+        .leftJoinAndSelect('project.categories', 'categories') // Include categories relationship
+        // .leftJoin('projectPeers.user', 'peerUser'); // The peer's user
+        .leftJoinAndSelect('project.projectPeers', 'projectPeers')
+        .leftJoin('projectPeers.user', 'peerUser', 'peerUser.id = :userId', {
           userId: userFound.id,
         });
-        break;
-      case 'all':
-      default:
-        projects.where(
-          new Brackets(qb => {
-            qb.where('owner.id = :userId', { userId: userFound.id })
-              .orWhere('projectPeers.user.id = :userId', { userId: userFound.id });
-          })
+
+      switch (group) {
+        case 'my':
+          projects.where('owner.id = :userId', { userId: userFound.id });
+          break;
+
+        case 'peer':
+          projects.where('peerUser.id = :userId', {
+            userId: userFound.id,
+          });
+          break;
+        case 'all':
+        default:
+          projects.where(
+            new Brackets((qb) => {
+              qb.where('owner.id = :userId', { userId: userFound.id }).orWhere(
+                'projectPeers.user.id = :userId',
+                { userId: userFound.id },
+              );
+            }),
+          );
+          break;
+      }
+
+      if (search) {
+        const lowered = `%${search.toLowerCase()}%`;
+        projects.andWhere(
+          `(LOWER(project.title) LIKE :search OR LOWER(project.description) LIKE :search)`,
+          { search: lowered },
         );
-        break;
+      }
 
-            
-      // case 'all':
-      // default:
-      //   console.log(search.toLowerCase(), 'heeer')
-      //   projects.where('owner.id = :userId', { userId: userFound.id })
-      //   .orWhere('projectPeers.user.id = :userId', { userId: userFound.id });
-      //   break;
-    }
+      // Handle status
+      if (status && status !== 'all') {
+        const loweredStatus = status.toLowerCase();
+        projects.andWhere(
+          `LOWER(project.status) = :status`, // assuming you have a `status` column
+          { status: loweredStatus },
+        );
+      }
 
-    if (search) {
-      const lowered = `%${search.toLowerCase()}%`;
-      projects.andWhere(
-        `(LOWER(project.title) LIKE :search OR LOWER(project.description) LIKE :search)`,
-        { search: lowered },
+      // Handle due_date
+      if (due_date) {
+        // const formattedDueDate = moment(due_date).utc().format('YYYY-MM-DD'); // Make sure it's UTC date
+        projects.andWhere(`DATE(project.due_date) = DATE(:due_date)`, {
+          due_date: due_date,
+        });
+      }
+
+      projects.skip((page - 1) * limit); // Apply pagination based on page and limit
+      projects.take(limit); // Set the limit for results per page
+      projects.orderBy('project.created_at', 'DESC');
+
+      const [result, total] = await projects.getManyAndCount();
+
+      const lastPage = Math.ceil(total / limit);
+
+      return {
+        data: result,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + result.length,
+          total: total,
+        },
+        success: 'success',
+      };
+    } catch (error) {
+      console.error('Error fetching user projects:', error);
+      throw new HttpException(
+        'Error fetching user projects',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
-    // Handle status
-    if (status && status !== 'all') {
-      const loweredStatus = status.toLowerCase();
-      projects.andWhere(
-        `LOWER(project.status) = :status`, // assuming you have a `status` column
-        { status: loweredStatus },
-      );
-    }
-
-    // Handle due_date
-    if (due_date) {
-      // const formattedDueDate = moment(due_date).utc().format('YYYY-MM-DD'); // Make sure it's UTC date
-      projects.andWhere(`DATE(project.due_date) = DATE(:due_date)`, {
-        due_date: due_date,
-      });
-    }
-
-    projects.skip((page - 1) * limit); // Apply pagination based on page and limit
-    projects.take(limit); // Set the limit for results per page
-    projects.orderBy('project.created_at', 'DESC');
-
-    const [result, total] = await projects.getManyAndCount();
-
-    const lastPage = Math.ceil(total / limit);
-
-    return {
-      data: result,
-      meta: {
-        current_page: Number(page),
-        from: (page - 1) * limit + 1,
-        last_page: lastPage,
-        per_page: Number(limit),
-        to: (page - 1) * limit + result.length,
-        total: total,
-      },
-      success: 'success',
-    };
   }
 
   async updateProject(id: number, updateProjectDetails: CreateProjectParams) {

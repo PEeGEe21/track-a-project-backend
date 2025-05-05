@@ -6,14 +6,15 @@ import { AddPeerDto } from 'src/users/dtos/AddPeer.dto';
 import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { Mail } from 'nodemailer/lib/mailer';
-
+import * as handlebars from 'handlebars';
+import { readFile } from 'fs/promises';
+import * as path from 'path';
 // import * as mustache from 'mustache';
 
 @Injectable()
 export class MailingService {
   constructor(private readonly configService: ConfigService) {
     // sendGrid.setApiKey(config.sendGrid.apiKey);
-    
   }
 
   mailTransport() {
@@ -28,6 +29,28 @@ export class MailingService {
     });
 
     return transporter;
+  }
+
+  private async compileTemplate(templateName: string, context: any) {
+    const templatePath = path.resolve(
+      process.cwd(),
+      'src/utils/mailing/templates',
+      `${templateName}.hbs`,
+    );
+    const templateContent = await readFile(templatePath, 'utf8');
+    const template = handlebars.compile(templateContent);
+    return template(context);
+  }
+  
+  private async compileTemplate2(templateName: string, context: any) {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      `${templateName}.hbs`,
+    );
+    const templateContent = await readFile(templatePath, 'utf8');
+    const template = handlebars.compile(templateContent);
+    return template(context);
   }
 
   async sendMessage(message): Promise<string> {
@@ -56,7 +79,7 @@ export class MailingService {
       to: message.to,
       subject: message.subject,
       text: message.text,
-      html: `<p><a href='${message.eventLink}'>Click to login</a>message.html</p>`,
+      html: `${message.html}`,
     };
 
     console.log(options, 'ooptions');
@@ -78,7 +101,7 @@ export class MailingService {
     user: User,
     eventLink: string,
     peerAccount: boolean,
-    peerEmail: string
+    peerEmail: string,
   ): Promise<string> {
     const msg = {
       subject: `${user?.profile?.firstname} ${user?.profile?.lastname} has added you as a peer`,
@@ -89,7 +112,7 @@ export class MailingService {
       // templateId: peerAccount
       //   ? process.env.PEER_INVITE_EXISTING
       //   : process.env.PEER_INVITE,
-        eventLink: eventLink,
+      eventLink: eventLink,
       // dynamic_template_data: {
       //   // outfitBuyer: `${user.firstname} ${user.lastname}`,
       //   peerName: `${user?.profile?.firstname} ${user?.profile?.lastname}`,
@@ -99,7 +122,87 @@ export class MailingService {
       // },
     };
 
-    console.log(msg, 'message')
+    console.log(msg, 'message');
+
+    return this.sendPeerEmail(msg);
+  }
+
+  async sendPeerInvite(
+    inviterEmail: string,
+    user: User,
+    eventLink: string,
+    peerAccount: boolean,
+    peerEmail: string,
+  ): Promise<string> {
+    const html = await this.returnPeerInviteTemplate(
+      peerAccount,
+      user?.email,
+      eventLink,
+    );
+
+    console.log(html, 'htmlll')
+
+    const msg = {
+      subject: `${user?.first_name} ${user?.last_name} has added you as a peer`,
+      text: peerEmail,
+      template: '',
+      to: inviterEmail,
+      from: user.email,
+      eventLink: eventLink,
+      html,
+    };
+
+    return this.sendPeerEmail(msg);
+  }
+
+  async returnPeerInviteTemplate(peerAccount, inviterEmail, inviteLink) {
+    let html = '';
+    if (peerAccount) {
+      html = await this.compileTemplate('peer-invite', {
+        inviterEmail,
+        inviteLink,
+      });
+    } else {
+      html = await this.compileTemplate('new-user-peer-invite', {
+        inviterEmail,
+        inviteLink,
+      });
+    }
+
+    return html;
+  }
+
+  async sendPeerInvite2(
+    inviterEmail: string,
+    user: User,
+    eventLink: string,
+    peerAccount: boolean,
+    peerEmail: string,
+  ): Promise<string> {
+    const html = await this.compileTemplate('peer-invite', {
+      inviterEmail,
+      eventLink,
+    });
+    const msg = {
+      subject: `${user?.profile?.firstname} ${user?.profile?.lastname} has added you as a peer`,
+      text: peerEmail,
+      template: '',
+      to: inviterEmail,
+      from: user.email,
+      // templateId: peerAccount
+      //   ? process.env.PEER_INVITE_EXISTING
+      //   : process.env.PEER_INVITE,
+      eventLink: eventLink,
+      // dynamic_template_data: {
+      //   // outfitBuyer: `${user.firstname} ${user.lastname}`,
+      //   peerName: `${user?.profile?.firstname} ${user?.profile?.lastname}`,
+      //   link: eventLink,
+      //   name: `${user?.profile?.firstname} ${user?.profile?.lastname}`,
+      //   loginUrl: `${process.env.PEER_LINK}/signin`,
+      // },
+    };
+
+    console.log(msg, 'message');
 
     return this.sendPeerEmail(msg);
   }

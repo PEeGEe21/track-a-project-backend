@@ -29,6 +29,12 @@ import { UserpeersService } from 'src/user-peers/services/userpeers.service';
 import { UserPeersModule } from 'src/user-peers/userpeers.module';
 import { CategoriesModule } from 'src/categories/categories.module';
 import { Category } from 'src/typeorm/entities/Category';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { Notification } from 'src/typeorm/entities/Notification';
+import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
+import { NotificationsModule } from 'src/notifications/notifications.module';
+import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 
 @Module({
   imports: [
@@ -40,6 +46,7 @@ import { Category } from 'src/typeorm/entities/Category';
     MailingModule,
     UserPeersModule,
     CategoriesModule,
+    NotificationsModule,
     // JwtModule.register({
     //   secret: config.secret,
     //   signOptions: {
@@ -64,7 +71,10 @@ import { Category } from 'src/typeorm/entities/Category';
       ProjectPeer,
       Status,
       UserPeer,
-      Category
+      Category,
+      UserPeerInvite,
+      Notification,
+      UserNotificationPreference,
     ]),
   ],
   controllers: [AuthController],
@@ -76,6 +86,8 @@ import { Category } from 'src/typeorm/entities/Category';
     ProjectPeersService,
     ConfigService,
     UsersService,
+    NotificationsService,
+    NotificationsGateway
   ],
   exports: [JwtModule, AuthService],
 })

@@ -84,7 +84,7 @@ export class TasksService {
           title: updatedTask.title,
           description: updatedTask.description,
           priority: updatedTask.priority,
-          dueDate: updatedTask.dueDate,
+          dueDate: updatedTask.due_date,
           status: updatedTask.status,
         },
       };
@@ -138,7 +138,7 @@ export class TasksService {
           title: updatedTask.title,
           description: updatedTask.description,
           priority: updatedTask.priority,
-          dueDate: updatedTask.dueDate,
+          dueDate: updatedTask.due_date,
           status: updatedTask.status,
         },
       };

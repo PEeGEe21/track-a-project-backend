@@ -40,6 +40,41 @@ export class UserpeersController {
     return this.userpeersService.findUserPeers(req.user, page, limit, search);
   }
 
+  @Get('/my-peer-invites')
+  findUserPeersInvite(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Req() req: any,
+  ) {
+    return this.userpeersService.findUserPeersInvite(
+      req.user,
+      page,
+      limit,
+      search,
+    );
+  }
+
+  @Get('/my-peer-sent-invites')
+  findUserPeersSentInvite(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Req() req: any,
+  ) {
+    return this.userpeersService.findUserPeersSentInvite(
+      req.user,
+      page,
+      limit,
+      search,
+    );
+  }
+
+  @Get('/my-peer-invites-count')
+  findUserPeersInviteCount(@Req() req: any) {
+    return this.userpeersService.countPendingInvites(req.user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.userpeersService.findOne(+id);

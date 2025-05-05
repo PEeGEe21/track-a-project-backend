@@ -5,6 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UsersService } from 'src/users/services/users.service';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { UserPeerStatusInviteType } from 'src/utils/constants/userPeerEnums';
 
 @Injectable()
 export class UserpeersService {
@@ -14,6 +16,8 @@ export class UserpeersService {
     // @InjectRepository(Project) private postRepository: Repository<Project>,
     @InjectRepository(UserPeer)
     private userPeerRepository: Repository<UserPeer>,
+    @InjectRepository(UserPeerInvite)
+    private userPeerInvitesRepository: Repository<UserPeerInvite>,
     // @InjectRepository(ProjectPeer)
     // private projectPeerRepository: Repository<ProjectPeer>,
     private userService: UsersService,
@@ -30,7 +34,6 @@ export class UserpeersService {
     search?: string,
   ): Promise<any> {
     try {
-
       const foundUser = await this.userService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -65,7 +68,7 @@ export class UserpeersService {
           to: (page - 1) * limit + result.length,
           total: total,
         },
-        success: true
+        success: true,
       };
     } catch (error) {
       console.error('Error fetching user peers:', error);
@@ -74,6 +77,159 @@ export class UserpeersService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async findUserPeersInvite(
+    user: any,
+    page = 1,
+    limit = 10,
+    search?: string,
+  ): Promise<any> {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const queryBuilder = this.userPeerInvitesRepository
+        .createQueryBuilder('user_peer_invites')
+        .leftJoinAndSelect('user_peer_invites.inviter_user_id', 'inviter');
+
+      queryBuilder.where('user_peer_invites.email = :email', {
+        email: foundUser.email,
+      });
+      queryBuilder.orderBy('user_peer_invites.created_at', 'DESC'); // <-- new line
+
+      if (search) {
+        const lowered = `%${search.toLowerCase()}%`;
+        queryBuilder.andWhere(
+          `(LOWER(inviter.first_name) LIKE :search OR LOWER(inviter.last_name) LIKE :search OR LOWER(inviter.email) LIKE :search)`,
+          { search: lowered },
+        );
+      }
+
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      const [result, total] = await queryBuilder.getManyAndCount();
+      const lastPage = Math.ceil(total / limit);
+
+      const pendingInvites = await this.countPendingPeerInvites(foundUser);
+      return {
+        data: result,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + result.length,
+          total: total,
+        },
+        pending_invites: pendingInvites,
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching user peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching user peers',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findUserPeersSentInvite(
+    user: any,
+    page = 1,
+    limit = 10,
+    search?: string,
+  ): Promise<any> {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const queryBuilder = this.userPeerInvitesRepository
+        .createQueryBuilder('user_peer_invites')
+        .leftJoinAndSelect('user_peer_invites.inviter_user_id', 'inviter');
+
+      queryBuilder.where('user_peer_invites.inviter_user_id = :id', {
+        id: foundUser.id,
+      });
+      // <-- key line
+      // queryBuilder.where('user_peer_invites.inviter_user_id.user.id = :id', {
+      //   id: foundUser.id,
+      // }); // <-- key line
+      queryBuilder.orderBy('user_peer_invites.created_at', 'DESC'); // <-- new line
+
+      if (search) {
+        const lowered = `%${search.toLowerCase()}%`;
+        queryBuilder.andWhere(`LOWER(user_peer_invites.email) LIKE :search`, {
+          search: lowered,
+        });
+        // queryBuilder.andWhere(
+        //   `(LOWER(user_peer_invites.email) LIKE :search OR LOWER(user.first_name) LIKE :search OR LOWER(user.last_name) LIKE :search)`,
+        //   { search: lowered },
+        // );
+      }
+
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      const [result, total] = await queryBuilder.getManyAndCount();
+      const lastPage = Math.ceil(total / limit);
+
+      const pendingInvites = await this.countPendingPeerInvites(foundUser);
+      return {
+        data: result,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + result.length,
+          total: total,
+        },
+        pending_invites: pendingInvites,
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching user peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching user peers',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async countPendingInvites(user: any): Promise<any> {
+    const foundUser = await this.userService.getUserAccountById(user.userId);
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+    const receivedPending = await this.countPendingPeerInvites(foundUser);
+    const sentPending = await this.countSentPendingPeerInvites(foundUser);
+
+    return {
+      data: { receivedPending, sentPending },
+      success: true,
+    };
+  }
+
+  async countPendingPeerInvites(user) {
+    return await this.userPeerInvitesRepository.count({
+      where: {
+        email: user.email,
+        status: 'pending',
+      },
+    });
+  }
+
+  async countSentPendingPeerInvites(user) {
+    return await this.userPeerInvitesRepository.count({
+      where: {
+        inviter_user_id: user,
+        status: 'pending',
+      },
+    });
   }
 
   async findUserPeers2(id: number, page = 1, limit = 10): Promise<any> {

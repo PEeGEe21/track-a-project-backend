@@ -1,12 +1,12 @@
+import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { UserPeer } from '../../typeorm/entities/UserPeer';
 import { DataSource } from 'typeorm';
-
 
 export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 2 },
-    status: 'connected',
+    status: UserPeerStatus.BLOCKED,
     notes: 'Known from school',
     is_confirmed: true,
     connection_type: '',
@@ -16,7 +16,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 3 },
-    status: 'pending',
+    status: UserPeerStatus.PENDING,
     notes: 'Requested connection',
     is_confirmed: false,
     connection_type: '',
@@ -26,7 +26,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 4 },
-    status: 'blocked',
+    status: UserPeerStatus.CONNECTED,
     notes: 'Blocked due to spamming',
     is_confirmed: false,
     connection_type: '',
@@ -36,7 +36,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 5 },
-    status: 'connected',
+    status: UserPeerStatus.CONNECTED,
     notes: 'Group project teammate',
     is_confirmed: true,
     connection_type: '',
@@ -46,7 +46,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 6 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -56,7 +56,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 7 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -66,7 +66,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 8 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -76,7 +76,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 9 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -86,7 +86,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 10 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -96,7 +96,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 11 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',
@@ -106,7 +106,7 @@ export const userPeersData = [
   {
     user: { id: 1 },
     peer: { id: 12 },
-    status: '',
+    status: UserPeerStatus.CONNECTED,
     notes: null,
     is_confirmed: true,
     connection_type: 'mentor',

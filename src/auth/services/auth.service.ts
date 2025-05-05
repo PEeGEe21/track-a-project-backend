@@ -47,6 +47,9 @@ import { Project } from 'src/typeorm/entities/Project';
 import { ProjectsService } from 'src/projects/services/projects.service';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 import { CreateUserProfileDto } from '../dtos/create-profile-peer.dto';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -75,6 +78,10 @@ export class AuthService {
     @InjectRepository(Project) private projectRepository: Repository<Project>,
     @InjectRepository(ProjectPeer)
     private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(UserPeerInvite)
+    private userPeerInviteRepository: Repository<UserPeerInvite>,
+    @InjectRepository(UserPeer)
+    private userPeerRepository: Repository<UserPeer>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -440,78 +447,175 @@ export class AuthService {
   }
 
   async signUp(userdetails: CreateUserDto): Promise<SignUpResponseDto> {
-    if (!userdetails.email || !userdetails.password) {
-      throw new BadRequestException(`password and email fields are required`);
-    }
-
     // console.log('herer')
+    try {
+      if (!userdetails.email || !userdetails.password) {
+        throw new BadRequestException(`password and email fields are required`);
+      }
+      await this.checkUserAccountEmailExists(userdetails.email);
+      // Rest of your signup logic
 
+      if (userdetails.password) {
+        const saltOrRounds = 10;
+        userdetails.password = await bcrypt.hash(
+          userdetails.password,
+          saltOrRounds,
+        );
+      }
+      // await this.checkUserAccountPhoneNumberExists(userdetails.phoneNumber);
+      // await this.verifyOtp(userdetails.otp, userdetails.phoneNumber);
+      const user: any = await this.createUser(userdetails);
 
-    await this.checkUserAccountEmailExists(userdetails.email);
+      if (userdetails?.inviteCode) {
+        await this.createUserPeer(userdetails?.inviteCode, user);
+      }
 
-    if (userdetails.password) {
-      const saltOrRounds = 10;
-      userdetails.password = await bcrypt.hash(
-        userdetails.password,
-        saltOrRounds,
+      const userprofilepayload = {
+        user: user,
+        email: user.email,
+        profile_created: 1,
+        // phoneNumber: user.phoneNumber,
+      };
+
+      const userProfileDetails = await this.createUserProfile(
+        user.id,
+        userprofilepayload,
       );
+
+      const payload = {
+        email: user.email,
+        sub: user.id,
+      };
+
+      user.profile = userProfileDetails;
+      const profile = userProfileDetails;
+
+      console.log(profile, 'profile details');
+      await this.setUserLoggedIn(user.id, true);
+      const tokens = await this.getTokens(user.id, user.email);
+
+      console.log(tokens, 'rotke');
+      // if (config.env === 'production') {
+      //   const data = {
+      //     env: 'Production',
+      //     name: `${user.firstName} ${user.lastName}`,
+      //     email: user.email,
+      //     phone: user.phoneNumber,
+      //   };
+      //   await this.messagingService.userSignUpNotification(data);
+      // }
+      delete user.password;
+
+      return {
+        success: 'success',
+        // accessToken: this.jwt.sign(payload),
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        user,
+        profile: profile,
+        message: 'Account was successfully created',
+      };
+    } catch (error) {
+      console.error('Error in signup process:', error);
+      throw error; // Re-throw to ensure it propagates
     }
-    // await this.checkUserAccountPhoneNumberExists(userdetails.phoneNumber);
-    // await this.verifyOtp(userdetails.otp, userdetails.phoneNumber);
-    const user: any = await this.createUser(userdetails);
-
-    const userprofilepayload = {
-      user: user,
-      email: user.email,
-      profile_created: 1,
-      // phoneNumber: user.phoneNumber,
-    };
-
-    const userProfileDetails = await this.createUserProfile(
-      user.id,
-      userprofilepayload,
-    );
-
-    const payload = {
-      email: user.email,
-      sub: user.id,
-    };
-
-    user.profile = userProfileDetails;
-    const profile = userProfileDetails;
-
-    console.log(profile, 'profile details');
-    const tokens = await this.getTokens(user.id, user.email);
-
-    console.log(tokens, 'rotke');
-    // if (config.env === 'production') {
-    //   const data = {
-    //     env: 'Production',
-    //     name: `${user.firstName} ${user.lastName}`,
-    //     email: user.email,
-    //     phone: user.phoneNumber,
-    //   };
-    //   await this.messagingService.userSignUpNotification(data);
-    // }
-    delete user.password;
-
-    return {
-      success: 'success',
-      // accessToken: this.jwt.sign(payload),
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      user,
-      profile: profile,
-      message: 'Account was successfully created',
-    };
   }
 
   createUser(userDetails: CreateUserDto) {
     const newUser = this.userRepository.create({
       ...userDetails,
-      createdAt: new Date(),
+      created_at: new Date(),
     });
     return this.userRepository.save(newUser);
+  }
+
+  async createUserPeer(inviteCode: string, newUser: User) {
+    const invite = await this.userPeerInviteRepository.findOne({
+      where: { invite_code: inviteCode },
+      relations: ['inviter_user_id'],
+    });
+
+    if (!invite) {
+      throw new Error('Invalid invite code.');
+    }
+
+    const invitedBy = await this.usersService.getUserAccountById(
+      invite.inviter_user_id.id,
+    );
+
+    if (invite.status !== 'accepted') {
+      throw new Error(
+        `Invite status is '${invite.status}', cannot create connection.`,
+      );
+    }
+
+    const peerToUser = this.userPeerRepository.create({
+      status: UserPeerStatus.CONNECTED,
+      connection_type: invite.invited_as,
+      is_confirmed: true,
+      user: { id: invitedBy.id },
+      peer: { id: newUser.id },
+    });
+
+    const userToPeer = this.userPeerRepository.create({
+      status: UserPeerStatus.CONNECTED,
+      connection_type: invite.invited_as,
+      is_confirmed: true,
+      user: { id: newUser.id },
+      peer: { id: invitedBy.id },
+    });
+
+    // Save both at once (safest)
+    await this.userPeerRepository.save([peerToUser, userToPeer]);
+
+    return { peerToUser, userToPeer };
+  }
+
+  async createUserPeer2(inviteCode: string, newUser) {
+    const invite = await this.userPeerInviteRepository.findOne({
+      where: { invite_code: inviteCode },
+      relations: ['inviter_user_id'],
+    });
+
+    if (!invite) {
+      throw new Error('Invalid invite code.');
+    }
+
+    const invitedBy = await this.usersService.getUserAccountById(
+      invite.inviter_user_id.id,
+    );
+
+    if (invite.status === 'accepted') {
+      // const payload = {
+      //   status: 'connected',
+      //   connection_type: invite.invited_as,
+      //   is_confirmed: true,
+      //   user: { id: Number(invitedBy.id) }, // <-- only id
+      //   peer: { id: Number(newUser.id) },   // <-- only id
+      // };
+
+      // const newUserPeer = this.userPeerRepository.create(payload);
+      // return this.userPeerRepository.save(newUserPeer);
+      const peerToUser = this.userPeerRepository.save({
+        status: UserPeerStatus.CONNECTED,
+        connection_type: invite.invited_as,
+        is_confirmed: true,
+        user: { id: invitedBy.id },
+        peer: { id: newUser.id },
+      });
+
+      const userToPeer = this.userPeerRepository.save({
+        status: UserPeerStatus.CONNECTED,
+        connection_type: invite.invited_as,
+        is_confirmed: true,
+        user: { id: newUser.id },
+        peer: { id: invitedBy.id },
+      });
+    } else {
+      throw new Error(
+        `Invite status is '${invite.status}', cannot create connection.`,
+      );
+    }
   }
 
   createUserProfile(user_id: number, userProfileDetails: CreateUserProfileDto) {
@@ -818,7 +922,7 @@ export class AuthService {
 
       await this.setUserLoggedIn(user.id, false);
 
-      console.log(user, 'logged out user')
+      console.log(user, 'logged out user');
       return {
         success: 'success',
         message: 'Logged out successfully',

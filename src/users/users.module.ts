@@ -15,10 +15,21 @@ import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { Status } from 'src/typeorm/entities/Status';
 import { Tag } from 'src/typeorm/entities/Tag';
 import { Task } from 'src/typeorm/entities/Task';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { MailingService } from 'src/utils/mailing/mailing.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MailingModule } from 'src/utils/mailing/mailing.module';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { Notification } from 'src/typeorm/entities/Notification';
+import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
+import { NotificationsModule } from 'src/notifications/notifications.module';
+import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 
 @Module({
   imports: [
     JwtModule,
+    MailingModule,
+    ConfigModule,
     // forwardRef(() => UserPeersModule),
     TypeOrmModule.forFeature([
       User,
@@ -30,10 +41,19 @@ import { Task } from 'src/typeorm/entities/Task';
       ProjectPeer,
       Status,
       UserPeer,
+      UserPeerInvite,
+      Notification,
+      UserNotificationPreference,
     ]),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [
+    UsersService,
+    MailingService,
+    NotificationsService,
+    ConfigService,
+    NotificationsGateway
+  ],
   exports: [UsersService],
 })
 export class UsersModule {}

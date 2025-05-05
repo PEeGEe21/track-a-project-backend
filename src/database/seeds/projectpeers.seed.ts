@@ -18,6 +18,26 @@ const projectPeersData = [
     project: { id: 10 },
     addedBy: { id: 3 },
   },
+  {
+    user: { id: 2 },
+    project: { id: 29 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 5 },
+    project: { id: 29 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 7 },
+    project: { id: 29 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 6 },
+    project: { id: 29 },
+    addedBy: { id: 1 },
+  },
   // Add more records as needed
 ];
 

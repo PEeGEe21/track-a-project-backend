@@ -20,37 +20,67 @@ import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Request } from 'express';
 
-@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private userService: UsersService) {}
+
+  @UseGuards(JwtAuthGuard)
   @Get('/')
   getUsers() {
     return this.userService.findUsers();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('/profile')
   getUserProfile(@Req() req: any) {
-    // Passport adds the user payload to req.user
-    console.log(req.user, 'user from token');
     return this.userService.getUserProfile(req.user);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('/dashboard')
+  getUserDshboardData(@Req() req: any) {
+    return this.userService.getUserDshboardData(req.user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('/send-peer-invite')
+  sendPeerInvite(@Body() inviteData: any, @Req() req: any) {
+    return this.userService.sendPeerInvite(req.user, inviteData);
+  }
+
+  @Post('/check-invite-code-status/:inviteCode')
+  checkPeerInviteCodeStatus(
+    @Param('inviteCode') inviteCode: string,
+  ) {
+    return this.userService.getPeerInviteCodeStatus(inviteCode);
+  }
+
+  @Post('/submit-peer-invite-code')
+  submitPeerInviteCodeStatus(
+    @Body() inviteData: any,
+  ) {
+    return this.userService.submitPeerInviteCodeStatus(inviteData);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   getUser(@Param('id', ParseIntPipe) id: number) {
     return this.userService.getUserAccountById(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id/peers')
   getUserPeers(@Param('id', ParseIntPipe) id: number) {
     return this.userService.getUserPeersById(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('/create-user')
   createUser(@Body() createUserDto: CreateUserDto) {
     return this.userService.createUser(createUserDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put(':id')
   async updateUserById(
     @Param('id', ParseIntPipe) id: number,
@@ -59,11 +89,13 @@ export class UsersController {
     await this.userService.updateUser(id, updateUserDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async deleteUserById(@Param('id', ParseIntPipe) id: number) {
     await this.userService.deleteUser(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':id/save-profile')
   updateUserProfile(
     @Param('id', ParseIntPipe) id: number,
@@ -72,6 +104,7 @@ export class UsersController {
     return this.userService.updateUserProfile(id, updateUserProfileDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post(':id/update-password')
   updateUserPassword(
     @Param('id', ParseIntPipe) id: number,
@@ -87,13 +120,12 @@ export class UsersController {
   //   return this.userService.updateUserProfile(id, upadteUserProfileDto);
   // }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id/settings')
   getUserSettings(@Param('id', ParseIntPipe) id: number) {
     return this.userService.getUserSettings(id);
   }
 
-
-  
   //   @Post(':id/posts')
   //   createUserPost(
   //     @Param('id', ParseIntPipe) id: number,

@@ -1,6 +1,4 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { UserpeersService } from './services/userpeers.service';
-import { UserpeersController } from './controllers/userpeers.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/typeorm/entities/User';
@@ -15,12 +13,21 @@ import { Task } from 'src/typeorm/entities/Task';
 import { Post } from 'src/typeorm/entities/Post';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { NotificationsService } from './services/notifications.service';
+import { NotificationsController } from './controllers/notifications.controller';
+import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
+import { Notification } from 'src/typeorm/entities/Notification';
+import { NotificationsGateway } from './notifications.gateway';
+import { UsersService } from 'src/users/services/users.service';
+import { MailingModule } from 'src/utils/mailing/mailing.module';
 
 @Module({
   imports: [
     JwtModule,
-    UsersModule,
+    // UsersModule,
+    MailingModule,
     forwardRef(() => AuthModule),
+    forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -31,11 +38,13 @@ import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
       ProjectPeer,
       Status,
       UserPeer,
-      UserPeerInvite
+      UserPeerInvite,
+      Notification,
+      UserNotificationPreference,
     ]),
   ],
-  controllers: [UserpeersController],
-  providers: [UserpeersService],
-  exports: [UserpeersService],
+  controllers: [NotificationsController],
+  providers: [NotificationsGateway, NotificationsService, UsersService],
+  exports: [NotificationsService],
 })
-export class UserPeersModule {}
+export class NotificationsModule {}

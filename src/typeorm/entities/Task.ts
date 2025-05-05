@@ -6,6 +6,8 @@ import {
   ManyToMany,
   JoinTable,
   JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
@@ -38,10 +40,7 @@ export class Task {
   categories?: Category[];
 
   @Column()
-  dueDate: Date = new Date();
-
-  @Column()
-  createdAt: Date = new Date();
+  due_date: Date = new Date();
 
   @ManyToOne(() => Project, (project) => project.tasks)
   @JoinColumn({ name: 'project_id' })
@@ -50,4 +49,14 @@ export class Task {
   @ManyToOne(() => Status, (status) => status.tasks)
   @JoinColumn({ name: 'status_id' })
   status: Status;
+
+  @ManyToOne(() => User, (user) => user.projects)
+  @JoinColumn({ name: 'user_id' })
+  user: User;
+  
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
 }

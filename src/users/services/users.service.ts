@@ -20,6 +20,13 @@ import {
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
 import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
 import { JwtService } from '@nestjs/jwt';
+import { Project } from 'src/typeorm/entities/Project';
+import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { randomBytes } from 'crypto';
+import { MailingService } from 'src/utils/mailing/mailing.service';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { addDays, addHours } from 'date-fns';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
 
 @Injectable()
 export class UsersService {
@@ -27,9 +34,16 @@ export class UsersService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     @InjectRepository(Post) private postRepository: Repository<Post>,
+    @InjectRepository(Project) private projectRespository: Repository<Project>,
+    @InjectRepository(UserPeer)
+    private userPeerRepository: Repository<UserPeer>,
     @InjectRepository(ProjectPeer)
     private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(UserPeerInvite)
+    private userPeerInviteRepository: Repository<UserPeerInvite>,
     private jwtService: JwtService,
+    private MailingService: MailingService,
+    private notificationService: NotificationsService,
   ) {}
 
   async getUserAccountById(id: number): Promise<User | undefined> {
@@ -242,7 +256,7 @@ export class UsersService {
   createUser(userDetails: CreateUserParams) {
     const newUser = this.userRepository.create({
       ...userDetails,
-      createdAt: new Date(),
+      created_at: new Date(),
     });
     return this.userRepository.save(newUser);
   }
@@ -309,6 +323,244 @@ export class UsersService {
     return data;
   }
 
+  // send peer invite
+  async sendPeerInvite(user: any, inviteData): Promise<any> {
+    try {
+      const { emails, selectedRole: invite_as } = inviteData;
+      const foundUser = await this.getUserAccountById(user.userId);
+
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const peerEmailsArray = await this.validatePeerInviteEmails(emails);
+
+      // Basic email regex (reasonable coverage)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      // Validate all emails first
+      const invalidEmails = peerEmailsArray.filter(
+        (email: string) => !emailRegex.test(email),
+      );
+
+      if (invalidEmails.length > 0) {
+        throw new HttpException(
+          `Invalid email address(es) provided: ${invalidEmails.join(', ')}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // console.log(peerEmailsArray, invite_as)
+      // return
+      try {
+        for (const email of peerEmailsArray) {
+          let foundPeer = null;
+
+          foundPeer = await this.checkUserAccountEmailExists(email);
+
+          const existingPeer = foundPeer
+            ? await this.userPeerRepository.findOne({
+                where: { user: foundUser, peer: foundPeer },
+              })
+            : null;
+
+          console.log(foundPeer, existingPeer || foundUser?.email == email);
+          // return;
+          // skip if existting peer and current user email is incuded
+          if (existingPeer || foundUser?.email == email) continue;
+
+          const inviteCode = this.generateInviteCode();
+
+          // console.log(inviteCode, 'invite code')
+          // return
+          await this.userPeerInviteRepository.save({
+            inviter_user_id: foundUser,
+            email,
+            invite_code: inviteCode,
+            invited_as: invite_as.toLowerCase(),
+            status: 'pending',
+            due_date: addDays(new Date(), 7), // optional 7-day expiry
+          });
+
+          await this.sendInviteMail(
+            email,
+            foundPeer,
+            foundUser,
+            invite_as,
+            inviteCode,
+          );
+        }
+      } catch (err) {}
+      console.log(peerEmailsArray, 'peerEmailsArray');
+
+      return {
+        success: true,
+        message: 'Peer Invite Sent Successfully',
+      };
+    } catch (err) {
+      console.error('Error in sending peer invite:', err);
+      throw new UnauthorizedException('Could Not Send Peer Invite');
+    }
+  }
+
+  async validatePeerInviteEmails(emails: string): Promise<string[]> {
+    const peerEmails = emails.split(',').map((email) => email.trim());
+    const peerEmailsSet = new Set(peerEmails);
+    const peerEmailsArray = Array.from(peerEmailsSet);
+    return peerEmailsArray;
+  }
+
+  generateInviteCode(): string {
+    return randomBytes(20).toString('hex').slice(0, 15);
+  }
+
+  async sendInviteMail(
+    email: string,
+    foundPeer,
+    user,
+    invite_as,
+    inviteCode,
+  ): Promise<any> {
+    let peerEmail;
+    let eventLink;
+    let peerAccount = false;
+    // const inviteCode = this.generateInviteCode(); // Assuming you have this function
+
+    // user already exists just not a peer
+    if (foundPeer) {
+
+      const payload = {
+        recipient: foundPeer,
+        sender: user,
+        title: 'You received an invite',
+        message: `${user?.email} sent you Invite to be his peer`,
+        type: 'peer_request',
+      };
+
+      // build payload
+      await this.notificationService.createNotification(foundPeer, payload);
+      //   peerEmail = `You just received an invite to become a peer(${invite_as}) by ${user.email}.
+      //   Accept invite and onboard to the project tracking platform to view the project.
+      //  `;
+      eventLink = ` ${process.env.FRONTEND_URL}/auth/login?${inviteCode}`;
+    } else {
+      // peerEmail = `You just received an invite to become a peer(${invite_as}) by ${user.email}.
+      // Accept invite and onboard to the project tracking platform to view the project.
+      // `;
+      eventLink = `${process.env.FRONTEND_URL}/auth/peer-invite?refCode=${inviteCode}&refEmail=${email}`;
+      // eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${user.id}`;
+    }
+
+    console.log(email, user, eventLink, peerAccount, peerEmail);
+
+    // return;
+    await this.MailingService.sendPeerInvite(
+      email,
+      user,
+      eventLink,
+      foundPeer,
+      peerEmail,
+    );
+  }
+
+  async getPeerInviteCodeStatus(
+    inviteCode: string,
+    markExpire = true,
+  ): Promise<{
+    success: boolean;
+    status: string;
+    isActive: boolean;
+    message: string;
+  }> {
+    const invite = await this.userPeerInviteRepository.findOne({
+      where: { invite_code: inviteCode },
+    });
+
+    console.log(invite, 'invite');
+    // return
+    if (!invite) {
+      return {
+        success: false,
+        status: 'invalid',
+        isActive: false,
+        message: 'Invite code not found.',
+      };
+    }
+
+    console.log(invite, 'invite');
+
+    if (markExpire) {
+      // Adjust now by +1 hour to account for timezone difference
+      const now = addHours(new Date(), 1);
+      const isExpired = invite.due_date ? invite.due_date <= now : true;
+
+      // Auto-mark as expired if due date passed and status is still pending
+      if (isExpired && invite.status === 'pending') {
+        invite.status = 'expired';
+        await this.userPeerInviteRepository.save(invite);
+      }
+    }
+
+    if (invite.status === 'expired') {
+      return {
+        success: false,
+        status: 'expired',
+        isActive: false,
+        message: 'Invite code has expired.',
+      };
+    }
+
+    if (invite.status !== 'pending') {
+      return {
+        success: false,
+        status: invite.status,
+        isActive: false,
+        message: 'Invite code is no longer valid.',
+      };
+    }
+
+    // If still pending and valid
+    return {
+      success: true,
+      status: 'pending',
+      isActive: true,
+      message: 'Invite code is valid and pending.',
+    };
+  }
+
+  async submitPeerInviteCodeStatus(inviteData) {
+    const { inviteCode, type, user_type } = inviteData;
+    let message = '';
+    const invite = await this.userPeerInviteRepository.findOne({
+      where: { invite_code: inviteCode },
+    });
+
+    const response = await this.getPeerInviteCodeStatus(inviteCode, false);
+    if (response.success) {
+      if (type == 'accept') {
+        invite.status = 'accepted';
+        await this.userPeerInviteRepository.save(invite);
+        message = 'Invite has been Accepted';
+      } else {
+        invite.status = 'declined';
+        await this.userPeerInviteRepository.save(invite);
+        message = 'Invite has been Rejected';
+      }
+      return {
+        success: true,
+        invite_status: invite.status,
+        email: invite.email,
+        message: message,
+      };
+    }
+
+    return {
+      success: false,
+      message: response?.message,
+    };
+  }
+
+  // get user profile
   async getUserProfile(user: any): Promise<any> {
     try {
       const foundUser = await this.getUserAccountById(user.userId);
@@ -326,6 +578,202 @@ export class UsersService {
     } catch (err) {
       console.error('Error in getUserProfile:', err);
       throw new UnauthorizedException('Could not fetch user profile');
+    }
+  }
+
+  statusOptions = ['upcoming', 'active', 'paused', 'completed', 'overdue'];
+  // user dashboard data
+  async getUserDshboardData(user: any): Promise<any> {
+    try {
+      const foundUser = await this.getUserAccountById(user.userId);
+
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const projects = await this.projectRespository.find({
+        where: { user: { id: foundUser.id } },
+        relations: [
+          'user',
+          'categories',
+          'tags',
+          'projectPeers',
+          'projectPeers.user',
+        ],
+        take: 8,
+        order: {
+          created_at: 'DESC',
+        },
+      });
+
+      // Remove sensitive user data
+      const cleanedProjects = projects.map((project) => {
+        // Clean project.user
+        let safeUser = null;
+        if (project.user) {
+          const { password, logged_in, created_at, updated_at, ...restUser } =
+            project.user;
+          safeUser = restUser;
+        }
+
+        // Clean projectPeers[].user
+        const safeProjectPeers =
+          project.projectPeers?.map((peer) => {
+            if (peer.user) {
+              const {
+                password,
+                logged_in,
+                created_at,
+                updated_at,
+                ...restPeerUser
+              } = peer.user;
+              return {
+                ...peer,
+                user: restPeerUser,
+              };
+            }
+            return peer;
+          }) || [];
+
+        // VERY IMPORTANT: this return!
+        return {
+          ...project,
+          user: safeUser,
+          projectPeers: safeProjectPeers,
+        };
+      });
+
+      const userPeers = await this.userPeerRepository.find({
+        where: { user: { id: foundUser.id } },
+        relations: ['user', 'peer'],
+        take: 8,
+      });
+
+      // Also sanitize the userPeers data
+      const sanitizedUserPeers = JSON.parse(JSON.stringify(userPeers)).map(
+        (userPeer) => {
+          if (userPeer.user) {
+            const {
+              password,
+              logged_in,
+              created_at,
+              updated_at,
+              deleted_at,
+              ...safeUserData
+            } = userPeer.user;
+            userPeer.user = safeUserData;
+          }
+
+          if (userPeer.peer) {
+            const {
+              password,
+              logged_in,
+              created_at,
+              updated_at,
+              deleted_at,
+              ...safePeerData
+            } = userPeer.peer;
+            userPeer.peer = safePeerData;
+          }
+
+          return userPeer;
+        },
+      );
+
+      // Initialize status counts
+      const statusCounts: Record<string, number> = {};
+      this.statusOptions.forEach((status) => {
+        statusCounts[status] = 0;
+      });
+
+      // Count projects per status
+      projects.forEach((project) => {
+        const projectStatus = project.status?.toLowerCase();
+        if (this.statusOptions.includes(projectStatus)) {
+          statusCounts[projectStatus]++;
+        }
+      });
+
+      // To return it in array form like [56, 79, 89, 7, 10] in statusOptions order
+      const statusArray = this.statusOptions.map(
+        (status) => statusCounts[status],
+      );
+
+      return {
+        statusCounts,
+        statusArray,
+        projects: cleanedProjects,
+        userPeers: sanitizedUserPeers,
+        success: 'success',
+        message: 'Successfully fetched user dashboard data!',
+      };
+    } catch (err) {
+      console.error('Error in getUserDshboardData:', err);
+      throw new UnauthorizedException('Could not fetch user dashboard data');
+    }
+  }
+
+  async getUserDshboardData2(user: any): Promise<any> {
+    try {
+      const foundUser = await this.getUserAccountById(user.userId);
+
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const projects = await this.projectRespository.find({
+        where: { user: foundUser },
+        relations: [
+          'user',
+          'categories',
+          'tags',
+          'projectPeers',
+          'projectPeers.user',
+        ],
+        take: 8,
+        order: {
+          created_at: 'DESC',
+        },
+      });
+
+      console.log(projects, 'projects');
+
+      const userPeers = await this.userPeerRepository.find({
+        where: { user: foundUser },
+        relations: ['user', 'peer'],
+        take: 10,
+      });
+
+      // Initialize status counts
+      const statusCounts: Record<string, number> = {};
+      this.statusOptions.forEach((status) => {
+        statusCounts[status] = 0;
+      });
+
+      // Count projects per status
+      projects.forEach((project) => {
+        const projectStatus = project.status?.toLowerCase();
+        if (this.statusOptions.includes(projectStatus)) {
+          statusCounts[projectStatus]++;
+        }
+      });
+
+      // To return it in array form like [56, 79, 89, 7, 10] in statusOptions order
+      const statusArray = this.statusOptions.map(
+        (status) => statusCounts[status],
+      );
+
+      return {
+        statusCounts, // object form
+        statusArray, // array form
+        projects,
+        userPeers,
+        success: 'success',
+        message: 'Successfully fetched user dashboard data!',
+      };
+    } catch (err) {
+      console.error('Error in getUserDshboardData:', err);
+      throw new UnauthorizedException('Could not fetch user dashboard data');
     }
   }
 }

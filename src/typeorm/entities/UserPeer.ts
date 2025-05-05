@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './User';
+import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 
 @Entity('user_peers')
 export class UserPeer {
@@ -25,8 +26,12 @@ export class UserPeer {
   @JoinColumn({ name: 'peer_id' })
   peer: User;
 
-  @Column({ type: 'varchar', length: 50, default: 'connected' })
-  status: string; // e.g., 'connected', 'pending', 'blocked'
+  @Column({
+    type: 'enum',
+    enum: UserPeerStatus,
+    default: UserPeerStatus.CONNECTED,
+  })
+  status: UserPeerStatus; // e.g., 'connected', 'pending', 'blocked'
 
   @Column({ type: 'text', nullable: true })
   notes: string;

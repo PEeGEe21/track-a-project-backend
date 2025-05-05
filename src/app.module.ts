@@ -26,7 +26,10 @@ import { SeederService } from './seeder/seeder.service';
 import { UserpeersService } from './user-peers/services/userpeers.service';
 import { Category } from './typeorm/entities/Category';
 import { CategoriesModule } from './categories/categories.module';
-
+import { UserPeerInvite } from './typeorm/entities/UserPeerInvite';
+import { NotificationsModule } from './notifications/notifications.module';
+import { UserNotificationPreference } from './typeorm/entities/UserNotificationPreference';
+import { Notification } from './typeorm/entities/Notification';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -54,6 +57,9 @@ import { CategoriesModule } from './categories/categories.module';
         Status,
         UserPeer,
         Category,
+        UserPeerInvite,
+        Notification,
+        UserNotificationPreference,
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -72,6 +78,9 @@ import { CategoriesModule } from './categories/categories.module';
       Status,
       UserPeer,
       Category,
+      UserPeerInvite,
+      Notification,
+      UserNotificationPreference,
     ]),
     UsersModule,
     ProjectsModule,
@@ -82,6 +91,7 @@ import { CategoriesModule } from './categories/categories.module';
     AuthModule,
     UserPeersModule,
     CategoriesModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],
