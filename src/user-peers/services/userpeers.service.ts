@@ -84,6 +84,7 @@ export class UserpeersService {
     page = 1,
     limit = 10,
     search?: string,
+    status?: string,
   ): Promise<any> {
     try {
       const foundUser = await this.userService.getUserAccountById(user.userId);
@@ -105,6 +106,15 @@ export class UserpeersService {
         queryBuilder.andWhere(
           `(LOWER(inviter.first_name) LIKE :search OR LOWER(inviter.last_name) LIKE :search OR LOWER(inviter.email) LIKE :search)`,
           { search: lowered },
+        );
+      }
+
+      // Handle status
+      if (status && status !== 'all') {
+        const loweredStatus = status.toLowerCase();
+        queryBuilder.andWhere(
+          `LOWER(user_peer_invites.status) = :status`, // assuming you have a `status` column
+          { status: loweredStatus },
         );
       }
 
@@ -141,6 +151,7 @@ export class UserpeersService {
     page = 1,
     limit = 10,
     search?: string,
+    status?: string,
   ): Promise<any> {
     try {
       const foundUser = await this.userService.getUserAccountById(user.userId);
@@ -172,6 +183,15 @@ export class UserpeersService {
         // );
       }
 
+      // Handle status
+      if (status && status !== 'all') {
+        const loweredStatus = status.toLowerCase();
+        queryBuilder.andWhere(
+          `LOWER(user_peer_invites.status) = :status`, // assuming you have a `status` column
+          { status: loweredStatus },
+        );
+      }
+
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [result, total] = await queryBuilder.getManyAndCount();
@@ -198,6 +218,103 @@ export class UserpeersService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async acceptInvite(user: any, id) {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      let message;
+      const invite = await this.userPeerInvitesRepository.findOne({
+        where: { id: id },
+      });
+
+      const response = await this.userService.getPeerInviteCodeStatus(
+        invite?.invite_code,
+        true,
+      );
+
+      console.log(invite, response, response.success, 'invitee');
+      // return;
+
+      if (response.success) {
+        invite.status = 'accepted';
+        await this.userPeerInvitesRepository.save(invite);
+
+        const createSuccess = await this.userService.createUserPeer(
+          invite?.invite_code,
+          foundUser,
+        );
+
+        console.log(createSuccess, invite, response, 'invitee');
+
+        if (createSuccess.success) {
+          message = 'Invite has been Accepted';
+          return {
+            success: true,
+            invite_status: invite.status,
+            message: message,
+          };
+        }
+      }
+
+      return {
+        success: false,
+        message: response?.message,
+      };
+    } catch (err) {}
+  }
+  
+  async rejectInvite(user: any, id) {
+    try {
+      console.log(user, id)
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      let message;
+      const invite = await this.userPeerInvitesRepository.findOne({
+        where: { id: id },
+      });
+
+      const response = await this.userService.getPeerInviteCodeStatus(
+        invite?.invite_code,
+        true,
+      );
+
+      console.log(invite, response, response.success, 'invitee');
+      // return;
+
+      if (response.success) {
+        invite.status = 'declined';
+        await this.userPeerInvitesRepository.save(invite);
+
+        const createSuccess = await this.userService.rejectUserPeer(
+          invite?.invite_code,
+          foundUser,
+        );
+
+        console.log(createSuccess, invite, response, 'invitee');
+
+        if (createSuccess.success) {
+          message = 'Invite has been Rejected';
+          return {
+            success: true,
+            invite_status: invite.status,
+            message: message,
+          };
+        }
+      }
+
+      return {
+        success: false,
+        message: response?.message,
+      };
+    } catch (err) {}
   }
 
   async countPendingInvites(user: any): Promise<any> {

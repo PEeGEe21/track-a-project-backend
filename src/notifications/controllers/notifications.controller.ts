@@ -21,7 +21,26 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
-  @Get()
+  @Get('/')
+  findAllUserNotifications(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Query('type') type: string,
+    @Query('status') status: string,
+    @Req() req: any,
+  ) {
+    return this.notificationsService.findAllUserNotifications(
+      req.user,
+      page,
+      limit,
+      search,
+      type,
+      status,
+    );
+  }
+
+  @Get('/notify-bar')
   findAll(@Req() req: any) {
     return this.notificationsService.findAll(req.user);
   }
@@ -39,7 +58,6 @@ export class NotificationsController {
 
   @Patch(':id/read')
   markAsRead(@Param('id') id, @Req() req: any) {
-    console.log(id);
     return this.notificationsService.markAsRead(req.user, +id);
   }
 

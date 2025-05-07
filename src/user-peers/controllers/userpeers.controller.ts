@@ -45,6 +45,7 @@ export class UserpeersController {
     @Query('page') page: number,
     @Query('limit') limit: number,
     @Query('search') search: string,
+    @Query('status') status: string,
     @Req() req: any,
   ) {
     return this.userpeersService.findUserPeersInvite(
@@ -52,6 +53,7 @@ export class UserpeersController {
       page,
       limit,
       search,
+      status,
     );
   }
 
@@ -60,6 +62,7 @@ export class UserpeersController {
     @Query('page') page: number,
     @Query('limit') limit: number,
     @Query('search') search: string,
+    @Query('status') status: string,
     @Req() req: any,
   ) {
     return this.userpeersService.findUserPeersSentInvite(
@@ -67,12 +70,23 @@ export class UserpeersController {
       page,
       limit,
       search,
+      status,
     );
   }
 
   @Get('/my-peer-invites-count')
   findUserPeersInviteCount(@Req() req: any) {
     return this.userpeersService.countPendingInvites(req.user);
+  }
+
+  @Post('/invite/accept/:id')
+  acceptInvite(@Param('id') id: string, @Req() req: any) {
+    return this.userpeersService.acceptInvite(req.user, +id);
+  }
+
+  @Post('/invite/reject/:id')
+  rejectInvite(@Param('id') id: string, @Req() req: any) {
+    return this.userpeersService.rejectInvite(req.user, +id);
   }
 
   @Get(':id')

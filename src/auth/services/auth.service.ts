@@ -467,7 +467,7 @@ export class AuthService {
       const user: any = await this.createUser(userdetails);
 
       if (userdetails?.inviteCode) {
-        await this.createUserPeer(userdetails?.inviteCode, user);
+        await this.usersService.createUserPeer(userdetails?.inviteCode, user);
       }
 
       const userprofilepayload = {
@@ -529,7 +529,7 @@ export class AuthService {
     return this.userRepository.save(newUser);
   }
 
-  async createUserPeer(inviteCode: string, newUser: User) {
+  async createUserPeer1(inviteCode: string, newUser: User) {
     const invite = await this.userPeerInviteRepository.findOne({
       where: { invite_code: inviteCode },
       relations: ['inviter_user_id'],

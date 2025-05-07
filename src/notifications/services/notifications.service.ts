@@ -29,9 +29,7 @@ export class NotificationsService {
 
   async findAll(user: any) {
     try {
-      console.log(this.usersService, 'this.usersService');
       const userFound = await this.usersService.getUserAccountById(user.userId);
-      console.log(userFound);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
@@ -39,12 +37,88 @@ export class NotificationsService {
       const notifications = await this.notificationsRepository.find({
         where: { recipient: { id: userFound.id } },
         order: { created_at: 'DESC' },
+        take: 20,
       });
 
       return {
         data: notifications,
         success: true,
         message: 'Success',
+      };
+    } catch (error) {
+      console.error('Error fetching user notifications:', error);
+      throw new HttpException(
+        'Error fetching user notifications',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findAllUserNotifications(
+    user: any,
+    page = 1,
+    limit = 10,
+    search?: string,
+    type?: string,
+    status?: string,
+  ) {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const queryBuilder = this.notificationsRepository
+        .createQueryBuilder('notifications')
+        .leftJoinAndSelect('notifications.recipient', 'recipient')
+        .leftJoinAndSelect('notifications.sender', 'sender')
+        .where('recipient.id = :id', { id: userFound.id });
+
+      if (search) {
+        const lowered = `%${search.toLowerCase()}%`;
+        queryBuilder.andWhere(
+          `(
+              LOWER(sender.first_name) LIKE :search OR
+              LOWER(sender.last_name) LIKE :search OR
+              LOWER(sender.email) LIKE :search OR
+              LOWER(notifications.title) LIKE :search OR
+              LOWER(notifications.message) LIKE :search
+            )`,
+          { search: lowered },
+        );
+      }
+
+      if (type && type !== 'all') {
+        const loweredType = type.toLowerCase();
+        queryBuilder.andWhere(`LOWER(notifications.type) = :type`, {
+          type: loweredType,
+        });
+      }
+
+      if (status && status !== 'all') {
+        const newStatus = status === 'read';
+        queryBuilder.andWhere(`notifications.is_read = :status`, {
+          status: newStatus,
+        });
+      }
+
+      queryBuilder.orderBy('notifications.created_at', 'DESC');
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      const [result, total] = await queryBuilder.getManyAndCount();
+      const lastPage = Math.ceil(total / limit);
+
+      return {
+        data: result,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + result.length,
+          total: total,
+        },
+        success: true,
       };
     } catch (error) {
       console.error('Error fetching user notifications:', error);
@@ -89,6 +163,8 @@ export class NotificationsService {
     createNotificationDto: CreateNotificationDto,
   ) {
     try {
+      // console.log(createNotificationDto)
+      // return
       //   const userFound = await this.usersService.getUserAccountById(user.userId);
       //   if (!userFound) {
       //     throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -105,15 +181,15 @@ export class NotificationsService {
 
       // Send via WebSocket if user is connected
       this.notificationsGateway.sendNotificationToUser(
-        String(createNotificationDto.recipient),
+        String(createNotificationDto.recipient.id),
         savedNotification,
       );
 
-      return {
-        data: notification,
-        success: true,
-        message: 'Success',
-      };
+      // return {
+      //   data: notification,
+      //   success: true,
+      //   message: 'Success',
+      // };
     } catch (error) {
       console.error('Error creating user notification:', error);
       throw new HttpException(
@@ -130,13 +206,13 @@ export class NotificationsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log(userFound, 'fioniofni')
+      console.log(userFound, 'fioniofni');
       const notification = await this.notificationsRepository.findOne({
         where: { id },
       });
       notification.is_read = true;
 
-      console.log(notification, 'notification')
+      console.log(notification, 'notification');
 
       await this.notificationsRepository.save(notification);
 
