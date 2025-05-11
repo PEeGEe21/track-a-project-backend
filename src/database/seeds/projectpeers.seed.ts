@@ -1,12 +1,12 @@
-import { ProjectPeer } from '../../typeorm/entities/ProjectPeers';
+import { ProjectPeer } from '../../typeorm/entities/ProjectPeer';
 import { DataSource } from 'typeorm';
 
 // Example seed data
 const projectPeersData = [
   {
-    user: { id: 1 },       // User entity reference
-    project: { id: 9 },    // Project entity reference
-    addedBy: { id: 2 },    // User who added the peer
+    user: { id: 1 }, // User entity reference
+    project: { id: 9 }, // Project entity reference
+    addedBy: { id: 2 }, // User who added the peer
   },
   {
     user: { id: 1 },
@@ -36,6 +36,21 @@ const projectPeersData = [
   {
     user: { id: 6 },
     project: { id: 29 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 2 },
+    project: { id: 39 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 3 },
+    project: { id: 39 },
+    addedBy: { id: 1 },
+  },
+  {
+    user: { id: 4 },
+    project: { id: 39 },
     addedBy: { id: 1 },
   },
   // Add more records as needed

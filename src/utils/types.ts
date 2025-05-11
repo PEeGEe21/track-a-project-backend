@@ -55,3 +55,11 @@ export type CreateUserPostParams = {
   title: string;
   description: string;
 };
+
+export type MailTemplateParams = {
+  template: string;
+  inviterEmail?: string;
+  inviteLink?: string;
+  inviterName?: string;
+  project?: Project;
+};

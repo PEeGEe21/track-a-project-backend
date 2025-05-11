@@ -8,6 +8,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as csurf from 'csurf';
 import { SeederService } from './seeder/seeder.service';
 
+process.env.TZ = 'UTC';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

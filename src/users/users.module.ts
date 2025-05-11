@@ -6,7 +6,7 @@ import { User } from '../typeorm/entities/User';
 import { UsersController } from './controllers//users.controller';
 import { UsersService } from './services/users.service';
 import { Project } from 'src/typeorm/entities/Project';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { JwtModule } from '@nestjs/jwt';
 import { config } from 'src/config';
 import { UserPeersModule } from 'src/user-peers/userpeers.module';
@@ -24,6 +24,8 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
+import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
+import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
       Task,
       Tag,
       ProjectPeer,
+      ProjectPeerInvite,
+      ProjectComment,
       Status,
       UserPeer,
       UserPeerInvite,
@@ -52,7 +56,7 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
     MailingService,
     NotificationsService,
     ConfigService,
-    NotificationsGateway
+    NotificationsGateway,
   ],
   exports: [UsersService],
 })

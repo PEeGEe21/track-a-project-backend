@@ -7,10 +7,12 @@ import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeersController } from './controllers/project-peers.controller';
 import { ProjectPeersService } from './services/project-peers.service';
 import { Task } from 'src/typeorm/entities/Task';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer])],
+  imports: [
+    TypeOrmModule.forFeature([User, Profile, Post, Project, Task, ProjectPeer]),
+  ],
   controllers: [ProjectPeersController],
   providers: [ProjectPeersService],
   exports: [ProjectPeersService],

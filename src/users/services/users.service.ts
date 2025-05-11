@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
@@ -17,7 +17,7 @@ import {
   CreateUserProfileParams,
   UpdateUserParams,
 } from '../../utils/types';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
 import { JwtService } from '@nestjs/jwt';
 import { Project } from 'src/typeorm/entities/Project';
@@ -27,7 +27,7 @@ import { MailingService } from 'src/utils/mailing/mailing.service';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { addDays, addHours } from 'date-fns';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 
 @Injectable()
 export class UsersService {
@@ -362,7 +362,7 @@ export class UsersService {
 
           const existingPeer = foundPeer
             ? await this.userPeerRepository.findOne({
-                where: { user: foundUser, peer: foundPeer },
+                where: { user: { id: user?.id }, peer: { id: foundPeer?.id } },
               })
             : null;
 
@@ -383,6 +383,16 @@ export class UsersService {
             status: 'pending',
             due_date: addDays(new Date(), 7), // optional 7-day expiry
           });
+
+          const payload = {
+            recipient: foundPeerUser,
+            sender: user,
+            title: 'You received an invite',
+            message: `${user?.email} sent you an invite to be his Peer`,
+            type: 'peer_request',
+          };
+          // build payload
+          await this.notificationService.createNotification(foundPeer, payload);
 
           await this.sendInviteMail(
             email,
@@ -421,9 +431,10 @@ export class UsersService {
     email: string,
     foundPeer,
     user,
-    invite_as,
+    invite_as = '',
     inviteCode,
     existingPeer,
+    project = null,
   ): Promise<any> {
     let peerEmail;
     let eventLink;
@@ -433,16 +444,6 @@ export class UsersService {
     // console.log(existingPeer, 'fkknd')
     // user already exists just not a peer
     if (foundPeer || existingPeer) {
-      const payload = {
-        recipient: existingPeer,
-        sender: user,
-        title: 'You received an invite',
-        message: `${user?.email} sent you an invite to be his Peer`,
-        type: 'peer_request',
-      };
-
-      // build payload
-      await this.notificationService.createNotification(foundPeer, payload);
       //   peerEmail = `You just received an invite to become a peer(${invite_as}) by ${user.email}.
       //   Accept invite and onboard to the project tracking platform to view the project.
       //  `;
@@ -760,7 +761,7 @@ export class UsersService {
 
         await this.notifyInviter(invitedBy, newUser);
 
-        await this.notifyRejecter(invitedBy, newUser);
+        await this.notifyReceiver(invitedBy, newUser);
 
         return { success: true };
       }
@@ -786,7 +787,7 @@ export class UsersService {
     );
   }
 
-  async notifyRejecter(invitedBy, newUser) {
+  async notifyReceiver(invitedBy, newUser) {
     const payloadForRejecter = {
       recipient: newUser,
       sender: invitedBy,
@@ -952,6 +953,69 @@ export class UsersService {
       console.error('Error in getUserDshboardData:', err);
       throw new UnauthorizedException('Could not fetch user dashboard data');
     }
+  }
+
+  async findUsersByUsernames(usernames: string[]): Promise<User[]> {
+    if (!usernames.length) return [];
+    return this.userRepository.find({
+      where: { username: In(usernames) },
+    });
+  }
+
+  // Optional helper if you want usernames to be lowercase always
+  async findUsersByUsernamesCaseInsensitive(
+    usernames: string[],
+  ): Promise<User[]> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) IN (:...usernames)', {
+        usernames: usernames.map((u) => u.toLowerCase()),
+      })
+      .getMany();
+  }
+
+  async findUsersByFullNames(fullNames: string[]): Promise<User[]> {
+    if (!fullNames.length) return [];
+
+    // Create a query builder
+    const queryBuilder = this.userRepository.createQueryBuilder('user');
+    let paramIndex = 0;
+    let orConditions = [];
+
+    // Build conditions for each name
+    for (const fullName of fullNames) {
+      const nameParts = fullName.trim().split(/\s+/);
+      if (nameParts.length === 0) continue;
+
+      // First part is always first name
+      const firstName = nameParts[0].toLowerCase();
+      const firstNameParam = `firstName${paramIndex}`;
+
+      if (nameParts.length === 1) {
+        // Only first name
+        orConditions.push(`LOWER(user.first_name) LIKE :${firstNameParam}`);
+        queryBuilder.setParameter(firstNameParam, `%${firstName}%`);
+      } else {
+        // First name and last name
+        const lastName = nameParts.slice(1).join(' ').toLowerCase();
+        const lastNameParam = `lastName${paramIndex}`;
+
+        orConditions.push(
+          `(LOWER(user.first_name) LIKE :${firstNameParam} AND LOWER(user.last_name) LIKE :${lastNameParam})`,
+        );
+        queryBuilder.setParameter(firstNameParam, `%${firstName}%`);
+        queryBuilder.setParameter(lastNameParam, `%${lastName}%`);
+      }
+
+      paramIndex++;
+    }
+
+    if (orConditions.length === 0) return [];
+
+    // Combine all conditions with OR
+    queryBuilder.where(orConditions.join(' OR '));
+
+    return queryBuilder.getMany();
   }
 
   async getUserDshboardData2(user: any): Promise<any> {

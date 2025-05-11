@@ -37,7 +37,7 @@ export class NotificationsService {
       const notifications = await this.notificationsRepository.find({
         where: { recipient: { id: userFound.id } },
         order: { created_at: 'DESC' },
-        take: 20,
+        // take: 20,
       });
 
       return {
@@ -163,7 +163,7 @@ export class NotificationsService {
     createNotificationDto: CreateNotificationDto,
   ) {
     try {
-      // console.log(createNotificationDto)
+      console.log(createNotificationDto, 'ccreate notifcation')
       // return
       //   const userFound = await this.usersService.getUserAccountById(user.userId);
       //   if (!userFound) {
@@ -179,6 +179,7 @@ export class NotificationsService {
       const savedNotification =
         await this.notificationsRepository.save(notification);
 
+        console.log(createNotificationDto.recipient.id, savedNotification, 'createNotificationDto.recipient.id')
       // Send via WebSocket if user is connected
       this.notificationsGateway.sendNotificationToUser(
         String(createNotificationDto.recipient.id),

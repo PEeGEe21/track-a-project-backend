@@ -16,7 +16,7 @@ import { config } from './config';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ProjectPeersModule } from './project-peers/project-peers.module';
-import { ProjectPeer } from './typeorm/entities/ProjectPeers';
+import { ProjectPeer } from './typeorm/entities/ProjectPeer';
 import { Status } from './typeorm/entities/Status';
 import { StatusModule } from './status/status.module';
 import { MailingModule } from './utils/mailing/mailing.module';
@@ -30,6 +30,8 @@ import { UserPeerInvite } from './typeorm/entities/UserPeerInvite';
 import { NotificationsModule } from './notifications/notifications.module';
 import { UserNotificationPreference } from './typeorm/entities/UserNotificationPreference';
 import { Notification } from './typeorm/entities/Notification';
+import { ProjectPeerInvite } from './typeorm/entities/ProjectPeerInvite';
+import { ProjectComment } from './typeorm/entities/ProjectComment';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -44,7 +46,7 @@ import { Notification } from './typeorm/entities/Notification';
       username: process.env.DATABASE_USERNAME,
       password: process.env.DATABASE_PASSWORD,
       database: process.env.DATABASE_NAME,
-      timezone: 'Z', // Add this line for UTC
+      timezone: 'Z', // More explicit than 'Z'
       ssl: { rejectUnauthorized: false },
       entities: [
         User,
@@ -54,18 +56,24 @@ import { Notification } from './typeorm/entities/Notification';
         Task,
         Tag,
         ProjectPeer,
+        ProjectPeerInvite,
         Status,
         UserPeer,
         Category,
         UserPeerInvite,
         Notification,
         UserNotificationPreference,
+        ProjectComment,
       ],
       synchronize: true,
       autoLoadEntities: true,
       // extra: {
       //   timezone: '+00:00',
       // },
+      extra: {
+        timezone: '+00:00',
+        // connectionTimeZone: '+00:00',
+      },
     }),
     TypeOrmModule.forFeature([
       User,
@@ -75,12 +83,14 @@ import { Notification } from './typeorm/entities/Notification';
       Task,
       Tag,
       ProjectPeer,
+      ProjectPeerInvite,
       Status,
       UserPeer,
       Category,
       UserPeerInvite,
       Notification,
       UserNotificationPreference,
+      ProjectComment,
     ]),
     UsersModule,
     ProjectsModule,

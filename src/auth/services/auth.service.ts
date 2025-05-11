@@ -45,11 +45,11 @@ import { User } from 'src/typeorm/entities/User';
 import { PeerSignupResponseDto } from '../dtos/peer-signup-response.dto';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectsService } from 'src/projects/services/projects.service';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { CreateUserProfileDto } from '../dtos/create-profile-peer.dto';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,

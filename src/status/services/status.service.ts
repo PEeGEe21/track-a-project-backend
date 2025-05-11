@@ -159,7 +159,7 @@ export class StatusService {
           await Promise.all(
             existingTasks.map(async (task) => {
               // if (task.type === 0) {
-              await this.taskRepository.delete(task);
+              // await this.taskRepository.delete(task);
 
               // }
             }),

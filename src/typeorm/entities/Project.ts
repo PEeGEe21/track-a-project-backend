@@ -12,9 +12,10 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Task } from './Task';
-import { ProjectPeer } from './ProjectPeers';
+import { ProjectPeer } from './ProjectPeer';
 import { Tag } from './Tag';
 import { Category } from './Category';
+import { ProjectComment } from './ProjectComment';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -47,7 +48,7 @@ export class Project {
   @Column({ default: 'active' })
   status: string;
 
-  @Column({ nullable: true}) // Added created_at column
+  @Column({ nullable: true }) // Added created_at column
   due_date: Date = new Date();
 
   //   @ManyToOne(() => User, (user) => user.posts)
@@ -70,4 +71,7 @@ export class Project {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @OneToMany(() => ProjectComment, (comment) => comment.project)
+  comments: ProjectComment[];
 }

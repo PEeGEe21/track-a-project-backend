@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import { UsersService } from 'src/users/services/users.service';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
-import { UserPeerStatusInviteType } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatusInviteType } from '../../utils/constants/userPeerEnums';
 
 @Injectable()
 export class UserpeersService {
@@ -69,6 +69,46 @@ export class UserpeersService {
           total: total,
         },
         success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching user peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching user peers',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findUserPeersList(user: any) {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Using QueryBuilder to select specific fields
+      const result = await this.userPeerRepository
+        .createQueryBuilder('user_peer')
+        .innerJoinAndSelect('user_peer.peer', 'peer')
+        .where('user_peer.user.id = :userId', { userId: foundUser.id })
+        .select([
+          'user_peer.id',
+          'peer.id',
+          'peer.first_name',
+          'peer.last_name',
+          'peer.email',
+          'peer.avatar',
+          `CONCAT(peer.first_name, ' ', peer.last_name) AS "peer_full_name"`,
+        ])
+        .orderBy('user_peer.created_at', 'DESC')
+        .getRawMany();
+
+      const total = result.length;
+
+      return {
+        data: result,
+        success: true,
+        total,
       };
     } catch (error) {
       console.error('Error fetching user peers:', error);
@@ -267,10 +307,10 @@ export class UserpeersService {
       };
     } catch (err) {}
   }
-  
+
   async rejectInvite(user: any, id) {
     try {
-      console.log(user, id)
+      console.log(user, id);
       const foundUser = await this.userService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);

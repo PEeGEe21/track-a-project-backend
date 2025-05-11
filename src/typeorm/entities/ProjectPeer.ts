@@ -9,6 +9,8 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
+import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 
 @Entity({ name: 'project_peers' })
 export class ProjectPeer {
@@ -28,6 +30,16 @@ export class ProjectPeer {
   @ManyToOne(() => User, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'added_by' })
   addedBy: User;
+
+  @Column({
+    type: 'enum',
+    enum: ProjectPeerStatus,
+    default: ProjectPeerStatus.CONNECTED,
+  })
+  status: ProjectPeerStatus;
+
+  @Column({ type: 'boolean', default: false })
+  is_confirmed: boolean;
 
   @CreateDateColumn()
   created_at: Date;

@@ -9,7 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './User';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 
 @Entity('user_peers')
 export class UserPeer {

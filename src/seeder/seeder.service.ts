@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatus } from '../utils/constants/userPeerEnums';
 import { Repository } from 'typeorm';
 
 @Injectable()

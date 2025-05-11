@@ -9,6 +9,7 @@ import { Mail } from 'nodemailer/lib/mailer';
 import * as handlebars from 'handlebars';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
+import { MailTemplateParams } from '../types';
 // import * as mustache from 'mustache';
 
 @Injectable()
@@ -31,27 +32,157 @@ export class MailingService {
     return transporter;
   }
 
-  private async compileTemplate(templateName: string, context: any) {
+  async sendEmail(message): Promise<string> {
+    const transport = this.mailTransport();
+    const options: Mail.Options = {
+      from: message.from ?? {
+        name: this.configService.get<string>('APP_NAME'),
+        address: this.configService.get<string>('DEFAULT_FROM_EMAIL'),
+      },
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: `${message.html}`,
+    };
+
+    try {
+      const sendMail = await transport.sendMail(options);
+      // const sendMail = await sendGrid.sendMail(message);
+      console.log(sendMail, 'Message Sent');
+      return 'success';
+    } catch (error) {
+      console.log('Message Not Sent');
+      console.log(error);
+      return 'error';
+    }
+  }
+
+  async returnMailTemplate(data: MailTemplateParams) {
+    try {
+      const template_type = data?.template;
+
+      let html = '';
+      switch (template_type) {
+        case 'peer_invite':
+          html = await this.compilePeerTemplate('peer-invite', {
+            inviterEmail: data.inviterEmail,
+            inviteLink: data.inviteLink,
+          });
+          break;
+        case 'new_peer_invite':
+          html = await this.compilePeerTemplate('new-user-peer-invite', {
+            inviterEmail: data.inviterEmail,
+            inviteLink: data.inviteLink,
+          });
+          break;
+        case 'project_peer_invite':
+          html = await this.compileProjectPeerTemplate('project-peer-invite', {
+            inviterEmail: data.inviterEmail,
+            inviteLink: data.inviteLink,
+            inviterName: data.inviterName,
+            project: data?.project?.title,
+          });
+          break;
+        default:
+          break;
+      }
+
+      return html;
+    } catch (err) {}
+  }
+
+  // PEER
+  private async compilePeerTemplate(templateName: string, context: any) {
     const templatePath = path.resolve(
       process.cwd(),
-      'src/utils/mailing/templates',
+      'src/utils/mailing/templates/peer',
       `${templateName}.hbs`,
     );
     const templateContent = await readFile(templatePath, 'utf8');
     const template = handlebars.compile(templateContent);
     return template(context);
   }
-  
-  private async compileTemplate2(templateName: string, context: any) {
-    const templatePath = path.join(
-      __dirname,
-      'templates',
+
+  async sendPeerInvite(
+    inviterEmail: string,
+    user: User,
+    eventLink: string,
+    peerAccount: boolean,
+    peerEmail: string,
+  ): Promise<string> {
+    let template = '';
+    if (peerAccount) {
+      template = 'peer_invite';
+    } else {
+      template = 'new_peer_invite';
+    }
+
+    const data = {
+      template: template,
+      inviterEmail: inviterEmail,
+      inviteLink: eventLink,
+    };
+
+    const html = await this.returnMailTemplate(data);
+
+    const msg = {
+      subject: `${user?.first_name} ${user?.last_name} has added you as a peer`,
+      text: peerEmail,
+      template: '',
+      to: inviterEmail,
+      from: user.email,
+      eventLink: eventLink,
+      html,
+    };
+
+    return this.sendEmail(msg);
+  }
+
+  // peer projects
+  private async compileProjectPeerTemplate(templateName: string, context: any) {
+    const templatePath = path.resolve(
+      process.cwd(),
+      'src/utils/mailing/templates/project',
       `${templateName}.hbs`,
     );
     const templateContent = await readFile(templatePath, 'utf8');
     const template = handlebars.compile(templateContent);
     return template(context);
   }
+
+  async sendProjectPeerInvite(
+    inviterEmail: string,
+    user: User,
+    eventLink: string,
+    peerAccount: boolean,
+    peerEmail: string,
+    project = null,
+  ): Promise<string> {
+    let template = '';
+
+    const data = {
+      template: 'project_peer_invite',
+      inviterEmail: inviterEmail,
+      inviterName: user?.fullName,
+      inviteLink: eventLink,
+      project: project,
+    };
+
+    const html = await this.returnMailTemplate(data);
+
+    const msg = {
+      subject: `${user?.fullName} has added you as a project peer`,
+      text: peerEmail,
+      template: '',
+      to: inviterEmail,
+      from: user.email,
+      eventLink: eventLink,
+      html,
+    };
+
+    return this.sendEmail(msg);
+  }
+  // end peer project
 
   async sendMessage(message): Promise<string> {
     console.log(message);
@@ -66,34 +197,15 @@ export class MailingService {
     }
   }
 
-  async sendPeerEmail(message): Promise<string> {
-    console.log(message);
-
-    const transport = this.mailTransport();
-
-    const options: Mail.Options = {
-      from: message.from ?? {
-        name: this.configService.get<string>('APP_NAME'),
-        address: this.configService.get<string>('DEFAULT_FROM_EMAIL'),
-      },
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: `${message.html}`,
-    };
-
-    console.log(options, 'ooptions');
-
-    try {
-      const sendMail = await transport.sendMail(options);
-      // const sendMail = await sendGrid.sendMail(message);
-      console.log(sendMail, 'Message Sent');
-      return 'success';
-    } catch (error) {
-      console.log('Message Not Sent');
-      console.log(error);
-      return 'error';
-    }
+  private async compileTemplate2(templateName: string, context: any) {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      `${templateName}.hbs`,
+    );
+    const templateContent = await readFile(templatePath, 'utf8');
+    const template = handlebars.compile(templateContent);
+    return template(context);
   }
 
   async sendPeerProject(
@@ -124,52 +236,7 @@ export class MailingService {
 
     console.log(msg, 'message');
 
-    return this.sendPeerEmail(msg);
-  }
-
-  async sendPeerInvite(
-    inviterEmail: string,
-    user: User,
-    eventLink: string,
-    peerAccount: boolean,
-    peerEmail: string,
-  ): Promise<string> {
-    const html = await this.returnPeerInviteTemplate(
-      peerAccount,
-      user?.email,
-      eventLink,
-    );
-
-    console.log(html, 'htmlll')
-
-    const msg = {
-      subject: `${user?.first_name} ${user?.last_name} has added you as a peer`,
-      text: peerEmail,
-      template: '',
-      to: inviterEmail,
-      from: user.email,
-      eventLink: eventLink,
-      html,
-    };
-
-    return this.sendPeerEmail(msg);
-  }
-
-  async returnPeerInviteTemplate(peerAccount, inviterEmail, inviteLink) {
-    let html = '';
-    if (peerAccount) {
-      html = await this.compileTemplate('peer-invite', {
-        inviterEmail,
-        inviteLink,
-      });
-    } else {
-      html = await this.compileTemplate('new-user-peer-invite', {
-        inviterEmail,
-        inviteLink,
-      });
-    }
-
-    return html;
+    return this.sendEmail(msg);
   }
 
   async sendPeerInvite2(
@@ -179,7 +246,7 @@ export class MailingService {
     peerAccount: boolean,
     peerEmail: string,
   ): Promise<string> {
-    const html = await this.compileTemplate('peer-invite', {
+    const html = await this.compilePeerTemplate('peer-invite', {
       inviterEmail,
       eventLink,
     });
@@ -204,20 +271,6 @@ export class MailingService {
 
     console.log(msg, 'message');
 
-    return this.sendPeerEmail(msg);
+    return this.sendEmail(msg);
   }
-
-  // async send_email(dynamic_data: any): Promise<string> {
-  //   console.log(dynamic_data);
-  //   const msg = {
-  //     to: dynamic_data.email,
-  //     from: config.sendGrid.fromEmail,
-  //     templateId: dynamic_data.template_id,
-  //     subject: dynamic_data.subject,
-  //     dynamic_template_data: {
-  //       ...dynamic_data,
-  //     },
-  //   };
-  //   return this.sendMessage(msg);
-  // }
 }

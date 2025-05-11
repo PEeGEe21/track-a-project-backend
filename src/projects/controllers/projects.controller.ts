@@ -37,7 +37,7 @@ export class ProjectsController {
       search,
       status,
       due_date,
-      group
+      group,
     );
   }
 
@@ -49,6 +49,85 @@ export class ProjectsController {
   @Post('/delete/:id')
   deleteProject(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.projectService.deleteProject(req.user, id);
+  }
+
+  @Get('/:projectId/peers')
+  getUserProjectsPeer(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('query') query: string,
+    @Req() req: any,
+  ) {
+    return this.projectService.getProjectsPeer(req.user, projectId, query);
+  }
+
+  @Get('/:projectId/comments')
+  getProjectComments(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req: any,
+  ) {
+    return this.projectService.getProjectComments(req.user, projectId);
+  }
+
+  @Get('/entity-check-comments')
+  checkSessionTimezone(@Req() req: any) {
+    return this.projectService.checkSessionTimezone(req.user);
+  }
+
+  @Get('/user-comments')
+  getProjectsForUser(@Req() req: any) {
+    return this.projectService.getProjectsForUser(req.user);
+  }
+
+  @Post('/:projectId/comments')
+  sendProjectComment(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() commentData: any,
+    @Req() req: any,
+  ) {
+    return this.projectService.sendProjectComment(
+      req.user,
+      projectId,
+      commentData,
+    );
+  }
+
+  @Get('/project-peer-invites')
+  findProjectPeersInvite(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Query('status') status: string,
+    @Query('type') type: string,
+    @Req() req: any,
+  ) {
+    return this.projectService.findProjectPeersInvite(
+      req.user,
+      page,
+      limit,
+      search,
+      status,
+      type,
+    );
+  }
+
+  @Post('/project-peers/invite/accept/:id')
+  acceptInvite(@Param('id') id: string, @Req() req: any) {
+    return this.projectService.acceptPeerInvite(req.user, +id);
+  }
+
+  @Post('/project-peers/invite/reject/:id')
+  rejectInvite(@Param('id') id: string, @Req() req: any) {
+    return this.projectService.rejectPeerInvite(req.user, +id);
+  }
+
+  // @Post('/project-peers/invite/reject/:id')
+  // rejectInvite(@Param('id') id: string, @Req() req: any) {
+  //   return this.projectService.rejectInvite(req.user, +id);
+  // }
+
+  @Get('/projects-invites-count')
+  findProjectPeersInviteCount(@Req() req: any) {
+    return this.projectService.countPendingPeerInvites(req.user);
   }
 
   @Get('/')
@@ -76,11 +155,6 @@ export class ProjectsController {
   // ) {
   //   return this.projectService.getUserProjectsPeer(userId, projectId);
   // }
-
-  @Get('/:projectId/peers')
-  getUserProjectsPeer(@Param('projectId', ParseIntPipe) projectId: number) {
-    return this.projectService.getProjectsPeer(projectId);
-  }
 
   @Get(':projectId/tasks')
   getProjectTasks(@Param('projectId', ParseIntPipe) projectId: number) {

@@ -1,4 +1,4 @@
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 import { UserPeer } from '../../typeorm/entities/UserPeer';
 import { DataSource } from 'typeorm';
 

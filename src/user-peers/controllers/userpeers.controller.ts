@@ -40,6 +40,13 @@ export class UserpeersController {
     return this.userpeersService.findUserPeers(req.user, page, limit, search);
   }
 
+  @Get('/my-peers-list')
+  findUserPeersList(
+    @Req() req: any
+  ) {
+    return this.userpeersService.findUserPeersList(req.user);
+  }
+
   @Get('/my-peer-invites')
   findUserPeersInvite(
     @Query('page') page: number,

@@ -11,7 +11,7 @@ import { UsersModule } from '../users/users.module';
 import { config } from 'src/config';
 import { JwtStrategy } from './guards/jwt.strategy';
 import { LocalStrategy } from './guards/local.strategy';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { ProjectPeersService } from 'src/project-peers/services/project-peers.service';
 import { ProjectPeersModule } from 'src/project-peers/project-peers.module';
 import { ProjectsService } from 'src/projects/services/projects.service';
@@ -35,6 +35,8 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
+import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
+import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 
 @Module({
   imports: [
@@ -69,6 +71,8 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
       Task,
       Tag,
       ProjectPeer,
+      ProjectPeerInvite,
+      ProjectComment,
       Status,
       UserPeer,
       Category,
@@ -87,7 +91,7 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
     ConfigService,
     UsersService,
     NotificationsService,
-    NotificationsGateway
+    NotificationsGateway,
   ],
   exports: [JwtModule, AuthService],
 })

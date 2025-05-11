@@ -9,12 +9,12 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Post } from './Post';
 import { Profile } from './Profile';
 import { Project } from './Project';
-import { ProjectPeer } from './ProjectPeers';
+import { ProjectPeer } from './ProjectPeer';
 import { Status } from './Status';
 import { Task } from './Task';
+import { ProjectComment } from './ProjectComment';
 
 @Entity({ name: 'users' })
 export class User {
@@ -78,4 +78,11 @@ export class User {
 
   @OneToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
   projectPeers: ProjectPeer[];
+
+  @OneToMany(() => ProjectComment, (comment) => comment.author)
+  projectComments: ProjectComment[];
+
+  get fullName(): string {
+    return `${this.first_name ?? ''} ${this.last_name ?? ''}`.trim();
+  }
 }

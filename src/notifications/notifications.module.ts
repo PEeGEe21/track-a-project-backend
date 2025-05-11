@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/typeorm/entities/User';
 import { Profile } from 'src/typeorm/entities/Profile';
 import { Project } from 'src/typeorm/entities/Project';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UsersModule } from 'src/users/users.module';
 import { Status } from 'src/typeorm/entities/Status';
@@ -20,6 +20,8 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { NotificationsGateway } from './notifications.gateway';
 import { UsersService } from 'src/users/services/users.service';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
+import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
+import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { MailingModule } from 'src/utils/mailing/mailing.module';
       Status,
       UserPeer,
       UserPeerInvite,
+      ProjectPeerInvite,
+      ProjectComment,
       Notification,
       UserNotificationPreference,
     ]),

@@ -9,9 +9,10 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './User';
+import { Project } from './Project';
 
-@Entity('user_peer_invites')
-export class UserPeerInvite {
+@Entity('project_peer_invites')
+export class ProjectPeerInvite {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -20,14 +21,17 @@ export class UserPeerInvite {
   @JoinColumn({ name: 'user_id' })
   inviter_user_id: User;
 
+  // Add the project relationship
+  @Index()
+  @ManyToOne(() => Project, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'project_id' })
+  project: Project;
+
   @Column({ type: 'varchar' })
   email: string;
 
   @Column({ type: 'varchar', unique: true })
   invite_code: string;
-
-  @Column({ type: 'varchar' })
-  invited_as: string;
 
   @Column({
     type: 'enum',
@@ -39,6 +43,11 @@ export class UserPeerInvite {
   @Column({ nullable: true, type: 'timestamp' })
   due_date: Date;
 
+  // Optionally, add a column to track who accepted the invite
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'accepted_by_user_id' })
+  accepted_by: User;
+
   // Optionally, add a column to track when the invite was accepted
   @Column({ nullable: true, type: 'timestamp' })
   accepted_at: Date;
@@ -46,6 +55,7 @@ export class UserPeerInvite {
   @CreateDateColumn()
   created_at: Date;
 
+  // Add UpdateDateColumn for tracking when records are modified
   @UpdateDateColumn()
   updated_at: Date;
 }

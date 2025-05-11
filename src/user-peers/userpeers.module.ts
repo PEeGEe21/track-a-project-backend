@@ -6,7 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/typeorm/entities/User';
 import { Profile } from 'src/typeorm/entities/Profile';
 import { Project } from 'src/typeorm/entities/Project';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeers';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UsersModule } from 'src/users/users.module';
 import { Status } from 'src/typeorm/entities/Status';
@@ -15,6 +15,7 @@ import { Task } from 'src/typeorm/entities/Task';
 import { Post } from 'src/typeorm/entities/Post';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 
 @Module({
   imports: [
@@ -29,9 +30,10 @@ import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
       Task,
       Tag,
       ProjectPeer,
+      ProjectComment,
       Status,
       UserPeer,
-      UserPeerInvite
+      UserPeerInvite,
     ]),
   ],
   controllers: [UserpeersController],

@@ -6,7 +6,7 @@ import { User } from './typeorm/entities/User';
 import { Project } from './typeorm/entities/Project';
 import { Task } from './typeorm/entities/Task';
 import { Tag } from './typeorm/entities/Tag';
-import { ProjectPeer } from './typeorm/entities/ProjectPeers';
+import { ProjectPeer } from './typeorm/entities/ProjectPeer';
 import { Status } from './typeorm/entities/Status';
 import { UserPeer } from './typeorm/entities/UserPeer';
 import { Category } from './typeorm/entities/Category';
