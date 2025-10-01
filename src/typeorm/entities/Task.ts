@@ -8,12 +8,14 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
 import { Tag } from './Tag';
 import { Status } from './Status';
 import { Category } from './Category';
+import { Note } from './Note';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -53,7 +55,10 @@ export class Task {
   @ManyToOne(() => User, (user) => user.projects)
   @JoinColumn({ name: 'user_id' })
   user: User;
-  
+
+  @OneToMany(() => Note, (note) => note.user, { cascade: true })
+  notes: Note[];
+
   @CreateDateColumn()
   created_at: Date;
 

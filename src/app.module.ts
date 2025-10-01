@@ -32,6 +32,8 @@ import { UserNotificationPreference } from './typeorm/entities/UserNotificationP
 import { Notification } from './typeorm/entities/Notification';
 import { ProjectPeerInvite } from './typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from './typeorm/entities/ProjectComment';
+import { NotesModule } from './notes/notes.module';
+import { Note } from './typeorm/entities/Note';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -67,6 +69,7 @@ import { ProjectComment } from './typeorm/entities/ProjectComment';
         Notification,
         UserNotificationPreference,
         ProjectComment,
+        Note,
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -94,6 +97,7 @@ import { ProjectComment } from './typeorm/entities/ProjectComment';
       Notification,
       UserNotificationPreference,
       ProjectComment,
+      Note,
     ]),
     UsersModule,
     ProjectsModule,
@@ -105,6 +109,7 @@ import { ProjectComment } from './typeorm/entities/ProjectComment';
     UserPeersModule,
     CategoriesModule,
     NotificationsModule,
+    NotesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],

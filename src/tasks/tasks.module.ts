@@ -8,9 +8,20 @@ import { TasksController } from './controllers/tasks.controller';
 import { TasksService } from './services/tasks.service';
 import { Task } from 'src/typeorm/entities/Task';
 import { Status } from 'src/typeorm/entities/Status';
+import { Note } from 'src/typeorm/entities/Note';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Profile, Post, Project, Task, Status])],
+  imports: [
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Post,
+      Project,
+      Task,
+      Status,
+      Note,
+    ]),
+  ],
   controllers: [TasksController],
   providers: [TasksService],
   exports: [TasksService],
