@@ -47,7 +47,8 @@ import { ProjectComment } from './typeorm/entities/ProjectComment';
       password: process.env.DATABASE_PASSWORD,
       database: process.env.DATABASE_NAME,
       timezone: 'Z', // More explicit than 'Z'
-      ssl: { rejectUnauthorized: false },
+      ssl: false,
+      // ssl: { rejectUnauthorized: false },
       entities: [
         User,
         Profile,
