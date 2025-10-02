@@ -18,9 +18,12 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @Controller('status')
 export class StatusController {
   constructor(private statusService: StatusService) {}
-  @Get('/')
-  getStatus(@Req() req: any) {
-    return this.statusService.findStatuses(req?.user);
+  @Get('/:projectId')
+  getStatus(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req: any,
+  ) {
+    return this.statusService.findStatuses(projectId, req?.user);
   }
 
   @Get(':id')

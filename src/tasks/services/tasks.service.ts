@@ -14,10 +14,13 @@ import {
 import { Task } from 'src/typeorm/entities/Task';
 import { Status } from 'src/typeorm/entities/Status';
 import { Project } from 'src/typeorm/entities/Project';
+import { UpdateTaskStatusDto } from '../dtos/update-task-status.dto';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class TasksService {
   constructor(
+    private dataSource: DataSource,
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
@@ -64,7 +67,7 @@ export class TasksService {
         { ...data },
       );
 
-      console.log(updatedResult, 'rererr')
+      console.log(updatedResult, 'rererr');
 
       if (updatedResult.affected < 1) {
         return {
@@ -73,8 +76,10 @@ export class TasksService {
         };
       }
 
-      const updatedTask = await this.taskRepository.findOne({ where: { id }, relations: ['status', 'project'] });
-
+      const updatedTask = await this.taskRepository.findOne({
+        where: { id },
+        relations: ['status', 'project'],
+      });
 
       return {
         success: 'success',
@@ -88,11 +93,186 @@ export class TasksService {
           status: updatedTask.status,
         },
       };
-    } catch (error) {
-
-    }
+    } catch (error) {}
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
+  }
+
+  async updateTaskStatus(
+    taskId: number,
+    updateDto: UpdateTaskStatusDto,
+    user: any,
+  ) {
+    return await this.dataSource.transaction(async (manager) => {
+      const userFound = await manager.getRepository(User).findOne({
+        where: { id: user.userId },
+      });
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Find task with project and status
+      const task = await manager.getRepository(Task).findOne({
+        where: { id: taskId },
+        relations: ['status', 'project', 'project.user'],
+      });
+      if (!task)
+        throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+
+      if (task.project.user.id !== userFound.id) {
+        throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+      }
+
+      // If task is moving to a new status
+      if (task.status.id !== updateDto.statusId) {
+        const newStatus = await manager.getRepository(Status).findOne({
+          where: { id: updateDto.statusId },
+        });
+        if (!newStatus) {
+          throw new HttpException('Status not found', HttpStatus.NOT_FOUND);
+        }
+
+        task.status = newStatus;
+        await manager.getRepository(Task).save(task);
+      }
+
+      // Reorder tasks in source column (if provided)
+      if (updateDto.sourceTaskIds && updateDto.sourceTaskIds.length > 0) {
+        await Promise.all(
+          updateDto.sourceTaskIds.map((id, index) =>
+            manager.getRepository(Task).update({ id }, { position: index }),
+          ),
+        );
+      }
+
+      // Reorder tasks in target column (if provided)
+      if (updateDto.targetTaskIds && updateDto.targetTaskIds.length > 0) {
+        await Promise.all(
+          updateDto.targetTaskIds.map((id, index) =>
+            manager.getRepository(Task).update({ id }, { position: index }),
+          ),
+        );
+      }
+
+      // Return updated task with relations
+      const updatedTask = await manager.getRepository(Task).findOne({
+        where: { id: taskId },
+        relations: ['status', 'project', 'assignees'],
+      });
+
+      return {
+        success: true,
+        message: 'Task status and order updated successfully',
+        data: {
+          id: updatedTask.id,
+          title: updatedTask.title,
+          description: updatedTask.description,
+          priority: updatedTask.priority,
+          dueDate: updatedTask.due_date,
+          status: {
+            id: updatedTask.status.id,
+            title: updatedTask.status.title,
+            color: updatedTask.status.color,
+          },
+        },
+      };
+    });
+  }
+
+  // async updateTaskStatus2(
+  //   taskId: number,
+  //   updateDto: UpdateTaskStatusDto,
+  //   user: any,
+  // ) {
+  //   try {
+  //     const userFound = await this.userRepository.findOne({
+  //       where: { id: user.userId },
+  //     });
+
+  //     if (!userFound) {
+  //       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+  //     }
+
+  //     // Find the task with its current status
+  //     const task = await this.taskRepository.findOne({
+  //       where: { id: taskId },
+  //       relations: ['status', 'project', 'project.user'],
+  //     });
+
+  //     if (!task) {
+  //       throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+  //     }
+
+  //     // Verify user has access to this task's project
+  //     if (task.project.user.id !== userFound.id) {
+  //       throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+  //     }
+
+  //     // Find the new status
+  //     const newStatus = await this.statusRepository.findOne({
+  //       where: { id: updateDto.statusId },
+  //     });
+
+  //     if (!newStatus) {
+  //       throw new HttpException('Status not found', HttpStatus.NOT_FOUND);
+  //     }
+
+  //     // Update the task's status
+  //     await this.taskRepository.update({ id: taskId }, { status: newStatus });
+
+  //     // Update the order of tasks using ONLY the position field
+  //     if (updateDto.taskIds && updateDto.taskIds.length > 0) {
+  //       await this.updateTaskOrder(updateDto.taskIds);
+  //     }
+
+  //     // Get the updated task
+  //     const updatedTask = await this.taskRepository.findOne({
+  //       where: { id: taskId },
+  //       relations: ['status', 'project', 'assignee'],
+  //     });
+
+  //     return {
+  //       success: true,
+  //       message: 'Task status updated successfully',
+  //       data: {
+  //         id: updatedTask.id,
+  //         title: updatedTask.title,
+  //         description: updatedTask.description,
+  //         priority: updatedTask.priority,
+  //         dueDate: updatedTask.due_date,
+  //         status: {
+  //           id: updatedTask.status.id,
+  //           title: updatedTask.status.title,
+  //           color: updatedTask.status.color,
+  //         },
+  //       },
+  //     };
+  //   } catch (error) {
+  //     console.error('Error updating task status:', error);
+
+  //     if (error instanceof HttpException) {
+  //       throw error;
+  //     }
+
+  //     throw new HttpException(
+  //       'Failed to update task status',
+  //       HttpStatus.INTERNAL_SERVER_ERROR,
+  //     );
+  //   }
+  // }
+
+  // Update task order using ONLY position field on tasks
+  private async updateTaskOrder(taskIds: number[]) {
+    try {
+      // Update the position field for each task in the order received
+      const updatePromises = taskIds.map((taskId, index) =>
+        this.taskRepository.update({ id: taskId }, { position: index }),
+      );
+
+      await Promise.all(updatePromises);
+    } catch (error) {
+      console.error('Error updating task order:', error);
+    }
   }
 
   async updateTaskPriority(id: number, priorityStatus: any): Promise<any> {

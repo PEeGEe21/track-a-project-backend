@@ -5,12 +5,17 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { CreateTaskDto } from '../dtos/create-task.dto';
 import { TasksService } from '../services/tasks.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('tasks')
 export class TasksController {
   constructor(private taskService: TasksService) {}
@@ -38,6 +43,15 @@ export class TasksController {
     @Body() priorityStatus: any,
   ) {
     return this.taskService.updateTaskPriority(id, priorityStatus);
+  }
+
+  @Patch(':id/status')
+  updateTaskStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: any,
+    @Req() req: any,
+  ) {
+    return this.taskService.updateTaskStatus(id, payload, req.user);
   }
 
   @Post(':id')

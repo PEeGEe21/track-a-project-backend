@@ -33,6 +33,9 @@ export class Task {
   })
   priority: number;
 
+  @Column({ default: 0 })
+  position: number;
+
   @ManyToMany(() => Tag)
   @JoinTable()
   tags?: Tag[];

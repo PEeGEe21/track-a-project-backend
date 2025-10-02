@@ -46,12 +46,18 @@ export class StatusService {
     return { tasks, columns };
   }
 
-  async findStatuses(user: any): Promise<any> {
+  async findStatuses(projectId: number, user: any): Promise<any> {
     const userFound = await this.userRepository.findOne({
       where: { id: user.userId },
     });
     if (!userFound)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+    });
+    if (!project)
+      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
     const statuses = await this.statusRepository.find({
       where: {
@@ -69,14 +75,14 @@ export class StatusService {
       description: status.description,
       // other status properties
       // taskhhs: status.tasks,
-      taskIds: status.tasks.map((task) => task.id),
+      // taskIds: status.tasks.map((task) => task.id),
       // tasks: status.tasks.filter((task) => task.project?.id === project.id),
-      // taskIds: status.tasks
-      //   .filter((task) => task.project?.id === project.id)
-      //   .map((task) => task.id),
+      taskIds: status.tasks
+        .filter((task) => task.project?.id === project.id)
+        .map((task) => task.id),
     }));
 
-    console.log(statusData, 'statusData')
+    console.log(statusData, 'statusData');
 
     const res = {
       success: 'success',
