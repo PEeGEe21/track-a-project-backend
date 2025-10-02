@@ -1,16 +1,13 @@
+// src/typeorm/entities/Status.ts
 import {
   Column,
   Entity,
   ManyToOne,
   PrimaryGeneratedColumn,
-  ManyToMany,
-  JoinTable,
-  JoinColumn,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { User } from './User';
-import { Project } from './Project';
-import { Tag } from './Tag';
 import { Task } from './Task';
 
 @Entity({ name: 'status' })
@@ -21,8 +18,17 @@ export class Status {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ nullable: true })
+  color: string;
+
+  @Column({ nullable: true })
   description: string;
+
+  @Column({ name: 'tab_id', default: 0 })
+  tabId: number;
+
+  @Column({ default: true })
+  isActive: boolean;
 
   @OneToMany(() => Task, (task) => task.status)
   tasks: Task[];
@@ -31,9 +37,6 @@ export class Status {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column()
-  createdAt: Date = new Date();
-
-  // @Column()
-  // depth: string;
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 }

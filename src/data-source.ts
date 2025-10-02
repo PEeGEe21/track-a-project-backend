@@ -10,6 +10,8 @@ import { ProjectPeer } from './typeorm/entities/ProjectPeer';
 import { Status } from './typeorm/entities/Status';
 import { UserPeer } from './typeorm/entities/UserPeer';
 import { Category } from './typeorm/entities/Category';
+import { Note } from './typeorm/entities/Note';
+import { ProjectComment } from './typeorm/entities/ProjectComment';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -31,5 +33,7 @@ export const AppDataSource = new DataSource({
     Status,
     UserPeer,
     Category,
+    Note,
+    ProjectComment,
   ],
 });

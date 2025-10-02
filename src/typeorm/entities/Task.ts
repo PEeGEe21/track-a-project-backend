@@ -56,7 +56,7 @@ export class Task {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @OneToMany(() => Note, (note) => note.user, { cascade: true })
+  @OneToMany(() => Note, (note) => note.task, { cascade: true })
   notes: Note[];
 
   @CreateDateColumn()
@@ -64,4 +64,12 @@ export class Task {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @ManyToMany(() => User)
+  @JoinTable({
+    name: 'task_assignees',
+    joinColumn: { name: 'task_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
+  })
+  assignees?: User[];
 }

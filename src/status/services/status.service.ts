@@ -46,7 +46,48 @@ export class StatusService {
     return { tasks, columns };
   }
 
-  async findStatuses(userId: string, projectId: number): Promise<any> {
+  async findStatuses(user: any): Promise<any> {
+    const userFound = await this.userRepository.findOne({
+      where: { id: user.userId },
+    });
+    if (!userFound)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+    const statuses = await this.statusRepository.find({
+      where: {
+        user: { id: userFound.id },
+      },
+      relations: ['tasks', 'tasks.project', 'tasks.status'],
+    });
+
+    console.log(statuses, 'statusesstatuses');
+
+    const statusData = statuses.map((status) => ({
+      id: status.id,
+      title: status.title,
+      color: status.color,
+      description: status.description,
+      // other status properties
+      // taskhhs: status.tasks,
+      taskIds: status.tasks.map((task) => task.id),
+      // tasks: status.tasks.filter((task) => task.project?.id === project.id),
+      // taskIds: status.tasks
+      //   .filter((task) => task.project?.id === project.id)
+      //   .map((task) => task.id),
+    }));
+
+    console.log(statusData, 'statusData')
+
+    const res = {
+      success: 'success',
+      message: 'successful',
+      data: statusData,
+    };
+
+    return res;
+  }
+
+  async findStatuses2(userId: string, projectId: number): Promise<any> {
     const user = await this.userRepository.findOneById(userId);
     if (!user)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -160,7 +201,6 @@ export class StatusService {
             existingTasks.map(async (task) => {
               // if (task.type === 0) {
               // await this.taskRepository.delete(task);
-
               // }
             }),
           );

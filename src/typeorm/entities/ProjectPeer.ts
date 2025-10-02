@@ -9,8 +9,8 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
-import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
+import { ProjectPeerStatus } from '../../utils/constants/projectPeerEnums';
 
 @Entity({ name: 'project_peers' })
 export class ProjectPeer {

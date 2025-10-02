@@ -383,7 +383,7 @@ export class AuthService {
 
     const user = await this.usersService.getUserAccountByEmail(host);
 
-    const project = await this.projectsService.getProjectById(project_id);
+    const project = await this.projectsService.getProjectById(project_id, user);
 
     if (peerSignupDto.password) {
       const saltOrRounds = 10;

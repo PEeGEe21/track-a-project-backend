@@ -7,17 +7,20 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { CreateStatusDto } from '../dtos/create-status.dto';
 import { StatusService } from '../services/status.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('status')
 export class StatusController {
   constructor(private statusService: StatusService) {}
-  @Get(':userId/:projectId/status')
-  getTasks(@Param('userId', ParseIntPipe) userId: string,
-  @Param('projectId', ParseIntPipe) projectId: number) {
-    return this.statusService.findStatuses(userId, projectId);
+  @Get('/')
+  getStatus(@Req() req: any) {
+    return this.statusService.findStatuses(req?.user);
   }
 
   @Get(':id')
@@ -34,13 +37,9 @@ export class StatusController {
   }
 
   @Post(':id')
-  deleteStatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() type: number) {
+  deleteStatus(@Param('id', ParseIntPipe) id: number, @Body() type: number) {
     return this.statusService.deleteStatus(id, type);
   }
-
-
 
   @Post(':id/new-status')
   createProjectTask(

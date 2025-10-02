@@ -20,7 +20,7 @@ export class Note {
 
   @ManyToOne(() => Task, (task) => task.notes)
   @JoinColumn({ name: 'task_id' })
-  task?: Task;
+  task: Task;
   
   @ManyToOne(() => User, (user) => user.notes)
   @JoinColumn({ name: 'user_id' })

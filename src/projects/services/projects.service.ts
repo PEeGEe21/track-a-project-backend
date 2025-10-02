@@ -79,21 +79,19 @@ export class ProjectsService {
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
-  async getProjectById(id: number): Promise<any | undefined> {
+  async getProjectById(id: number, user: any): Promise<any | undefined> {
     try {
-      const project = await this.projectRepository.findOneBy({ id });
+      const project = await this.projectRepository.findOne({
+        where: { id },
+        relations: ['tasks', 'tasks.tags', 'tasks.status'],
+      });
+
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-      const project_tasks = await this.taskRepository.find({
-        where: { project: project },
-      });
-
-      project.tasks = project_tasks;
-
       let data = {
         project,
-        tasks: project_tasks,
+        tasks: project.tasks,
         success: 'success',
       };
       return data;
@@ -464,15 +462,15 @@ export class ProjectsService {
   //   }
   // }
 
-  async getProjectTasks(id: number): Promise<any> {
-    // console.log(id);
+  async getProjectTasks(id: number, user: any): Promise<any> {
+    console.log(id);
     const project = await this.projectRepository.findOneBy({ id });
     if (!project)
       throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
     const tasks = await this.taskRepository.find({
       where: {
-        project: project,
+        project: { id: project.id },
       },
       relations: ['tags', 'project', 'status'],
     });

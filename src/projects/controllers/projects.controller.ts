@@ -60,6 +60,11 @@ export class ProjectsController {
     return this.projectService.getProjectsPeer(req.user, projectId, query);
   }
 
+  @Get(':id')
+  getProject(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.projectService.getProjectById(id, req.user);
+  }
+
   @Get('/:projectId/comments')
   getProjectComments(
     @Param('projectId', ParseIntPipe) projectId: number,
@@ -135,11 +140,6 @@ export class ProjectsController {
     return this.projectService.findProjects();
   }
 
-  @Get(':id')
-  getProject(@Param('id', ParseIntPipe) id: number) {
-    return this.projectService.getProjectById(id);
-  }
-
   @Put(':id')
   updateProjectById(
     @Param('id', ParseIntPipe) id: number,
@@ -157,8 +157,11 @@ export class ProjectsController {
   // }
 
   @Get(':projectId/tasks')
-  getProjectTasks(@Param('projectId', ParseIntPipe) projectId: number) {
-    return this.projectService.getProjectTasks(projectId);
+  getProjectTasks(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req: any,
+  ) {
+    return this.projectService.getProjectTasks(projectId, req.user);
   }
 
   @Get(':id/projects')
