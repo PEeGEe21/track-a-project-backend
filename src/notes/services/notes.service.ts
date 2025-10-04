@@ -52,7 +52,7 @@ export class NotesService {
         ]);
 
       // 3. Join tasks (fully)
-      queryBuilder.leftJoinAndSelect('note.tasks', 'tasks');
+      queryBuilder.leftJoinAndSelect('note.task', 'task');
 
       // 4. Apply group conditions cleanly
       queryBuilder.where('owner.id = :userId', { userId: userFound.id });
