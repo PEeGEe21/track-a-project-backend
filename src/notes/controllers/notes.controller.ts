@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
   Query,
+  Patch,
 } from '@nestjs/common';
 import { NotesService } from '../services/notes.service';
 import { UpdateNoteDto } from '../dto/update-note.dto';
@@ -50,13 +51,21 @@ export class NotesController {
     return this.notesService.updateNote(id, updateTaskDto);
   }
 
+  @Patch(':id/position')
+  updateNotePositionById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('position') position: { x: number; y: number },
+  ) {
+    return this.notesService.updateNotePosition(id, position);
+  }
+
   @Delete(':id')
   deleteNote(@Param('id', ParseIntPipe) id: number) {
     return this.notesService.deleteNote(id);
   }
 
   @Post('/')
-  createProjectTask(@Body() payload: any, @Req() req: any) {
+  createNote(@Body() payload: any, @Req() req: any) {
     return this.notesService.createNote(payload, req.user);
   }
 }

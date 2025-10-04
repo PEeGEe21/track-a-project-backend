@@ -99,32 +99,48 @@ export class NotesService {
     }
   }
 
-  async updateNote(id: number, updateTaskDetails: UpdateNoteDto) {
+  async updateNote(id: number, updateNoteDto: UpdateNoteDto) {
     try {
       const note = await this.noteRepository.findOneBy({ id });
-      if (!note)
+      if (!note) {
         throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
-
-      console.log(note, updateTaskDetails, 'task');
-      const data = {
-        note: updateTaskDetails.note,
-      };
-
-      if (updateTaskDetails.taskId) {
-        const taskCheck = await this.taskRepository.findOneBy({
-          id: updateTaskDetails.taskId,
-        });
-        if (!taskCheck)
-          throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
-        data['task'] = { id: updateTaskDetails.taskId };
       }
 
-      const updatedResult = await this.noteRepository.update(
-        { id },
-        { ...data },
-      );
+      const {
+        note: noteText,
+        color,
+        is_pinned,
+        position,
+        taskId,
+      } = updateNoteDto;
 
-      console.log(updatedResult, 'rererr');
+      const data: any = {
+        note: noteText ?? note.note,
+        color: color ?? note.color,
+        is_pinned: typeof is_pinned === 'boolean' ? is_pinned : note.is_pinned,
+      };
+
+      // ✅ Handle position (expects JSON object)
+      if (
+        position &&
+        typeof position === 'object' &&
+        'x' in position &&
+        'y' in position
+      ) {
+        data.position = position;
+      }
+
+      // ✅ Handle task relationship
+      if (taskId) {
+        const taskCheck = await this.taskRepository.findOneBy({ id: taskId });
+        if (!taskCheck) {
+          throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
+        }
+        data.task = { id: taskId };
+      }
+
+      // ✅ Update note
+      const updatedResult = await this.noteRepository.update({ id }, data);
 
       if (updatedResult.affected < 1) {
         return {
@@ -133,17 +149,71 @@ export class NotesService {
         };
       }
 
+      // ✅ Fetch updated note with relations
       const updatedNote = await this.noteRepository.findOne({
         where: { id },
-        relations: ['status', 'project'],
+        relations: ['task', 'user'],
       });
 
       return {
         success: 'success',
-        message: 'Task updated successfully',
+        message: 'Note updated successfully',
         data: updatedNote,
       };
-    } catch (error) {}
+    } catch (error) {
+      console.error('Error updating Note:', error);
+      throw new HttpException(
+        'Error updating Note',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async updateNotePosition(id: number, position: { x: number; y: number }) {
+    try {
+      // ✅ Validate that note exists
+      const note = await this.noteRepository.findOneBy({ id });
+      if (!note) {
+        throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // ✅ Validate position structure
+      if (
+        !position ||
+        typeof position !== 'object' ||
+        typeof position.x !== 'number' ||
+        typeof position.y !== 'number'
+      ) {
+        throw new HttpException(
+          'Invalid position format',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // ✅ Update only position
+      const updateResult = await this.noteRepository.update(id, { position });
+
+      if (updateResult.affected < 1) {
+        throw new HttpException(
+          'Failed to update position',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const updatedNote = await this.noteRepository.findOneBy({ id });
+
+      return {
+        success: 'success',
+        message: 'Note position updated successfully',
+        data: updatedNote,
+      };
+    } catch (error) {
+      console.error('Error updating note position:', error);
+      throw new HttpException(
+        'Error updating note position',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async findNote(id: number): Promise<any> {
@@ -196,33 +266,31 @@ export class NotesService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const { note, taskId } = payload.payload;
+      const { note, color, is_pinned = false, position, taskId } = payload;
 
+      // Check task validity if provided
+      let task = null;
       if (taskId) {
-        const task = await this.taskRepository.findOne({
-          where: { id: taskId },
-        });
-        if (!task)
+        task = await this.taskRepository.findOne({ where: { id: taskId } });
+        if (!task) {
           return {
             error: 'error',
             message: 'Task not found',
           };
+        }
       }
-      // throw new HttpException(
-      //   'Project not found. Cannot create Task',
-      //   HttpStatus.BAD_REQUEST,
-      // );
 
-      var newPayload = {
+      // Build new note payload
+      const newNote = this.noteRepository.create({
         note,
-      };
+        color: color || '#FFD700', // default color if not provided
+        is_pinned,
+        position: position || { x: 0, y: 0 },
+        user: userFound,
+        ...(task && { task }), // attach task only if valid
+      });
 
-      if (taskId) {
-        newPayload['task'] = taskId;
-      }
-      const newNote = this.noteRepository.create(newPayload);
-
-      // return
+      // Save note
       const savedNote = await this.noteRepository.save(newNote);
 
       return {

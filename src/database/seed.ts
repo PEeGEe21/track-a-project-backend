@@ -5,10 +5,11 @@ import { DataSource } from 'typeorm';
 import { AppDataSource } from '../data-source';
 // import { seedTasks } from './seeds/task.seed';
 // import { seedStatus } from './seeds/status.seed';
-import { seedProjects } from './seeds/project.seed';
+// import { seedProjects } from './seeds/project.seed';
 // import { seedUserPeers } from './seeds/userpeers.seed';
 // import { seedProjectPeers } from './seeds/projectpeers.seed';
 // import { seedUserNames } from './seeds/seedUserNames';
+import { seedNotes } from './seeds/note.seed';
 
 
 const runSeed = async () => {
@@ -19,7 +20,8 @@ const runSeed = async () => {
     // Run seeders
     // await seedCategories(AppDataSource);
     // await seedTags(AppDataSource);
-    await seedProjects(AppDataSource);
+    // await seedProjects(AppDataSource);
+    await seedNotes(AppDataSource);
     // await seedUserPeers(AppDataSource);
     // await seedProjectPeers(AppDataSource);
     // await seedUserNames(AppDataSource);
