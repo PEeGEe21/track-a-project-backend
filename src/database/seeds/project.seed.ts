@@ -39,6 +39,111 @@ const projectSeedData = [
     category: 'Health',
     color: '#22D3EE',
     icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
+  },
+  {
+    title: 'HealthPal',
+    description: 'An all-in-one health and fitness dashboard.',
+    category: 'Health',
+    color: '#22D3EE',
+    icon: '🏋️',
   }
 ];
 
@@ -54,7 +159,9 @@ export const seedProjects = async (dataSource: DataSource) => {
   await projectRepository.delete({});
 
   for (const data of projectSeedData) {
-    const randomUserId = Math.floor(Math.random() * 3) + 1;
+    // const randomUserId = Math.floor(Math.random() * 3) + 1;
+    const randomUserId = 3;
+
 
     // Random 1–2 categories
     const randomCategories = allCategories
