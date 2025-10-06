@@ -37,6 +37,7 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectsGateway } from '../projects.gateway';
 import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { Status } from 'src/typeorm/entities/Status';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -75,6 +76,8 @@ export class ProjectsService {
     private projectPeerInviteRepository: Repository<ProjectPeerInvite>,
     @InjectRepository(ProjectComment)
     private projectCommentRepository: Repository<ProjectComment>,
+    @InjectRepository(Status)
+    private statusRepository: Repository<Status>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -146,6 +149,15 @@ export class ProjectsService {
       // 3. Join tasks, tags, categories (fully)
       queryBuilder
         .leftJoinAndSelect('project.tasks', 'tasks')
+        .leftJoinAndSelect('tasks.status', 'status') // ✅ Reference the 'tasks' alias
+        .leftJoin('tasks.assignees', 'assignees')
+        .addSelect([
+          'assignees.id',
+          'assignees.first_name',
+          'assignees.last_name',
+          'assignees.email',
+          'assignees.avatar',
+        ])
         .leftJoinAndSelect('project.tags', 'tags')
         .leftJoinAndSelect('project.categories', 'categories');
 
@@ -1727,6 +1739,189 @@ export class ProjectsService {
         error: 'error',
         message: 'An error occurred while sending project invites',
       };
+    }
+  }
+
+  async projectOverviewData(projectId: number, user: any) {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Get project with peers using QueryBuilder
+      const project = await this.projectRepository
+        .createQueryBuilder('project')
+        .leftJoinAndSelect('project.projectPeers', 'projectPeers')
+        .leftJoinAndSelect('projectPeers.user', 'user')
+        .select([
+          'project.id',
+          'project.title',
+          'project.description',
+          'projectPeers.id',
+          'user.id',
+          'user.first_name',
+          'user.last_name',
+          'user.avatar',
+          'user.email',
+        ])
+        .where('project.id = :projectId', { projectId })
+        .getOne();
+
+      if (!project) {
+        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Get statuses using QueryBuilder
+      const statuses = await this.statusRepository
+        .createQueryBuilder('status')
+        .select(['status.id', 'status.title', 'status.color'])
+        .where('status.user.id = :userId', { userId: userFound.id })
+        .getMany();
+
+      // Get tasks with counts grouped by status (optimized single query)
+      const taskCounts = await this.taskRepository
+        .createQueryBuilder('task')
+        .select('task.status.id', 'statusId')
+        .addSelect('COUNT(task.id)', 'count')
+        .where('task.project.id = :projectId', { projectId })
+        .groupBy('task.status.id')
+        .getRawMany();
+
+      // Get tasks with assignees
+      const tasks = await this.taskRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignees') // Changed from leftJoin to leftJoinAndSelect
+        .select([
+          'task.id',
+          'task.title',
+          'task.description',
+          'task.due_date', // This will now work
+          'task.priority', // This will now work
+          'status.id',
+          'status.title',
+          'status.color',
+          'assignees.id',
+          'assignees.first_name',
+          'assignees.last_name',
+          'assignees.avatar',
+          'assignees.email',
+        ])
+        .where('task.project.id = :projectId', { projectId })
+        .getMany();
+
+      const statusCounts: Record<number, number> = {};
+      statuses.forEach((status) => {
+        statusCounts[status.id] = 0;
+      });
+
+      taskCounts.forEach((row) => {
+        if (row.statusId && statusCounts.hasOwnProperty(row.statusId)) {
+          statusCounts[row.statusId] = parseInt(row.count);
+        }
+      });
+
+      const statusArray = statuses.map(
+        (status) => statusCounts[status.id] || 0,
+      );
+
+      return {
+        projectPeers: project.projectPeers.map((peer) => ({
+          id: peer.user.id,
+          first_name: peer.user.first_name,
+          last_name: peer.user.last_name,
+          avatar: peer.user.avatar,
+          email: peer.user.email,
+        })),
+        tasks: tasks,
+        totalTasks: tasks.length,
+        statusBreakdown: statusArray,
+        statuses: statuses.map((s) => ({
+          id: s.id,
+          title: s.title,
+          color: s.color,
+        })),
+      };
+    } catch (err) {
+      console.error('Error in ProjectOverviewData:', err);
+      throw new HttpException(
+        'Failed to get project overview',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async projectOverviewData2(projectId: number, user: any) {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const project = await this.projectRepository.findOne({
+        where: { id: projectId },
+        relations: ['projectPeers', 'projectPeers.user'],
+      });
+      if (!project) {
+        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const statuses = await this.statusRepository.find({
+        where: { user: { id: userFound.id } },
+      });
+
+      const tasks = await this.taskRepository.find({
+        where: { project: { id: project.id } },
+        relations: ['status', 'assignees'],
+      });
+
+      const statusCounts: Record<string, number> = {};
+      statuses.forEach((status) => {
+        statusCounts[status.id] = 0;
+      });
+
+      tasks.forEach((task) => {
+        const statusId = task.status?.id;
+        if (statusId && statusCounts.hasOwnProperty(statusId)) {
+          statusCounts[statusId]++;
+        }
+      });
+
+      const statusArray = statuses.map((status) => statusCounts[status.id]);
+
+      return {
+        projectPeers: project.projectPeers.map((peer) => ({
+          id: peer.user.id,
+          first_name: peer.user.first_name,
+          last_name: peer.user.last_name,
+          avatar: peer.user.avatar,
+          email: peer.user.email,
+        })),
+        tasks: tasks.map((task) => ({
+          ...task,
+          assignees: task.assignees?.map((a) => ({
+            id: a.id,
+            first_name: a.first_name,
+            last_name: a.last_name,
+            avatar: a.avatar,
+            email: a.email,
+          })),
+        })),
+        totalTasks: tasks.length,
+        statusBreakdown: statusArray,
+        statuses: statuses.map((s) => ({
+          id: s.id,
+          title: s.title,
+          color: s.color,
+        })),
+      };
+    } catch (err) {
+      console.error('Error in ProjectOverviewData:', err);
+      throw new HttpException(
+        'Failed to get project overview',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }

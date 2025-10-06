@@ -24,6 +24,7 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectsGateway } from './projects.gateway';
+import { Status } from 'src/typeorm/entities/Status';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ProjectsGateway } from './projects.gateway';
       UserPeerInvite,
       Notification,
       UserNotificationPreference,
+      Status,
     ]),
     forwardRef(() => UsersModule),
     // UsersModule,

@@ -46,6 +46,11 @@ export class ProjectsController {
     return this.projectService.createProject(req.user, CreateProjectDto);
   }
 
+  @Get(':id/overview')
+  getProjectOverview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.projectService.projectOverviewData(id, req.user);
+  }
+
   @Post('/delete/:id')
   deleteProject(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.projectService.deleteProject(req.user, id);
