@@ -38,7 +38,7 @@ export class ProjectComment {
   @Column({ nullable: true })
   fileUrl: string; // attachment URL (image/file)
 
-  @Column('json', { nullable: true } )
+  @Column('json', { nullable: true })
   reactions: { userId: number; emoji: string }[];
 
   @Column('simple-array', { nullable: true })
@@ -46,6 +46,9 @@ export class ProjectComment {
 
   @Column('simple-array', { nullable: true })
   mentions: string[];
+
+  @Column({ default: false })
+  is_me: boolean;
 
   @CreateDateColumn()
   created_at: Date;

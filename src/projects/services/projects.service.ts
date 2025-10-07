@@ -813,6 +813,7 @@ export class ProjectsService {
         authorId: userFound.id,
         content,
         mentions: taggedUserIds,
+        is_me: true,
       });
       await this.projectCommentRepository.save(message);
 
@@ -971,7 +972,10 @@ export class ProjectsService {
 
       return {
         success: true,
-        comments: comments,
+        comments: comments.map((comment) => ({
+          ...comment,
+          is_me: comment.authorId == userFound.id,
+        })),
       };
     } catch (err) {}
   }
