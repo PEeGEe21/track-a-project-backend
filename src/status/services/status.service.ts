@@ -63,7 +63,7 @@ export class StatusService {
       where: {
         user: { id: userFound.id },
       },
-      relations: ['tasks', 'tasks.project', 'tasks.status'],
+      relations: ['tasks', 'tasks.project', 'tasks.status', 'tasks.assignees'],
     });
 
     console.log(statuses, 'statusesstatuses');
@@ -107,7 +107,7 @@ export class StatusService {
       where: {
         user: user,
       },
-      relations: ['tasks', 'tasks.project', 'tasks.status'],
+      relations: ['tasks', 'tasks.project', 'tasks.status', 'tasks.assignees'],
     });
 
     // const statuses = await this.statusRepository.createQueryBuilder('status')
@@ -181,7 +181,7 @@ export class StatusService {
     }
   }
 
-  async deleteStatus(id: number, type: number): Promise<any> {
+  async deleteStatus(id: number, payload: any, user): Promise<any> {
     try {
       const existingStatus = await this.statusRepository.findOne({
         where: { id: id },
@@ -198,9 +198,9 @@ export class StatusService {
         where: { status: existingStatus },
       });
 
-      console.log(existingTasks, type, existingStatus);
+      console.log(existingTasks, payload.type, existingStatus);
       // return
-      if (type === 0) {
+      if (payload.type === 0) {
         await this.statusRepository.delete(id);
         if (existingTasks.length > 0) {
           await Promise.all(
@@ -242,19 +242,21 @@ export class StatusService {
   }
 
   async createStatus(
-    id: number,
+    user: any,
     CreateStatusDetails: CreateStatusParams,
   ): Promise<any> {
     try {
-      const user = await this.userRepository.findOneBy({ id });
-      if (!user)
+      const foundUser = await this.userRepository.findOneBy({
+        id: user.userId,
+      });
+      if (!foundUser)
         throw new HttpException(
           'User not found. Cannot create Project',
           HttpStatus.BAD_REQUEST,
         );
 
       const existingStatus = await this.statusRepository.findOne({
-        where: { title: CreateStatusDetails.title, user: user },
+        where: { title: CreateStatusDetails.title, user: foundUser },
       });
       if (existingStatus) {
         const res = {
@@ -264,21 +266,19 @@ export class StatusService {
 
         return res;
       }
-      // const project = await this.projectRepository.findOneBy({ id });
-      // if (!project)
-      //   throw new HttpException(
-      //     'Project not found. Cannot create Task',
-      //     HttpStatus.BAD_REQUEST,
-      //   );
-      const newStatus = this.statusRepository.create({
+
+      const payload = {
         ...CreateStatusDetails,
-        user,
-      });
+        color: '#008080',
+        user: foundUser,
+      };
+
+      const newStatus = this.statusRepository.create(payload);
 
       const savedStatus = await this.statusRepository.save(newStatus);
 
       return {
-        success: 'success',
+        success: true,
         message: 'Status created successfully',
         data: {
           id: savedStatus.id,

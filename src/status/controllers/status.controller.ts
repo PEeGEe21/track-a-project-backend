@@ -39,16 +39,17 @@ export class StatusController {
     return this.statusService.updateStatus(id, updateStatusDto);
   }
 
-  @Post(':id')
-  deleteStatus(@Param('id', ParseIntPipe) id: number, @Body() type: number) {
-    return this.statusService.deleteStatus(id, type);
+  @Delete(':id')
+  deleteStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() payload: any,
+    @Req() req: any,
+  ) {
+    return this.statusService.deleteStatus(id, payload, req.user);
   }
 
-  @Post(':id/new-status')
-  createProjectTask(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() CreateStatusDto: CreateStatusDto,
-  ) {
-    return this.statusService.createStatus(id, CreateStatusDto);
+  @Post('/')
+  createProjectTask(@Body() CreateStatusDto: CreateStatusDto, @Req() req: any) {
+    return this.statusService.createStatus(req, CreateStatusDto);
   }
 }

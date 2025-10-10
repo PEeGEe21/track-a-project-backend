@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
@@ -16,11 +21,15 @@ import { Status } from 'src/typeorm/entities/Status';
 import { Project } from 'src/typeorm/entities/Project';
 import { UpdateTaskStatusDto } from '../dtos/update-task-status.dto';
 import { DataSource } from 'typeorm';
+import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
 
 @Injectable()
 export class TasksService {
   constructor(
     private dataSource: DataSource,
+    private notificationService: NotificationsService,
+
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
@@ -38,7 +47,7 @@ export class TasksService {
 
   async findTasks() {
     const tasks = await this.taskRepository.find({
-      relations: ['project', 'tags', 'status'],
+      relations: ['project', 'tags', 'status', 'assignees'],
     });
     const res = {
       success: 'success',
@@ -49,18 +58,40 @@ export class TasksService {
     return res;
   }
 
-  async updateTask(id: number, updateTaskDetails: CreateTaskParams) {
+  async updateTask(id: number, updateTaskDetails: any, user) {
     try {
+      const userFound = await this.userRepository.findOneBy({
+        id: user.userId,
+      });
+      if (!userFound)
+        throw new HttpException(
+          'User not found. Cannot create Task',
+          HttpStatus.BAD_REQUEST,
+        );
+
       const task = await this.taskRepository.findOneBy({ id });
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
       console.log(task, updateTaskDetails, 'task');
-      const data = {
+      const data: CreateTaskParams = {
         description: updateTaskDetails.description,
         title: updateTaskDetails.title,
-        status: updateTaskDetails.status,
+        priority: updateTaskDetails.priority,
+        due_date: updateTaskDetails.due_date,
       };
+
+      let statusEntity: Status | null = null;
+      if (updateTaskDetails.status) {
+        statusEntity = await this.statusRepository.findOne({
+          where: { id: Number(updateTaskDetails.status) },
+        });
+        if (!statusEntity) {
+          throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
+        }
+
+        data.status = statusEntity;
+      }
 
       const updatedResult = await this.taskRepository.update(
         { id },
@@ -81,6 +112,52 @@ export class TasksService {
         relations: ['status', 'project'],
       });
 
+      // Assignee updates: clear if empty ("", null, [], or "[]"), otherwise attach
+      if (
+        Object.prototype.hasOwnProperty.call(updateTaskDetails, 'assignees')
+      ) {
+        const raw = updateTaskDetails.assignees;
+
+        const clearAssignees = async () => {
+          updatedTask.assignees = [];
+          await this.taskRepository.save(updatedTask);
+        };
+
+        if (raw === null || raw === undefined) {
+          await clearAssignees();
+        } else if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          if (trimmed === '') {
+            await clearAssignees();
+          } else {
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (Array.isArray(parsed) && parsed.length === 0) {
+                await clearAssignees();
+              } else {
+                await this.addAssigneeToTask(userFound, raw, updatedTask);
+              }
+            } catch {
+              // Not JSON, treat as non-empty string list
+              await this.addAssigneeToTask(userFound, raw, updatedTask);
+            }
+          }
+        } else if (Array.isArray(raw)) {
+          if (raw.length === 0) {
+            await clearAssignees();
+          } else {
+            await this.addAssigneeToTask(
+              userFound,
+              JSON.stringify(raw),
+              updatedTask,
+            );
+          }
+        } else {
+          // Unknown type -> clear to be safe
+          await clearAssignees();
+        }
+      }
+
       return {
         success: 'success',
         message: 'Task updated successfully',
@@ -93,7 +170,9 @@ export class TasksService {
           status: updatedTask.status,
         },
       };
-    } catch (error) {}
+    } catch (error) {
+      console.log(error);
+    }
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
   }
@@ -287,15 +366,15 @@ export class TasksService {
       // if(priorityStatus){
 
       // }
-      // console.log(
-      //   priorityStatus === true,
-      //   priorityStatus,
-      //   priorityStatus.priority,
-      // );
+      console.log(
+        priorityStatus === true,
+        priorityStatus,
+        priorityStatus.priority,
+      );
       // console.log(priorityStatus, priorityStatus === true ? 1 : 0, 'priorty');
       const updatedResult = await this.taskRepository.update(
         { id },
-        { priority: priorityStatus.priority ? 1 : 0 },
+        { priority: priorityStatus.priority ? 0 : 1 },
       );
 
       // console.log(updatedResult);
@@ -331,19 +410,25 @@ export class TasksService {
     }
   }
 
-  async deleteTask(id: number): Promise<any> {
+  async deleteTask(id: number, user: any): Promise<any> {
     try {
+      const userFound = await this.userRepository.findOneBy({
+        id: user.userId,
+      });
+      if (!userFound)
+        throw new HttpException(
+          'User not found. Cannot create Task',
+          HttpStatus.BAD_REQUEST,
+        );
+
       const task = await this.taskRepository.findOne({
         where: { id: id },
       });
 
       if (!task) {
-        console.log(task, 'woejowe');
-        // throw new HttpException('Status doesnt exist', HttpStatus.INTERNAL_SERVER_ERROR);
         return { error: 'error', message: 'Task not found' }; // Or throw a NotFoundException
       }
-
-      const deletedTask = await this.taskRepository.delete(id);
+      await this.taskRepository.delete(id);
 
       return { success: 'success', message: 'Task deleted successfully' };
     } catch (err) {
@@ -388,36 +473,19 @@ export class TasksService {
     return data;
   }
 
-  async createTask(id: number, payload: any): Promise<any> {
+  async createTask(id: number, payload: any, user: any): Promise<any> {
     try {
-      // const user = await this.userRepository.findOneBy({ id });
-      // if (!user)
-      //   throw new HttpException(
-      //     'User not found. Cannot create Project',
-      //     HttpStatus.BAD_REQUEST,
-      //   );
+      const userFound = await this.userRepository.findOneBy({
+        id: user.userId,
+      });
+      if (!userFound)
+        throw new HttpException(
+          'User not found. Cannot create Task',
+          HttpStatus.BAD_REQUEST,
+        );
 
-      // if(){
-
-      // }
-
-      // const { ...otherTaskDetails } = CreateTaskDetails; // Destructure
-
-      const { title, description, status } = payload.payload; // Destructure
-
-      // console.log(payload, title, description, status)
-
-      // return
-      // const statusFound = await this.statusRepository.findOneBy({status: CreateTaskDetails.status});
-      // const statusFound = await this.statusRepository.findOne({
-      //   where: { status: CreateTaskDetails.status }
-      // });
-      // if (!statusFound)
-      //   throw new HttpException(
-      //     'Project not found. Cannot create Task',
-      //     HttpStatus.BAD_REQUEST,
-      //   );
-      // const { payload } = CreateTaskDetails;
+      const { title, description, status, priority, due_date, assignees } =
+        payload; // Destructure
 
       const project = await this.projectRepository.findOneBy({ id });
       if (!project)
@@ -425,23 +493,48 @@ export class TasksService {
           error: 'error',
           message: 'Project not found',
         };
-      // throw new HttpException(
-      //   'Project not found. Cannot create Task',
-      //   HttpStatus.BAD_REQUEST,
-      // );
 
-      // console.log(project, 'project')
-      const newTask = this.taskRepository.create({
+      console.log(
         title,
         description,
         status,
+        priority,
+        due_date,
+        assignees,
+        'title, description, status, priority, due_date, assignees',
+      );
+
+      // return;
+
+      // Find status entity if provided as id
+      let statusEntity: Status | null = null;
+      if (status) {
+        statusEntity = await this.statusRepository.findOne({
+          where: { id: Number(status) },
+        });
+        if (!statusEntity) {
+          throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
+        }
+      }
+
+      const newTask = this.taskRepository.create({
+        title,
+        description,
+        status: statusEntity ?? undefined,
         project,
+        priority,
+        due_date,
       });
 
       // console.log(newTask, 'project')
 
       // return
       const savedTask = await this.taskRepository.save(newTask);
+
+      // Attach assignees by emails if provided
+      if (assignees && typeof assignees === 'string' && assignees.length > 0) {
+        await this.addAssigneeToTask(userFound, assignees, newTask);
+      }
 
       // console.log(savedTask, 'savedtask')
       return {
@@ -452,6 +545,7 @@ export class TasksService {
           title: savedTask.title,
           description: savedTask.description,
           priority: savedTask.priority,
+          due_date: savedTask.due_date,
         },
       };
     } catch (err) {
@@ -459,6 +553,52 @@ export class TasksService {
       throw new HttpException(
         'Error saving task',
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async addAssigneeToTask(user: any, emails: string, task: Task): Promise<any> {
+    try {
+      const emailList: string[] = Array.isArray(emails)
+        ? (emails as unknown as string[])
+        : JSON.parse(emails);
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const validEmails = emailList
+        .map((e) => String(e).trim().toLowerCase())
+        .filter((e) => emailRegex.test(e));
+
+      if (validEmails.length === 0) return;
+
+      // Load users by emails
+      const foundUsers = await this.userRepository.find({
+        where: validEmails.map((email) => ({ email })),
+      });
+
+      // Attach found users as assignees (avoid duplicates)
+      const existingAssignees = task.assignees ?? [];
+      const existingIds = new Set(existingAssignees.map((u) => u.id));
+      const toAdd = foundUsers.filter((u) => !existingIds.has(u.id));
+      task.assignees = [...existingAssignees, ...toAdd];
+
+      await this.taskRepository.save(task);
+
+      for (const add of toAdd) {
+        await this.notificationService.createNotification(user, {
+          recipient: add,
+          sender: user,
+          title: 'Task Assignment',
+          message: `${user?.fullName} assigned the task ${task?.title} to you.`,
+          type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
+        });
+      }
+      return {
+        success: true,
+      };
+    } catch (err) {
+      throw new HttpException(
+        'Invalid assignees payload',
+        HttpStatus.BAD_REQUEST,
       );
     }
   }

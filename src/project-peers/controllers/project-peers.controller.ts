@@ -29,13 +29,13 @@ export class ProjectPeersController {
     return this.projectPeerService.getTaskById(id);
   }
 
-  @Put(':id')
-  async updateTaskById(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() updateTaskDto: CreateTaskDto,
-  ) {
-    await this.projectPeerService.updateTask(id, updateTaskDto);
-  }
+  // @Put(':id')
+  // async updateTaskById(
+  //   @Param('id', ParseIntPipe) id: number,
+  //   @Body() updateTaskDto: CreateTaskDto,
+  // ) {
+  //   await this.projectPeerService.updateTask(id, updateTaskDto);
+  // }
 
   @Delete(':id')
   async deleteTask(@Param('id', ParseIntPipe) id: number) {
@@ -47,11 +47,11 @@ export class ProjectPeersController {
     return this.projectPeerService.getProjectTasks(id);
   }
 
-  @Post(':id/task')
-  createProjectTask(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() CreateTaskDto: CreateTaskDto,
-  ) {
-    return this.projectPeerService.createTask(id, CreateTaskDto);
-  }
+  // @Post(':id/task')
+  // createProjectTask(
+  //   @Param('id', ParseIntPipe) id: number,
+  //   @Body() CreateTaskDto: CreateTaskDto,
+  // ) {
+  //   return this.projectPeerService.createTask(id, CreateTaskDto);
+  // }
 }

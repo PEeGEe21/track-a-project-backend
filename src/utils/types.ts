@@ -24,7 +24,7 @@ export type CreateUserProfileParams = {
   state?: string;
   address?: string;
   profile_created: number;
-  user: User
+  user: User;
 };
 
 export type CreateProjectParams = {
@@ -36,12 +36,12 @@ export type CreateProjectParams = {
 export type CreateTaskParams = {
   title: string;
   description: string;
-  priority?: Number;
-  dueDate?: Date;
-  createdAt?: Date;
+  priority?: number;
+  due_date?: Date;
   project?: Project;
   status?: Status;
   tags?: Tag[];
+  assignees?: User[];
 };
 
 export type CreateStatusParams = {

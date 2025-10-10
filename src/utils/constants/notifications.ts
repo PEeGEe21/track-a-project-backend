@@ -5,6 +5,7 @@ export const NOTIFICATION_TYPES = {
   PEER_REQUEST: 'peer_request',
   COMMENT: 'comment',
   PROJECT_COMMENT: 'project_comment',
+  TASK_ASSIGNMENT: 'task_assignment',
 };
 
 export const NOTIFICATION_DEFAULT_PREFERENCES = {

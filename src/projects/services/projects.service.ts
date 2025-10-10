@@ -86,7 +86,7 @@ export class ProjectsService {
     try {
       const project = await this.projectRepository.findOne({
         where: { id },
-        relations: ['tasks', 'tasks.tags', 'tasks.status'],
+        relations: ['tasks', 'tasks.tags', 'tasks.status', 'tasks.assignees'],
       });
 
       if (!project)
@@ -484,7 +484,7 @@ export class ProjectsService {
       where: {
         project: { id: project.id },
       },
-      relations: ['tags', 'project', 'status'],
+      relations: ['tags', 'project', 'status', 'assignees'],
     });
 
     let resp = {
