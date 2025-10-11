@@ -16,6 +16,7 @@ import { Tag } from './Tag';
 import { Status } from './Status';
 import { Category } from './Category';
 import { Note } from './Note';
+import { Resource } from './resource';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -75,4 +76,7 @@ export class Task {
     inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
   })
   assignees?: User[];
+
+  @OneToMany(() => Resource, (resource) => resource.project)
+  resources: Resource[];
 }

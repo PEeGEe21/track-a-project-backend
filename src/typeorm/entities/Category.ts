@@ -7,10 +7,12 @@ import {
   JoinTable,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
 import { Task } from './Task';
+import { Document } from './document';
 
 @Entity({ name: 'categories' })
 export class Category {
@@ -34,4 +36,7 @@ export class Category {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @OneToMany(() => Document, (document) => document.category)
+  documents: Document[];
 }

@@ -66,7 +66,6 @@ export class StatusService {
       relations: ['tasks', 'tasks.project', 'tasks.status', 'tasks.assignees'],
     });
 
-    console.log(statuses, 'statusesstatuses');
 
     const statusData = statuses.map((status) => ({
       id: status.id,
@@ -81,8 +80,6 @@ export class StatusService {
         .filter((task) => task.project?.id === project.id)
         .map((task) => task.id),
     }));
-
-    console.log(statusData, 'statusData');
 
     const res = {
       success: 'success',

@@ -34,6 +34,10 @@ import { ProjectPeerInvite } from './typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from './typeorm/entities/ProjectComment';
 import { NotesModule } from './notes/notes.module';
 import { Note } from './typeorm/entities/Note';
+import { ResourcesModule } from './resources/resources.module';
+import { DocumentsModule } from './documents/documents.module';
+import { Document } from './typeorm/entities/document';
+import { Resource } from './typeorm/entities/resource';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -70,6 +74,8 @@ import { Note } from './typeorm/entities/Note';
         UserNotificationPreference,
         ProjectComment,
         Note,
+        Document,
+        Resource,
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -98,6 +104,8 @@ import { Note } from './typeorm/entities/Note';
       UserNotificationPreference,
       ProjectComment,
       Note,
+      Document,
+      Resource,
     ]),
     UsersModule,
     ProjectsModule,
@@ -110,6 +118,8 @@ import { Note } from './typeorm/entities/Note';
     CategoriesModule,
     NotificationsModule,
     NotesModule,
+    DocumentsModule,
+    ResourcesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],

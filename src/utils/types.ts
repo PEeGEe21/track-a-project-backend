@@ -63,3 +63,15 @@ export type MailTemplateParams = {
   inviterName?: string;
   project?: Project;
 };
+
+
+export enum ResourceType {
+  LINK = 'link',
+  FILE = 'file',
+  TOOL = 'tool',
+  DOCUMENT = 'document',
+  IMAGE = 'image',
+  VIDEO = 'video',
+  AUDIO = 'audio',
+  OTHER = 'other',
+}

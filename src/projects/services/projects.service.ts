@@ -159,7 +159,8 @@ export class ProjectsService {
           'assignees.avatar',
         ])
         .leftJoinAndSelect('project.tags', 'tags')
-        .leftJoinAndSelect('project.categories', 'categories');
+        .leftJoinAndSelect('project.categories', 'categories')
+        .leftJoinAndSelect('project.resources', 'resources');
 
       // 4. Join project peers + peer users (exclude sensitive peer fields)
       queryBuilder

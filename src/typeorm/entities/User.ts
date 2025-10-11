@@ -16,6 +16,8 @@ import { Status } from './Status';
 import { Task } from './Task';
 import { ProjectComment } from './ProjectComment';
 import { Note } from './Note';
+import { Resource } from './resource';
+import { Document } from './document';
 
 @Entity({ name: 'users' })
 export class User {
@@ -85,6 +87,12 @@ export class User {
 
   @OneToMany(() => ProjectComment, (comment) => comment.author)
   projectComments: ProjectComment[];
+
+  @OneToMany(() => Document, (document) => document.project)
+  documents: Document[];
+
+  @OneToMany(() => Resource, (resource) => resource.project)
+  resources: Resource[];
 
   get fullName(): string {
     return `${this.first_name ?? ''} ${this.last_name ?? ''}`.trim();

@@ -16,6 +16,8 @@ import { ProjectPeer } from './ProjectPeer';
 import { Tag } from './Tag';
 import { Category } from './Category';
 import { ProjectComment } from './ProjectComment';
+import { Resource } from './resource';
+import { Document } from './document';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -74,4 +76,10 @@ export class Project {
 
   @OneToMany(() => ProjectComment, (comment) => comment.project)
   comments: ProjectComment[];
+
+  @OneToMany(() => Document, (document) => document.project)
+  documents: Document[];
+
+  @OneToMany(() => Resource, (resource) => resource.project)
+  resources: Resource[];
 }
