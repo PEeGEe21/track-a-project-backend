@@ -21,6 +21,8 @@ import { SimplePreviewService } from '../../services/simple-preview.service';
 import { UsersService } from 'src/users/services/users.service';
 import { SupabaseStorageService } from 'src/supabase/supabase-storage.service';
 import { Response } from 'express';
+import { ActivityType } from 'src/utils/constants/activity';
+import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
 
 @Injectable()
 export class ResourcesService {
@@ -37,6 +39,7 @@ export class ResourcesService {
     private supabaseStorageService: SupabaseStorageService,
     private previewService: SimplePreviewService,
     private userService: UsersService,
+    private projectActivitiesService: ProjectActivitiesService,
   ) {}
 
   async create(
@@ -193,6 +196,18 @@ export class ResourcesService {
       });
 
       const savedResource = await this.resourceRepository.save(resource);
+
+      await this.projectActivitiesService.createActivity({
+        projectId: project.id,
+        userId: userFound.id,
+        activityType: ActivityType.RESOURCE_ADDED,
+        description: `${userFound.fullName} added a resource: ${
+          resourceData.title ?? ''
+        }`,
+        entityType: 'resource',
+        entityId: savedResource.id,
+        metadata: { resourceTitle: resourceData.title ?? '' },
+      });
 
       return {
         success: true,
@@ -431,6 +446,18 @@ export class ResourcesService {
         // Continue with database deletion even if file deletion fails
       }
     }
+
+    await this.projectActivitiesService.createActivity({
+      projectId: resource.project.id,
+      userId: userFound.id,
+      activityType: ActivityType.RESOURCE_DELETED,
+      description: `${userFound.fullName} deleted a resource: ${
+        resource.title ?? ''
+      }`,
+      entityType: 'resource',
+      entityId: resource.id,
+      metadata: { resourceTitle: resource.title ?? '' },
+    });
 
     await this.resourceRepository.remove(resource);
   }

@@ -38,6 +38,8 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Resource } from 'src/typeorm/entities/resource';
+import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 
 @Module({
   imports: [
@@ -50,6 +52,7 @@ import { Resource } from 'src/typeorm/entities/resource';
     UserPeersModule,
     CategoriesModule,
     NotificationsModule,
+    ProjectActivitiesModule,
     // JwtModule.register({
     //   secret: config.secret,
     //   signOptions: {
@@ -80,7 +83,8 @@ import { Resource } from 'src/typeorm/entities/resource';
       UserPeerInvite,
       Notification,
       UserNotificationPreference,
-      Resource
+      Resource,
+      ProjectActivity
     ]),
   ],
   controllers: [AuthController],

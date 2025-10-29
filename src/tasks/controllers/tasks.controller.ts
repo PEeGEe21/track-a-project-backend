@@ -42,8 +42,9 @@ export class TasksController {
   updateTaskPriority(
     @Param('id', ParseIntPipe) id: number,
     @Body() priorityStatus: any,
+    @Req() req: any,
   ) {
-    return this.taskService.updateTaskPriority(id, priorityStatus);
+    return this.taskService.updateTaskPriority(id, priorityStatus, req.user);
   }
 
   @Patch(':id/status')

@@ -61,11 +61,10 @@ export class StatusService {
 
     const statuses = await this.statusRepository.find({
       where: {
-        user: { id: userFound.id },
+        project: { id: project.id },
       },
       relations: ['tasks', 'tasks.project', 'tasks.status', 'tasks.assignees'],
     });
-
 
     const statusData = statuses.map((status) => ({
       id: status.id,

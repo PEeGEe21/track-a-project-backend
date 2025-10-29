@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Task } from './Task';
+import { Project } from './Project';
 
 @Entity({ name: 'status' })
 export class Status {
@@ -30,8 +31,14 @@ export class Status {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  isDefault: boolean;
+
   @OneToMany(() => Task, (task) => task.status)
   tasks: Task[];
+
+  @ManyToOne(() => Project, project => project.statuses)
+  project: Project;
 
   @ManyToOne(() => User, (user) => user.status)
   @JoinColumn({ name: 'user_id' })

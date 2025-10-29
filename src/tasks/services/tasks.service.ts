@@ -2,6 +2,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -23,12 +24,15 @@ import { UpdateTaskStatusDto } from '../dtos/update-task-status.dto';
 import { DataSource } from 'typeorm';
 import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { ActivityType } from 'src/utils/constants/activity';
+import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
 
 @Injectable()
 export class TasksService {
   constructor(
     private dataSource: DataSource,
     private notificationService: NotificationsService,
+    private projectActivitiesService: ProjectActivitiesService,
 
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
@@ -37,6 +41,19 @@ export class TasksService {
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(Status) private statusRepository: Repository<Status>,
   ) {}
+
+  async findOne(id: number): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id },
+      relations: ['project'],
+    });
+
+    if (!task) {
+      throw new NotFoundException(`Task with ID ${id} not found`);
+    }
+
+    return task;
+  }
 
   async getTaskById(id: number): Promise<Task | undefined> {
     const task = await this.taskRepository.findOneBy({ id });
@@ -69,7 +86,7 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
-      const task = await this.taskRepository.findOneBy({ id });
+      const task = await this.findOne(id);
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
@@ -158,6 +175,18 @@ export class TasksService {
         }
       }
 
+      await this.projectActivitiesService.createActivity({
+        projectId: updatedTask.project.id,
+        userId: userFound.id,
+        activityType: ActivityType.TASK_UPDATED,
+        description: `${userFound.fullName} updated a task: ${
+          updatedTask.title ?? ''
+        }`,
+        entityType: 'task',
+        entityId: updatedTask.id,
+        metadata: { taskTitle: updatedTask.title ?? '' },
+      });
+
       return {
         success: 'success',
         message: 'Task updated successfully',
@@ -198,9 +227,9 @@ export class TasksService {
       if (!task)
         throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
 
-      if (task.project.user.id !== userFound.id) {
-        throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
-      }
+      // if (task.project.user.id !== userFound.id) {
+      //   throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+      // }
 
       // If task is moving to a new status
       if (task.status.id !== updateDto.statusId) {
@@ -237,6 +266,18 @@ export class TasksService {
       const updatedTask = await manager.getRepository(Task).findOne({
         where: { id: taskId },
         relations: ['status', 'project', 'assignees'],
+      });
+
+      await this.projectActivitiesService.createActivity({
+        projectId: updatedTask.project.id,
+        userId: userFound.id,
+        activityType: ActivityType.STATUS_CHANGE,
+        description: `${userFound.fullName} changed task status: ${
+          updatedTask.title ?? ''
+        } to ${updatedTask.status.title}`,
+        entityType: 'task',
+        entityId: updatedTask.id,
+        metadata: { taskTitle: updatedTask.title ?? '' },
       });
 
       return {
@@ -354,9 +395,20 @@ export class TasksService {
     }
   }
 
-  async updateTaskPriority(id: number, priorityStatus: any): Promise<any> {
+  async updateTaskPriority(
+    id: number,
+    priorityStatus: any,
+    user: any,
+  ): Promise<any> {
     try {
-      // console.log('Updating task priority:', id, priorityStatus);
+      const userFound = await this.userRepository.findOneBy({
+        id: user.userId,
+      });
+      if (!userFound)
+        throw new HttpException(
+          'User not found. Cannot create Task',
+          HttpStatus.BAD_REQUEST,
+        );
 
       const task = this.taskRepository.findOneBy({ id });
       if (!task)
@@ -386,8 +438,20 @@ export class TasksService {
         };
       }
 
-      const updatedTask = await this.taskRepository.findOneBy({ id });
+      const updatedTask = await this.findOne(id);
       console.log(updatedTask, 'updatedTask');
+
+      await this.projectActivitiesService.createActivity({
+        projectId: updatedTask.project.id,
+        userId: userFound.id,
+        activityType: ActivityType.TASK_UPDATED,
+        description: `${userFound.fullName} updated a task  priority status: ${
+          updatedTask.title ?? ''
+        }`,
+        entityType: 'task',
+        entityId: updatedTask.id,
+        metadata: { taskTitle: updatedTask.title ?? '' },
+      });
 
       return {
         success: 'success',
@@ -421,14 +485,23 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
-      const task = await this.taskRepository.findOne({
-        where: { id: id },
-      });
-
+      const task = await this.findOne(id);
       if (!task) {
         return { error: 'error', message: 'Task not found' }; // Or throw a NotFoundException
       }
       await this.taskRepository.delete(id);
+
+      await this.projectActivitiesService.createActivity({
+        projectId: task.project.id,
+        userId: userFound.id,
+        activityType: ActivityType.TASK_DELETED,
+        description: `${userFound.fullName} deleted a task: ${
+          task.title ?? ''
+        }`,
+        entityType: 'task',
+        entityId: task.id,
+        metadata: { taskTitle: task.title ?? '' },
+      });
 
       return { success: 'success', message: 'Task deleted successfully' };
     } catch (err) {
@@ -528,13 +601,24 @@ export class TasksService {
 
       // console.log(newTask, 'project')
 
-      // return
       const savedTask = await this.taskRepository.save(newTask);
 
       // Attach assignees by emails if provided
       if (assignees && typeof assignees === 'string' && assignees.length > 0) {
         await this.addAssigneeToTask(userFound, assignees, newTask);
       }
+
+      await this.projectActivitiesService.createActivity({
+        projectId: project.id,
+        userId: userFound.id,
+        activityType: ActivityType.TASK_CREATED,
+        description: `${userFound.fullName} created a task: ${
+          savedTask.title ?? ''
+        }`,
+        entityType: 'task',
+        entityId: savedTask.id,
+        metadata: { taskTitle: savedTask.title ?? '' },
+      });
 
       // console.log(savedTask, 'savedtask')
       return {

@@ -39,6 +39,9 @@ import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { Status } from 'src/typeorm/entities/Status';
 import { Resource } from 'src/typeorm/entities/resource';
+import { ActivityType } from 'src/utils/constants/activity';
+import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -57,6 +60,7 @@ export class ProjectsService {
     private usersService: UsersService,
     private MailingService: MailingService,
     private notificationService: NotificationsService,
+    private projectActivitiesService: ProjectActivitiesService,
     private projectGateway: ProjectsGateway,
     // @Inject(forwardRef(() => ProjectsGateway)) private projectGateway: ProjectsGateway, // Use forwardRef here
     @InjectEntityManager() private entityManager: EntityManager,
@@ -81,6 +85,8 @@ export class ProjectsService {
     private statusRepository: Repository<Status>,
     @InjectRepository(Resource)
     private resourceRepository: Repository<Resource>,
+    @InjectRepository(ProjectActivity)
+    private projectActivityRepository: Repository<ProjectActivity>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -547,6 +553,23 @@ export class ProjectsService {
         // return;
       }
 
+      const coreStatuses = [
+        { title: 'To Do', color: '#94A3B8', tabId: 0, isDefault: true },
+        { title: 'In Progress', color: '#3B82F6', tabId: 1, isDefault: true },
+        { title: 'Review', color: '#8B5CF6', tabId: 2, isDefault: true },
+        { title: 'Done', color: '#10B981', tabId: 3, isDefault: true },
+      ];
+
+      const statuses = coreStatuses.map((s) =>
+        this.statusRepository.create({
+          ...s,
+          project: savedProject,
+          isActive: true,
+        }),
+      );
+
+      await this.statusRepository.save(statuses);
+
       return {
         success: 'success',
         message: 'Project created successfully',
@@ -822,7 +845,7 @@ export class ProjectsService {
         mentions: taggedUserIds,
         is_me: true,
       });
-      await this.projectCommentRepository.save(message);
+      const newSavedMessage = await this.projectCommentRepository.save(message);
 
       delete message?.author?.password;
       delete message?.author?.logged_in;
@@ -874,6 +897,19 @@ export class ProjectsService {
             comment: message,
           });
       }
+
+      await this.projectActivitiesService.createActivity({
+        projectId: project.id,
+        userId: userFound.id,
+        activityType: ActivityType.PROJECT_COMMENT,
+        description: `${userFound.fullName} sent a comment`,
+        entityType: 'comment',
+        entityId: Number(newSavedMessage.id),
+        metadata: {
+          projectCommentAuthor: newSavedMessage.author.id ?? '',
+          content: newSavedMessage.content ?? '',
+        },
+      });
 
       await this.sendNewCommentPeerNotification(userFound, project);
 
@@ -1223,6 +1259,8 @@ export class ProjectsService {
 
       if (response.success) {
         invite.status = 'accepted';
+        invite.accepted_at = new Date();
+        invite.accepted_by = foundUser;
         await this.projectPeerInviteRepository.save(invite);
 
         const createSuccess = await this.createProjectPeer(
@@ -1235,6 +1273,18 @@ export class ProjectsService {
         console.log(createSuccess, invite, response, 'invitee');
 
         if (createSuccess?.success) {
+          await this.projectActivitiesService.createActivity({
+            projectId: invite?.project.id,
+            userId: foundUser.id,
+            activityType: ActivityType.PEER_ADDED,
+            description: `${foundUser.fullName} peer added to project: ${
+              invite?.project.title ?? ''
+            }`,
+            entityType: 'project_invite',
+            entityId: invite?.project.id,
+            metadata: { projectTitle: invite?.project.title ?? '' },
+          });
+
           message = 'Invite has been Accepted';
           return {
             success: true,
@@ -1789,7 +1839,7 @@ export class ProjectsService {
       const statuses = await this.statusRepository
         .createQueryBuilder('status')
         .select(['status.id', 'status.title', 'status.color'])
-        .where('status.user.id = :userId', { userId: userFound.id })
+        .where('status.project.id = :projectId', { projectId: project.id })
         .getMany();
 
       // Get tasks with counts grouped by status (optimized single query)
@@ -1949,6 +1999,456 @@ export class ProjectsService {
    * @param user        – the authenticated caller (owner / admin)
    */
   async projectPeerAnalytics(
+    projectId: number,
+    peerUserId: number,
+    user: any,
+  ): Promise<any> {
+    try {
+      // -----------------------------------------------------------------
+      // 1. Verify caller & peer existence
+      // -----------------------------------------------------------------
+      const caller = await this.usersService.getUserAccountById(user.userId);
+      if (!caller)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      // First verify project exists and get owner info
+      const project = await this.projectRepository.findOne({
+        where: { id: projectId },
+        relations: ['user'],
+      });
+
+      if (!project) {
+        throw new HttpException('Project not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Check if user is owner
+      const isOwner = Number(project.user.id) === peerUserId;
+
+      // If not owner, verify they are a peer
+      if (!isOwner) {
+        const isPeer = await this.projectPeerRepository.exists({
+          where: {
+            project: { id: projectId },
+            user: { id: peerUserId },
+          },
+        });
+
+        if (!isPeer) {
+          throw new HttpException(
+            'User not found in project',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+      }
+      // -----------------------------------------------------------------
+      // 2. Helper dates (UTC)
+      // -----------------------------------------------------------------
+      const now = new Date();
+      const sevenDaysAgo = addDays(now, -7);
+      const thirtyDaysAgo = addDays(now, -30);
+      const sixtyDaysAgo = addDays(now, -60);
+
+      // -----------------------------------------------------------------
+      // 3. TASK METRICS (assigned to the peer)
+      // -----------------------------------------------------------------
+      const taskQb = this.taskRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignee')
+        .where('task.project_id = :projectId', { projectId })
+        .andWhere('assignee.id = :peerUserId', { peerUserId });
+
+      const tasks = await taskQb.getMany();
+
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'done',
+      ).length;
+      const todoTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'todo',
+      ).length;
+      const inProgressTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in progress',
+      ).length;
+      const inReviewTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in review',
+      ).length;
+
+      const overdueTasks = tasks.filter(
+        (t) =>
+          t.due_date &&
+          new Date(t.due_date) < now &&
+          t.status?.title?.toLowerCase() !== 'done',
+      ).length;
+      const onTimeTasks = tasks.filter(
+        (t) => t.due_date && new Date(t.due_date) >= now,
+      ).length;
+
+      const highPriorityTasks = tasks.filter((t) => t.priority === 2).length;
+      const mediumPriorityTasks = tasks.filter((t) => t.priority === 1).length;
+      const lowPriorityTasks = tasks.filter((t) => t.priority === 0).length;
+
+      // -----------------------------------------------------------------
+      // 4. COMMENT METRICS
+      // -----------------------------------------------------------------
+      const totalComments = await this.projectCommentRepository.count({
+        where: { projectId, authorId: peerUserId },
+      });
+
+      // Mentions of the peer in any comment
+      const mentions = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('FIND_IN_SET(:peerUserId, c.mentions)', { peerUserId })
+        .getCount();
+
+      // -----------------------------------------------------------------
+      // 5. ACTIVITY & STREAK (from project_activities table)
+      // -----------------------------------------------------------------
+
+      // Get all activities for the last 7 days with counts per day
+      const weeklyActivitiesRaw = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('DATE(pa.createdAt)', 'date') // Use camelCase field name
+        .addSelect('COUNT(*)', 'count')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .andWhere('pa.createdAt >= :sevenDaysAgo', { sevenDaysAgo }) // Compare datetime directly
+        .groupBy('DATE(pa.createdAt)')
+        .getRawMany();
+
+      console.log('Weekly activities raw:', weeklyActivitiesRaw); // Debug log
+
+      const weeklyActivityChart = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = addDays(now, -i);
+        const dateStr = moment(date).format('YYYY-MM-DD');
+        const dayName = moment(date).format('ddd');
+
+        const activity = weeklyActivitiesRaw.find((a) => {
+          // Handle different date formats that might be returned
+          const activityDate = moment(a.date).format('YYYY-MM-DD');
+          return activityDate === dateStr;
+        });
+
+        weeklyActivityChart.push({
+          day: dayName,
+          date: dateStr,
+          count: activity ? parseInt(activity.count) : 0,
+        });
+      }
+
+      // Calculate active streak (consecutive days with activity)
+      const allActivityDates = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('DISTINCT DATE(pa.created_at)', 'date')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .orderBy('DATE(pa.created_at)', 'DESC')
+        .getRawMany();
+
+      let activeStreak = 0;
+      let checkDate = moment().startOf('day');
+
+      for (const row of allActivityDates) {
+        const activityDate = moment(row.date).startOf('day');
+
+        if (activityDate.isSame(checkDate, 'day')) {
+          activeStreak++;
+          checkDate = checkDate.subtract(1, 'day');
+        } else if (activityDate.isBefore(checkDate)) {
+          break; // Streak broken
+        }
+      }
+
+      // Last active timestamp (from any activity)
+      const lastActivityRaw = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('MAX(pa.created_at)', 'last')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .getRawOne();
+
+      const lastActive = lastActivityRaw?.last
+        ? moment(lastActivityRaw.last).fromNow()
+        : 'Never';
+
+      // -----------------------------------------------------------------
+      // 6. TRENDS (last 30 days vs previous 30 days)
+      // -----------------------------------------------------------------
+
+      // Comments trend
+      const currentPeriodComments = await this.projectActivityRepository.count({
+        where: {
+          projectId,
+          userId: peerUserId,
+          activityType: ActivityType.PROJECT_COMMENT,
+          createdAt: Between(thirtyDaysAgo, now),
+        },
+      });
+
+      const previousPeriodComments = await this.projectActivityRepository.count(
+        {
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: ActivityType.PROJECT_COMMENT,
+            createdAt: Between(sixtyDaysAgo, thirtyDaysAgo),
+          },
+        },
+      );
+
+      const commentsTrend = this.calculateTrend(
+        currentPeriodComments,
+        previousPeriodComments,
+      );
+
+      // Tasks trend (created/completed)
+      const currentPeriodTaskActivities =
+        await this.projectActivityRepository.count({
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: In([
+              ActivityType.TASK_CREATED,
+              ActivityType.TASK_COMPLETED,
+            ]),
+            createdAt: Between(thirtyDaysAgo, now),
+          },
+        });
+
+      const previousPeriodTaskActivities =
+        await this.projectActivityRepository.count({
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: In([
+              ActivityType.TASK_CREATED,
+              ActivityType.TASK_COMPLETED,
+            ]),
+            createdAt: Between(sixtyDaysAgo, thirtyDaysAgo),
+          },
+        });
+
+      const tasksTrend = this.calculateTrend(
+        currentPeriodTaskActivities,
+        previousPeriodTaskActivities,
+      );
+
+      // -----------------------------------------------------------------
+      // 7. AVERAGE RESPONSE TIME (from comments with parent_id)
+      // -----------------------------------------------------------------
+      // Get comments made by the peer that have replies
+      const commentsWithReplies = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .leftJoin(
+          'project_comments',
+          'reply',
+          'reply.author.id = c.id AND reply.projectId = c.projectId',
+        )
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('c.authorId = :peerUserId', { peerUserId })
+        .andWhere('reply.id IS NOT NULL') // Has at least one reply
+        .select([
+          'c.created_at as commentTime',
+          'MIN(reply.created_at) as firstReplyTime',
+        ])
+        .groupBy('c.id')
+        .getRawMany();
+
+      let avgResponseTime = 'N/A';
+      if (commentsWithReplies.length > 0) {
+        const totalResponseTime = commentsWithReplies.reduce((sum, item) => {
+          const diff =
+            new Date(item.firstReplyTime).getTime() -
+            new Date(item.commentTime).getTime();
+          return sum + diff;
+        }, 0);
+
+        const avgMs = totalResponseTime / commentsWithReplies.length;
+        const avgHours = avgMs / (1000 * 60 * 60);
+
+        if (avgHours < 1) {
+          avgResponseTime = `${Math.round(avgHours * 60)} min`;
+        } else if (avgHours < 24) {
+          avgResponseTime = `${avgHours.toFixed(1)} hrs`;
+        } else {
+          avgResponseTime = `${(avgHours / 24).toFixed(1)} days`;
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // 8. COLLABORATION SCORE (enhanced)
+      // -----------------------------------------------------------------
+      const taskCompletionRate =
+        totalTasks > 0 ? completedTasks / totalTasks : 0;
+      const activityScore = Math.min(totalComments / 20, 1); // Cap at 20 comments
+      const engagementScore = Math.min(mentions / 10, 1); // Cap at 10 mentions
+      const reliabilityScore =
+        overdueTasks === 0 ? 1 : Math.max(0, 1 - overdueTasks / totalTasks);
+
+      const collaborationScore = Math.min(
+        100,
+        Math.round(
+          taskCompletionRate * 35 +
+            activityScore * 25 +
+            engagementScore * 20 +
+            reliabilityScore * 20,
+        ),
+      );
+
+      // -----------------------------------------------------------------
+      // 9. RECENT TASKS (last 5)
+      // -----------------------------------------------------------------
+      const recentTasks = tasks
+        .sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at))
+        .slice(0, 5)
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status?.title,
+          priority: t.priority,
+          due_date: t.due_date,
+        }));
+
+      // -----------------------------------------------------------------
+      // 10. RECENT ACTIVITIES (last 10 from project_activities)
+      // -----------------------------------------------------------------
+      const recentActivities = await this.projectActivityRepository.find({
+        where: { projectId, userId: peerUserId },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+
+      const formattedActivities = recentActivities.map((activity) => ({
+        type: activity.activityType,
+        description: activity.description,
+        entityType: activity.entityType,
+        entityId: activity.entityId,
+        created_at: activity.createdAt,
+        timeAgo: moment(activity.createdAt).fromNow(),
+      }));
+
+      // -----------------------------------------------------------------
+      // 11. ADDITIONAL METRICS
+      // -----------------------------------------------------------------
+      const isPeerAdmin = isOwner;
+
+      const resourcesAdded = await this.projectActivityRepository.count({
+        where: {
+          projectId,
+          userId: peerUserId,
+          activityType: ActivityType.RESOURCE_ADDED,
+        },
+      });
+
+      // Code reviews (if you implement this activity type)
+      const codeReviews = 0; // Implement based on your code review system
+
+      // Documents created (count from resources with document type)
+      const documentsCreated = await this.resourceRepository.count({
+        where: {
+          project: { id: projectId },
+          createdBy: { id: peerUserId },
+          // type: 'document', // Add this if you have type field
+        },
+      });
+
+      // Meetings attended (if you have meetings feature)
+      const meetingsAttended = 0; // Implement based on your meetings system
+
+      // -----------------------------------------------------------------
+      // 12. FINAL PAYLOAD
+      // -----------------------------------------------------------------
+      const data = {
+        // Task metrics
+        totalTasks,
+        completedTasks,
+        todoTasks,
+        inProgressTasks,
+        inReviewTasks,
+        overdueTasks,
+        onTimeTasks,
+        highPriorityTasks,
+        mediumPriorityTasks,
+        lowPriorityTasks,
+
+        // Activity metrics
+        totalComments,
+        mentions,
+        resourcesAdded,
+        documentsCreated,
+        codeReviews,
+        meetingsAttended,
+
+        // Engagement metrics
+        activeStreak,
+        lastActive,
+        avgResponseTime,
+        collaborationScore,
+
+        // Trends
+        tasksTrend,
+        commentsTrend,
+
+        // Charts & Lists
+        weeklyActivityChart, // Array of {day, date, count} for chart
+        recentTasks,
+        recentActivity: formattedActivities,
+
+        // Status
+        isOnline: false, // Implement with socket service
+        isPeerAdmin,
+
+        // Badges (implement later)
+        badges: this.calculateBadges({
+          completedTasks,
+          totalComments,
+          activeStreak,
+          collaborationScore,
+        }),
+      };
+
+      return {
+        success: true,
+        message: 'Analytics Processed',
+        data,
+      };
+    } catch (err) {
+      console.error('projectPeerAnalytics error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to fetch peer analytics',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Helper method for trend calculation
+  private calculateTrend(current: number, previous: number): number {
+    if (previous === 0) {
+      return current > 0 ? 100 : 0;
+    }
+    return Math.round(((current - previous) / previous) * 100);
+  }
+
+  // Helper method for badges (implement as you wish)
+  private calculateBadges(metrics: {
+    completedTasks: number;
+    totalComments: number;
+    activeStreak: number;
+    collaborationScore: number;
+  }): string[] {
+    const badges = [];
+
+    if (metrics.completedTasks >= 50) badges.push('Task Master');
+    if (metrics.totalComments >= 100) badges.push('Active Contributor');
+    if (metrics.activeStreak >= 7) badges.push('Consistent Performer');
+    if (metrics.activeStreak >= 30) badges.push('Dedication Award');
+    if (metrics.collaborationScore >= 90) badges.push('Team Player');
+
+    return badges;
+  }
+
+  async projectPeerAnalytics2(
     projectId: number,
     peerUserId: number,
     user: any,

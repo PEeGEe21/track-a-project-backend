@@ -15,6 +15,8 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UsersModule } from 'src/users/users.module';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 
 @Module({
   imports: [
@@ -27,10 +29,12 @@ import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificatio
       Status,
       Note,
       Notification,
-      UserNotificationPreference
+      UserNotificationPreference,
+      ProjectActivity
     ]),
     forwardRef(() => UsersModule),
     NotificationsModule,
+    ProjectActivitiesModule
   ],
   controllers: [TasksController],
   providers: [TasksService, NotificationsService, NotificationsGateway],

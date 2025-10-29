@@ -19,6 +19,7 @@ import { ProjectComment } from './ProjectComment';
 import { Resource } from './resource';
 import { Document } from './document';
 import { Whiteboard } from './Whiteboard';
+import { Status } from './Status';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -53,6 +54,10 @@ export class Project {
 
   @Column({ nullable: true }) // Added created_at column
   due_date: Date = new Date();
+
+  // project.entity.ts
+  @OneToMany(() => Status, (status) => status.project)
+  statuses: Status[];
 
   //   @ManyToOne(() => User, (user) => user.posts)
   //   post_user: User;

@@ -4,8 +4,6 @@ import { Post } from '../typeorm/entities/Post';
 import { Profile } from '../typeorm/entities/Profile';
 import { User } from '../typeorm/entities/User';
 import { Project } from 'src/typeorm/entities/Project';
-import { ProjectsController } from './controllers/projects.controller';
-import { ProjectsService } from './services/projects.service';
 import { Task } from 'src/typeorm/entities/Task';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { UsersModule } from 'src/users/users.module';
@@ -23,12 +21,12 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
-import { ProjectsGateway } from './projects.gateway';
 import { Status } from 'src/typeorm/entities/Status';
 import { Resource } from 'src/typeorm/entities/resource';
 import { AuthModule } from 'src/auth/auth.module';
+import { ProjectActivitiesService } from './services/project-activities.service';
+import { ProjectActivitiesController } from './controllers/project-activities.controller';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
-import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 
 @Module({
   imports: [
@@ -56,19 +54,10 @@ import { ProjectActivitiesModule } from 'src/project-activities/project-activiti
     MailingModule,
     ConfigModule,
     CategoriesModule,
-    ProjectActivitiesModule,
-    // forwardRef(() => CategoriesModule),
     NotificationsModule,
   ],
-  controllers: [ProjectsController],
-  providers: [
-    ProjectsService,
-    ProjectsGateway,
-    MailingService,
-    ConfigService,
-    NotificationsService,
-    NotificationsGateway,
-  ],
-  exports: [ProjectsService, ProjectsGateway],
+  controllers: [ProjectActivitiesController],
+  providers: [ProjectActivitiesService],
+  exports: [ProjectActivitiesService],
 })
-export class ProjectsModule {}
+export class ProjectActivitiesModule {}

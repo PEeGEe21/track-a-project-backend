@@ -28,12 +28,15 @@ import { Note } from 'src/typeorm/entities/Note';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { SupabaseStorageService } from 'src/supabase/supabase-storage.service';
 import { ConfigModule } from '@nestjs/config';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 
 @Module({
   imports: [
     forwardRef(() => NotificationsModule),
     JwtModule,
     MailingModule,
+    ProjectActivitiesModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     ConfigModule,
@@ -54,6 +57,7 @@ import { ConfigModule } from '@nestjs/config';
       UserNotificationPreference,
       Note,
       Resource,
+      ProjectActivity
     ]),
   ],
   controllers: [ResourcesController],

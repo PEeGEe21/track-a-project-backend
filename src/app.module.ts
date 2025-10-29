@@ -40,6 +40,8 @@ import { Document } from './typeorm/entities/document';
 import { Resource } from './typeorm/entities/resource';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
+import { ProjectActivitiesModule } from './project-activities/project-activities.module';
+import { ProjectActivity } from './typeorm/entities/ProjectActivity';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -79,6 +81,7 @@ import { Whiteboard } from './typeorm/entities/Whiteboard';
         Document,
         Resource,
         Whiteboard,
+        ProjectActivity
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -125,6 +128,7 @@ import { Whiteboard } from './typeorm/entities/Whiteboard';
     DocumentsModule,
     ResourcesModule,
     WhiteboardsModule,
+    ProjectActivitiesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],
