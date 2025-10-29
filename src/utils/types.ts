@@ -64,7 +64,6 @@ export type MailTemplateParams = {
   project?: Project;
 };
 
-
 export enum ResourceType {
   LINK = 'link',
   FILE = 'file',
@@ -74,4 +73,12 @@ export enum ResourceType {
   VIDEO = 'video',
   AUDIO = 'audio',
   OTHER = 'other',
+}
+
+export interface WhiteboardState {
+  title?: string;
+  whiteboardId?: string;
+  elements: any[];
+  appState: any;
+  files: any;
 }

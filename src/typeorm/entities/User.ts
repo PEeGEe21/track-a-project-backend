@@ -18,6 +18,7 @@ import { ProjectComment } from './ProjectComment';
 import { Note } from './Note';
 import { Resource } from './resource';
 import { Document } from './document';
+import { Whiteboard } from './Whiteboard';
 
 @Entity({ name: 'users' })
 export class User {
@@ -84,6 +85,9 @@ export class User {
 
   @OneToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
   projectPeers: ProjectPeer[];
+
+  @OneToMany(() => Whiteboard, (whiteboard) => whiteboard.user)
+  whiteboards: Whiteboard[];
 
   @OneToMany(() => ProjectComment, (comment) => comment.author)
   projectComments: ProjectComment[];

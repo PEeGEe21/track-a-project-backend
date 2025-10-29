@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
-import { Brackets, EntityManager, In, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, Repository, Between } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
@@ -38,6 +38,7 @@ import { ProjectsGateway } from '../projects.gateway';
 import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { Status } from 'src/typeorm/entities/Status';
+import { Resource } from 'src/typeorm/entities/resource';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -78,6 +79,8 @@ export class ProjectsService {
     private projectCommentRepository: Repository<ProjectComment>,
     @InjectRepository(Status)
     private statusRepository: Repository<Status>,
+    @InjectRepository(Resource)
+    private resourceRepository: Repository<Resource>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -143,6 +146,7 @@ export class ProjectsService {
         'owner.last_name',
         'owner.email',
         'owner.avatar',
+        'owner.username',
         // add any other owner fields you DO want
       ]);
 
@@ -172,6 +176,7 @@ export class ProjectsService {
           'peerUsers.last_name',
           'peerUsers.email',
           'peerUsers.avatar',
+          'peerUsers.username',
           // add other peer fields you DO want
         ]);
 
@@ -676,6 +681,7 @@ export class ProjectsService {
             },
           });
 
+          console.log(existingProjectPeer, 'existingProjectPeer');
           // If no existing project peer relationship, create project peer invite
           if (!existingProjectPeer) {
             // Create project peer invite
@@ -1072,8 +1078,10 @@ export class ProjectsService {
     search?: string,
     status?: string,
     type: string = 'to_me',
+    orderBy: any = 'DESC',
   ): Promise<any> {
     try {
+      console.log('here');
       const foundUser = await this.usersService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -1109,8 +1117,8 @@ export class ProjectsService {
           break;
       }
 
-      queryBuilder.orderBy('project_peer_invites.created_at', 'DESC'); // <-- new line
-      queryBuilder.addOrderBy('project_peer_invites.id', 'DESC'); // fallback order
+      queryBuilder.orderBy('project_peer_invites.created_at', orderBy); // <-- new line
+      queryBuilder.addOrderBy('project_peer_invites.id', orderBy); // fallback order
 
       if (search) {
         const lowered = `%${search.toLowerCase()}%`;
@@ -1925,6 +1933,269 @@ export class ProjectsService {
       console.error('Error in ProjectOverviewData:', err);
       throw new HttpException(
         'Failed to get project overview',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * --------------------------------------------------------------
+   *  Project Peer Analytics
+   * --------------------------------------------------------------
+   * Returns a rich analytics payload for a specific peer inside a project.
+   *
+   * @param projectId   – the project we are analysing
+   * @param peerUserId  – the user whose contribution we want to measure
+   * @param user        – the authenticated caller (owner / admin)
+   */
+  async projectPeerAnalytics(
+    projectId: number,
+    peerUserId: number,
+    user: any,
+  ): Promise<any> {
+    try {
+      console.log(projectId, peerUserId);
+      // -----------------------------------------------------------------
+      // 1. Verify caller & peer existence
+      // -----------------------------------------------------------------
+      const caller = await this.usersService.getUserAccountById(user.userId);
+      if (!caller)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      const peerRelation = await this.projectPeerRepository.findOne({
+        where: { project: { id: projectId } },
+        relations: ['project', 'user'],
+      });
+      if (!peerRelation)
+        throw new HttpException(
+          'Peer not found in project',
+          HttpStatus.NOT_FOUND,
+        );
+
+      // -----------------------------------------------------------------
+      // 2. Helper dates (UTC)
+      // -----------------------------------------------------------------
+      const now = new Date();
+      const sevenDaysAgo = addDays(now, -7);
+      const thirtyDaysAgo = addDays(now, -30);
+
+      // -----------------------------------------------------------------
+      // 3. TASK METRICS (assigned to the peer)
+      // -----------------------------------------------------------------
+      const taskQb = this.taskRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignee')
+        .where('task.project_id = :projectId', { projectId })
+        .andWhere('assignee.id = :peerUserId', { peerUserId });
+
+      const tasks = await taskQb.getMany();
+
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'done',
+      ).length;
+      const todoTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'todo',
+      ).length;
+      const inProgressTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in progress',
+      ).length;
+      const inReviewTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in review',
+      ).length;
+
+      const overdueTasks = tasks.filter(
+        (t) => t.due_date && new Date(t.due_date) < now,
+      ).length;
+      const onTimeTasks = tasks.filter(
+        (t) => t.due_date && new Date(t.due_date) >= now,
+      ).length;
+
+      const highPriorityTasks = tasks.filter((t) => t.priority === 2).length;
+      const mediumPriorityTasks = tasks.filter((t) => t.priority === 1).length;
+      const lowPriorityTasks = tasks.filter((t) => t.priority === 0).length;
+      // const highPriorityTasks = tasks.filter(
+      //   (t) => t.priority?.toLowerCase() === 'high',
+      // ).length;
+      // const mediumPriorityTasks = tasks.filter(
+      //   (t) => t.priority?.toLowerCase() === 'medium',
+      // ).length;
+      // const lowPriorityTasks = tasks.filter(
+      //   (t) => t.priority?.toLowerCase() === 'low',
+      // ).length;
+
+      // -----------------------------------------------------------------
+      // 4. COMMENT METRICS
+      // -----------------------------------------------------------------
+      const totalComments = await this.projectCommentRepository.count({
+        where: { projectId, authorId: peerUserId },
+      });
+
+      // Mentions of the peer in any comment
+      const mentions = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('FIND_IN_SET(:peerUserId, c.mentions)', { peerUserId })
+        .getCount();
+
+      // -----------------------------------------------------------------
+      // 5. ACTIVITY & STREAK
+      // -----------------------------------------------------------------
+      const recentComments = await this.projectCommentRepository.find({
+        where: { projectId, authorId: peerUserId },
+        order: { created_at: 'DESC' },
+        take: 5,
+      });
+
+      // Build a 7-day activity array (Mon-Sun, 0 = no activity)
+      const weeklyActivity = Array(7).fill(0);
+      const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      recentComments.forEach((c) => {
+        const d = new Date(c.created_at);
+        if (d >= sevenDaysAgo) {
+          const idx = dayMap.indexOf(moment(d).format('ddd'));
+          if (idx > -1) weeklyActivity[idx]++;
+        }
+      });
+
+      // Last active timestamp
+      const lastActiveRaw = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .select('MAX(c.created_at)', 'last')
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('c.authorId = :peerUserId', { peerUserId })
+        .getRawOne();
+      const lastActive = lastActiveRaw?.last
+        ? moment(lastActiveRaw.last).fromNow()
+        : 'Never';
+
+      // -----------------------------------------------------------------
+      // 6. TREND (last 30 days vs previous 30 days)
+      // -----------------------------------------------------------------
+      const currentPeriodComments = await this.projectCommentRepository.count({
+        where: {
+          projectId,
+          authorId: peerUserId,
+          created_at: Between(thirtyDaysAgo, now),
+        },
+      });
+      const previousPeriodStart = addDays(thirtyDaysAgo, -30);
+      const previousPeriodEnd = thirtyDaysAgo;
+      const previousPeriodComments = await this.projectCommentRepository.count({
+        where: {
+          projectId,
+          authorId: peerUserId,
+          created_at: Between(previousPeriodStart, previousPeriodEnd),
+        },
+      });
+      const commentsTrend =
+        previousPeriodComments === 0
+          ? currentPeriodComments > 0
+            ? 100
+            : 0
+          : Math.round(
+              ((currentPeriodComments - previousPeriodComments) /
+                previousPeriodComments) *
+                100,
+            );
+
+      // -----------------------------------------------------------------
+      // 7. COLLABORATION SCORE (simple heuristic)
+      // -----------------------------------------------------------------
+      const collaborationScore = Math.min(
+        100,
+        Math.round(
+          (completedTasks / (totalTasks || 1)) * 40 +
+            (totalComments / 10) * 30 +
+            (mentions / 5) * 20 +
+            (overdueTasks === 0 ? 10 : 0),
+        ),
+      );
+
+      // -----------------------------------------------------------------
+      // 8. RECENT TASKS (last 5)
+      // -----------------------------------------------------------------
+      const recentTasks = tasks
+        .sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at))
+        .slice(0, 5)
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status?.title,
+          due_date: t.due_date,
+        }));
+
+      // -----------------------------------------------------------------
+      // 9. ONLINE STATUS (you can hook this to your socket service)
+      // -----------------------------------------------------------------
+      // const isOnline = this.projectGateway.isUserOnline(peerUserId);
+
+      // -----------------------------------------------------------------
+      // 10. ADMIN FLAG
+      // -----------------------------------------------------------------
+      // const isPeerAdmin = false; // owner added the peer → admin
+      const isPeerAdmin = peerRelation.project.user?.id === peerUserId; // owner added the peer → admin
+
+      // ------------------------------------------------------
+      // 11. Resources By User
+      // ------------------------------------------------------
+
+      const noOfResources = await this.resourceRepository.count({
+        where: {
+          project: { id: projectId },
+          createdBy: { id: peerUserId },
+        },
+      });
+
+      // -----------------------------------------------------------------
+      // 11. FINAL PAYLOAD
+      // -----------------------------------------------------------------
+      const data = {
+        totalTasks,
+        completedTasks,
+        totalComments,
+        resourcesAdded: noOfResources,
+        todoTasks,
+        inProgressTasks,
+        inReviewTasks,
+        overdueTasks,
+        highPriorityTasks,
+        mediumPriorityTasks,
+        lowPriorityTasks,
+        onTimeTasks,
+        avgResponseTime: 'N/A', // compute from comment reply deltas if needed
+        activeStreak: 0, // compute from consecutive days with activity
+        lastActive,
+        tasksTrend: 0, // similar trend logic for tasks
+        commentsTrend,
+        weeklyActivity,
+        recentTasks,
+        recentActivity: recentComments.map((c) => ({
+          type: 'comment',
+          content:
+            c.content.slice(0, 80) + (c.content.length > 80 ? '...' : ''),
+          created_at: c.created_at,
+        })),
+        isOnline: true,
+        isPeerAdmin,
+        collaborationScore,
+        codeReviews: 0,
+        documentsCreated: 0,
+        meetingsAttended: 0,
+        mentions,
+        badges: [], // populate from a Badge entity if you have one
+      };
+
+      return {
+        success: true,
+        message: 'Analytics Processed',
+        data,
+      };
+    } catch (err) {
+      console.error('projectPeerAnalytics error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to fetch peer analytics',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

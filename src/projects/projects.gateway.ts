@@ -6,16 +6,17 @@ import {
   type OnGatewayConnection,
   type OnGatewayDisconnect,
   type OnGatewayInit,
-} from "@nestjs/websockets"
-import { type Server, Socket } from "socket.io"
-import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common"
-import { ProjectsService } from "./services/projects.service"
+} from '@nestjs/websockets';
+import { type Server, Socket } from 'socket.io';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { ProjectsService } from './services/projects.service';
 
 @WebSocketGateway({
   cors: {
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   },
+  namespace: '/project',
 })
 @Injectable()
 export class ProjectsGateway
@@ -30,7 +31,8 @@ export class ProjectsGateway
   private projectRooms: Map<string, Set<string>> = new Map(); // projectId -> Set of userIds
 
   constructor(
-    @Inject(forwardRef(() => ProjectsService)) private projectService: ProjectsService,
+    @Inject(forwardRef(() => ProjectsService))
+    private projectService: ProjectsService,
   ) {}
 
   afterInit(server: Server) {
@@ -50,20 +52,22 @@ export class ProjectsGateway
 
     // Get userId from socketId
     const userId = this.socketToUser.get(client.id);
-    
+
     // Clean up maps
     if (userId) {
       this.users.delete(userId);
       this.socketToUser.delete(client.id);
-      
+
       // Remove user from project rooms
       for (const [projectId, users] of this.projectRooms.entries()) {
         if (users.has(userId)) {
           users.delete(userId);
-          this.logger.log(`User $userIdremoved from project $projectIddue to disconnect`);
+          this.logger.log(
+            `User $userIdremoved from project $projectIddue to disconnect`,
+          );
         }
       }
-      
+
       this.logger.log(`User $userIdunregistered due to disconnect`);
     }
 
@@ -77,7 +81,7 @@ export class ProjectsGateway
     }
 
     this.logger.log(`User $userIdregistered with socket $client.id`);
-    
+
     // Store the mapping in both directions
     this.users.set(userId, client.id);
     this.socketToUser.set(client.id, userId);
@@ -105,7 +109,9 @@ export class ProjectsGateway
   handleJoinProject(client: Socket, projectId: string | number) {
     const userId = this.socketToUser.get(client.id);
     if (!userId) {
-      this.logger.warn(`Socket $client.idtried to join project $projectIdbut is not registered`);
+      this.logger.warn(
+        `Socket $client.idtried to join project $projectIdbut is not registered`,
+      );
       return { status: 'error', message: 'User not registered' };
     }
 
@@ -122,28 +128,32 @@ export class ProjectsGateway
 
     // Leave the socket.io room
     client.leave(`project_$projectId`);
-    
+
     // Update our tracking
     const projectRoom = this.projectRooms.get(String(projectId));
     if (projectRoom) {
       projectRoom.delete(userId);
     }
-    
+
     this.logger.log(`User $userIdleft project room: project_$projectId`);
     return { status: 'left', projectId };
   }
 
-  private joinProjectRoom(client: Socket, userId: string, projectId: string | number) {
+  private joinProjectRoom(
+    client: Socket,
+    userId: string,
+    projectId: string | number,
+  ) {
     // Join the socket.io room
     client.join(`project_$projectId`);
-    
+
     // Track in our map
     const projectIdStr = String(projectId);
     if (!this.projectRooms.has(projectIdStr)) {
       this.projectRooms.set(projectIdStr, new Set());
     }
     this.projectRooms.get(projectIdStr)?.add(userId);
-    
+
     this.logger.log(`User $userIdjoined project room: project_$projectId`);
   }
 
@@ -156,19 +166,22 @@ export class ProjectsGateway
       return { status: 'error', message: 'projectId is required' };
     }
 
-    this.logger.log(`Broadcasting new comment to project_$projectId`, { 
-      roomSize: this.server.sockets.adapter.rooms.get(`project_$projectId`)?.size || 0 
+    this.logger.log(`Broadcasting new comment to project_$projectId`, {
+      roomSize:
+        this.server.sockets.adapter.rooms.get(`project_$projectId`)?.size || 0,
     });
 
     // Ensure the payload has a consistent format
-    const commentPayload = payload.comment ? payload : { 
-      projectId, 
-      comment: payload 
-    };
+    const commentPayload = payload.comment
+      ? payload
+      : {
+          projectId,
+          comment: payload,
+        };
 
     // Broadcast to ALL clients in the project room INCLUDING the sender
     this.server.to(`project_$projectId`).emit('new_comment', commentPayload);
-    
+
     return { status: 'sent', projectId };
   }
 
@@ -198,12 +211,14 @@ export class ProjectsGateway
   }
 
   @SubscribeMessage('typing')
-  async handleTyping(client: Socket, payload: { projectId: string; userId: string }) {
+  async handleTyping(
+    client: Socket,
+    payload: { projectId: string; userId: string },
+  ) {
     const { projectId, userId } = payload;
     if (!projectId || !userId) return;
 
     const user = await this.projectService.getUserAccountById(userId);
-
 
     // Broadcast to project room (except sender)
     client.to(`project_$projectId`).emit('user_typing', {
@@ -290,12 +305,11 @@ export class ProjectsGateway
         Array.from(this.projectRooms.entries()).map(([projectId, users]) => [
           projectId,
           Array.from(users),
-        ])
+        ]),
       ),
     };
   }
 }
-
 
 // // projects.gateway.ts
 // import {

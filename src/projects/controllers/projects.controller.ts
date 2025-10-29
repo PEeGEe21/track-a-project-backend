@@ -41,6 +41,27 @@ export class ProjectsController {
     );
   }
 
+  @Get('/project-peer-invites')
+  findProjectPeersInvite(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Query('status') status: string,
+    @Query('type') type: string,
+    @Query('orderBy') orderBy: string,
+    @Req() req: any,
+  ) {
+    return this.projectService.findProjectPeersInvite(
+      req.user,
+      page,
+      limit,
+      search,
+      status,
+      type,
+      orderBy,
+    );
+  }
+
   @Post('/new-project')
   createUserProject(@Body() CreateProjectDto: any, @Req() req: any) {
     return this.projectService.createProject(req.user, CreateProjectDto);
@@ -49,6 +70,15 @@ export class ProjectsController {
   @Get(':id/overview')
   getProjectOverview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.projectService.projectOverviewData(id, req.user);
+  }
+
+  @Get('peer-analytics/:id/:peerId')
+  getProjectPeerAnalytics(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('peerId', ParseIntPipe) peerId: number,
+    @Req() req: any,
+  ) {
+    return this.projectService.projectPeerAnalytics(id, peerId, req.user);
   }
 
   @Post('/delete/:id')
@@ -98,25 +128,6 @@ export class ProjectsController {
       req.user,
       projectId,
       commentData,
-    );
-  }
-
-  @Get('/project-peer-invites')
-  findProjectPeersInvite(
-    @Query('page') page: number,
-    @Query('limit') limit: number,
-    @Query('search') search: string,
-    @Query('status') status: string,
-    @Query('type') type: string,
-    @Req() req: any,
-  ) {
-    return this.projectService.findProjectPeersInvite(
-      req.user,
-      page,
-      limit,
-      search,
-      status,
-      type,
     );
   }
 

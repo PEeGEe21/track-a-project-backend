@@ -56,6 +56,7 @@
     "joi": "^17.11.0",
     "moment": "^2.30.1",
     "mysql2": "^3.7.0",
+    "nestjs-uuid": "^0.1.4",
     "nodemailer": "^6.9.13",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
@@ -67,7 +68,8 @@
     "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.0",
     "twilio": "^5.0.0-rc.1",
-    "typeorm": "^0.3.19"
+    "typeorm": "^0.3.19",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

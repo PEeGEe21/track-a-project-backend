@@ -25,6 +25,8 @@ import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificatio
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectsGateway } from './projects.gateway';
 import { Status } from 'src/typeorm/entities/Status';
+import { Resource } from 'src/typeorm/entities/resource';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
@@ -43,8 +45,10 @@ import { Status } from 'src/typeorm/entities/Status';
       Notification,
       UserNotificationPreference,
       Status,
+      Resource
     ]),
     forwardRef(() => UsersModule),
+    forwardRef(() => AuthModule),
     // UsersModule,
     MailingModule,
     ConfigModule,

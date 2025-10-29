@@ -18,6 +18,7 @@ import { Category } from './Category';
 import { ProjectComment } from './ProjectComment';
 import { Resource } from './resource';
 import { Document } from './document';
+import { Whiteboard } from './Whiteboard';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -76,6 +77,9 @@ export class Project {
 
   @OneToMany(() => ProjectComment, (comment) => comment.project)
   comments: ProjectComment[];
+
+  @OneToMany(() => Whiteboard, (whiteboard) => whiteboard.project)
+  whiteboards: Whiteboard[];
 
   @OneToMany(() => Document, (document) => document.project)
   documents: Document[];

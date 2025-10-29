@@ -17,6 +17,7 @@ import { Injectable, Logger } from '@nestjs/common';
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     credentials: true,
   },
+  namespace: '/notification',
   // Default Socket.IO path is '/socket.io' - only change if needed
   // path: '/socket.io/',
 })
@@ -119,25 +120,25 @@ export class NotificationsGateway
       return false;
     }
 
-    console.log('in sending notifications')
+    console.log('in sending notifications');
     this.logger.log(`Sending notification to user ${userId}`);
 
     // Method 1: Using the Map
     const socketId = this.users.get(userId);
-    console.log(socketId, 'socketId')
+    console.log(socketId, 'socketId');
     if (socketId) {
       this.logger.log(`Found socket ${socketId} for user ${userId}`);
       this.server.to(socketId).emit('notification', notification);
       return true;
     }
 
-    console.log(socketId, 'socketId2')
+    console.log(socketId, 'socketId2');
 
     // Method 2: Using rooms (as backup and for multiple connections)
     this.logger.log(
       `No direct socket found for user ${userId}, trying room broadcast`,
     );
-    console.log(socketId, 'socketId3')
+    console.log(socketId, 'socketId3');
 
     this.server.to(`user_${userId}`).emit('notification', notification);
 

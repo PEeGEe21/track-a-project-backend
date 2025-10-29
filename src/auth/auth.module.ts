@@ -37,6 +37,7 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
+import { Resource } from 'src/typeorm/entities/resource';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
       UserPeerInvite,
       Notification,
       UserNotificationPreference,
+      Resource
     ]),
   ],
   controllers: [AuthController],
