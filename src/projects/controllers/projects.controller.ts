@@ -20,6 +20,22 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 export class ProjectsController {
   constructor(private projectService: ProjectsService) {}
 
+  @Get('/activity-chart')
+  findProjectActivitiesChart(
+    @Req() req: any,
+    @Query('period') period: any,
+    @Query('projectId') projectId: any,
+    @Query('userId') userId?: any,
+  ) {
+    console.log('entereedd');
+    return this.projectService.findProjectActivitiesChart(
+      req.user,
+      period,
+      projectId,
+      userId,
+    );
+  }
+
   @Get('/my-projects')
   getUserProjectsQuery(
     @Query('page') page: number,
@@ -59,6 +75,25 @@ export class ProjectsController {
       status,
       type,
       orderBy,
+    );
+  }
+
+  @Get('/activity')
+  findProjectActivity(
+    @Query('page') page: any,
+    @Query('limit') limit: any,
+    @Query('search') search: string,
+    @Query('type') type: string,
+    @Query('projectId') projectId: any,
+    @Req() req: any,
+  ) {
+    return this.projectService.findProjectActivities(
+      req.user,
+      page,
+      limit,
+      search,
+      type,
+      projectId,
     );
   }
 
