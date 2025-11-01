@@ -28,12 +28,17 @@ import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
 import { Resource } from 'src/typeorm/entities/resource';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
     JwtModule,
     MailingModule,
     ConfigModule,
+    // NotificationsModule,
+    forwardRef(() => NotificationsModule),
+    // forwardRef(() => AuthModule),
     // forwardRef(() => UserPeersModule),
     TypeOrmModule.forFeature([
       User,
@@ -51,7 +56,8 @@ import { Resource } from 'src/typeorm/entities/resource';
       Notification,
       UserNotificationPreference,
       Note,
-      Resource
+      Resource,
+      ProjectActivity
     ]),
   ],
   controllers: [UsersController],

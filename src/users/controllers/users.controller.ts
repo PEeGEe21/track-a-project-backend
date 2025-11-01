@@ -38,8 +38,8 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Get('/dashboard')
-  getUserDshboardData(@Req() req: any) {
-    return this.userService.getUserDshboardData(req.user);
+  getUserDashboardData(@Req() req: any) {
+    return this.userService.getUserDashboardData(req.user);
   }
 
   @UseGuards(JwtAuthGuard)

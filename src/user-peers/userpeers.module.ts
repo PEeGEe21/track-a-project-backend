@@ -16,12 +16,14 @@ import { Post } from 'src/typeorm/entities/Post';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
   imports: [
     JwtModule,
     UsersModule,
     forwardRef(() => AuthModule),
+    forwardRef(() => NotificationsModule),
     TypeOrmModule.forFeature([
       User,
       Profile,

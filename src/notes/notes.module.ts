@@ -25,6 +25,7 @@ import { MailingModule } from 'src/utils/mailing/mailing.module';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
       Notification,
       UserNotificationPreference,
       Note,
+      ProjectActivity
     ]),
   ],
   controllers: [NotesController],

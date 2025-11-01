@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Profile } from '../typeorm/entities/Profile';
 import { User } from '../typeorm/entities/User';
@@ -43,7 +43,6 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 
 @Module({
   imports: [
-    UsersModule,
     PassportModule,
     ProjectPeersModule,
     TasksModule,
@@ -51,7 +50,8 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
     MailingModule,
     UserPeersModule,
     CategoriesModule,
-    NotificationsModule,
+    forwardRef(() => UsersModule),
+    forwardRef(() => NotificationsModule),
     ProjectActivitiesModule,
     // JwtModule.register({
     //   secret: config.secret,
@@ -84,7 +84,7 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
       Notification,
       UserNotificationPreference,
       Resource,
-      ProjectActivity
+      ProjectActivity,
     ]),
   ],
   controllers: [AuthController],

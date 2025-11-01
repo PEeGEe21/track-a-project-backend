@@ -20,6 +20,7 @@ import { Resource } from './resource';
 import { Document } from './document';
 import { Whiteboard } from './Whiteboard';
 import { Status } from './Status';
+import { ProjectStatus } from 'src/utils/constants/project';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -49,11 +50,22 @@ export class Project {
   @Column({ nullable: true })
   icon: string;
 
-  @Column({ default: 'active' })
-  status: string;
+  @Column({
+    type: 'enum',
+    enum: ProjectStatus,
+    default: ProjectStatus.ACTIVE,
+  })
+  status: ProjectStatus;
 
   @Column({ nullable: true }) // Added created_at column
   due_date: Date = new Date();
+
+  // @Column({
+  //   type: 'enum',
+  //   enum: ProjectStatus,
+  //   default: ProjectStatus.ACTIVE,
+  // })
+  // project_status: ProjectStatus;
 
   // project.entity.ts
   @OneToMany(() => Status, (status) => status.project)

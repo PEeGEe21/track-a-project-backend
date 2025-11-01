@@ -905,18 +905,21 @@ export class ProjectsService {
           });
       }
 
-      await this.projectActivitiesService.createActivity({
+      const payload = {
         projectId: project.id,
         userId: userFound.id,
         activityType: ActivityType.PROJECT_COMMENT,
         description: `${userFound.fullName} sent a comment`,
         entityType: 'comment',
-        entityId: Number(newSavedMessage.id),
+        entityId: Number(userFound.id),
         metadata: {
           projectCommentAuthor: newSavedMessage.author.id ?? '',
+          content_id: newSavedMessage.id ?? '',
           content: newSavedMessage.content ?? '',
         },
-      });
+      }
+
+      await this.projectActivitiesService.createActivity(payload);
 
       await this.sendNewCommentPeerNotification(userFound, project);
 
@@ -924,7 +927,10 @@ export class ProjectsService {
         success: true,
         comment: message,
       };
-    } catch (err) {}
+    } catch (err) {
+      console.log(err);
+      throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
+    }
   }
 
   async sendNewCommentPeerNotification(userFound: User, project: Project) {
@@ -1008,6 +1014,8 @@ export class ProjectsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      // console.log(userFound);
+
       const project = await this.projectRepository.findOneBy({ id: projectId });
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
@@ -1018,7 +1026,7 @@ export class ProjectsService {
         order: { created_at: 'ASC' },
       });
 
-      console.log(comments, 'commentsss');
+      // console.log(comments, 'commentsss');
 
       return {
         success: true,
@@ -1027,7 +1035,10 @@ export class ProjectsService {
           is_me: comment.authorId == userFound.id,
         })),
       };
-    } catch (err) {}
+    } catch (err) {
+      console.log(err);
+      throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
+    }
   }
 
   async addReaction(user: any, messageId: string, emoji: string) {
@@ -1881,6 +1892,25 @@ export class ProjectsService {
         .where('task.project.id = :projectId', { projectId })
         .getMany();
 
+      // Compute task counts by priority
+      const priorityCounts = {
+        urgent: tasks.filter((t) => t.priority === 3).length,
+        high: tasks.filter((t) => t.priority === 2).length,
+        medium: tasks.filter((t) => t.priority === 1).length,
+        low: tasks.filter((t) => t.priority === 0).length,
+      };
+
+      // Format chart data (suitable for ApexCharts, Chart.js, etc.)
+      const priorityChartData = {
+        labels: ['Low', 'Medium', 'High', 'Urgent'],
+        series: [
+          priorityCounts.low,
+          priorityCounts.medium,
+          priorityCounts.high,
+          priorityCounts.urgent,
+        ],
+      };
+
       const statusCounts: Record<number, number> = {};
       statuses.forEach((status) => {
         statusCounts[status.id] = 0;
@@ -1912,6 +1942,7 @@ export class ProjectsService {
           title: s.title,
           color: s.color,
         })),
+        priorityChartData,
       };
     } catch (err) {
       console.error('Error in ProjectOverviewData:', err);
@@ -2090,6 +2121,7 @@ export class ProjectsService {
         (t) => t.due_date && new Date(t.due_date) >= now,
       ).length;
 
+      const urgentPriorityTasks = tasks.filter((t) => t.priority === 3).length;
       const highPriorityTasks = tasks.filter((t) => t.priority === 2).length;
       const mediumPriorityTasks = tasks.filter((t) => t.priority === 1).length;
       const lowPriorityTasks = tasks.filter((t) => t.priority === 0).length;
@@ -2338,6 +2370,18 @@ export class ProjectsService {
       // -----------------------------------------------------------------
       const isPeerAdmin = isOwner;
 
+      let memberSince = moment(project.created_at).fromNow();
+
+      if (!isOwner) {
+        const project_peer = await this.projectPeerRepository.findOne({
+          where: {
+            project: { id: projectId },
+            user: { id: peerUserId },
+          },
+        });
+        memberSince = moment(project_peer.created_at).fromNow();
+      }
+
       const resourcesAdded = await this.projectActivityRepository.count({
         where: {
           projectId,
@@ -2350,7 +2394,9 @@ export class ProjectsService {
       const codeReviews = 0; // Implement based on your code review system
 
       // Documents created (count from resources with document type)
-      const documentsCreated = await this.resourceRepository.count({
+      const documentsCreated = 0;
+
+      const resourcesCreated = await this.resourceRepository.count({
         where: {
           project: { id: projectId },
           createdBy: { id: peerUserId },
@@ -2373,6 +2419,7 @@ export class ProjectsService {
         inReviewTasks,
         overdueTasks,
         onTimeTasks,
+        urgentPriorityTasks,
         highPriorityTasks,
         mediumPriorityTasks,
         lowPriorityTasks,
@@ -2382,6 +2429,7 @@ export class ProjectsService {
         mentions,
         resourcesAdded,
         documentsCreated,
+        resourcesCreated,
         codeReviews,
         meetingsAttended,
 
@@ -2403,6 +2451,7 @@ export class ProjectsService {
         // Status
         isOnline: false, // Implement with socket service
         isPeerAdmin,
+        memberSince,
 
         // Badges (implement later)
         badges: this.calculateBadges({
@@ -2521,8 +2570,7 @@ export class ProjectsService {
         '60days': 60,
       };
 
-
-      console.log(period, projectId, userId)
+      console.log(period, projectId, userId);
       const days = periodMap[period];
       const startDate = moment().subtract(days, 'days').startOf('day').toDate();
 

@@ -22,13 +22,13 @@ import { UsersService } from 'src/users/services/users.service';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
+import { Note } from 'src/typeorm/entities/Note';
 
 @Module({
   imports: [
-    JwtModule,
     // UsersModule,
     MailingModule,
-    forwardRef(() => AuthModule),
+    // forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([
       User,
@@ -45,10 +45,11 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
       ProjectComment,
       Notification,
       UserNotificationPreference,
+      Note
     ]),
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsGateway, NotificationsService, UsersService],
+  providers: [NotificationsGateway, NotificationsService],
   exports: [NotificationsService],
 })
 export class NotificationsModule {}
