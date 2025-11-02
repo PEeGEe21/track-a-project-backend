@@ -1043,7 +1043,7 @@ export class UsersService {
       const totalProjects = allProjects.length;
       const overdueTasks = await this.getOverdueTasks(foundUser.id);
       const upcomingDeadlines = await this.getUpcomingDeadlines(foundUser.id);
-      const activeMembers = await this.getActiveMembers(foundUser.id);
+      const activePeers = await this.getActivePeers(foundUser.id);
 
       return {
         success: true,
@@ -1056,7 +1056,7 @@ export class UsersService {
             upcomingDeadlines,
             completionRate: completionStats.completionRate,
             overdueTasks,
-            activeMembers,
+            activePeers,
             trendsVsLastPeriod: {
               projects: await this.calculateProjectTrend(foundUser.id),
               tasks: await this.calculateTaskTrend(foundUser.id),
@@ -1434,7 +1434,7 @@ export class UsersService {
   /**
    * Get active members count across all projects
    */
-  private async getActiveMembers(userId: number): Promise<number> {
+  private async getActivePeers(userId: number): Promise<number> {
     const projectIds = await this.getAllUserProjectIds(userId);
     const sevenDaysAgo = addDays(new Date(), -7);
 
