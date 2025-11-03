@@ -22,6 +22,9 @@ export class MessageResponseDto {
   created_at: Date;
 
   @Expose()
+  createdAt?: string;
+
+  @Expose()
   @Type(() => UserChatDto)
   sender: UserChatDto;
 

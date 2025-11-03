@@ -17,11 +17,16 @@ import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { UsersService } from 'src/users/services/users.service';
 import { MessageResponseDto } from '../dto/message-response.dto';
 import { plainToInstance } from 'class-transformer';
+import { MessagesGateway } from '../messages.gateway';
+import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
 
 @Injectable()
 export class MessagesService {
   constructor(
     private usersService: UsersService,
+    private notificationService: NotificationsService,
+    private messagesGateway: MessagesGateway,
 
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
@@ -882,6 +887,7 @@ export class MessagesService {
             ...msg,
             isMine,
             time: this.formatTime(msg.created_at),
+            createdAt: msg.created_at,
             status: 'read', // or compute from read receipts
           },
           { excludeExtraneousValues: true }, // 👈 critical
@@ -1040,10 +1046,59 @@ export class MessagesService {
           sender: userFound, // safe fields only (UserChatDto will filter)
           isMine: true, // the message we just sent
           time: this.formatTime(savedMessage.created_at),
+          createdAt: savedMessage.created_at,
           status: 'sent' as const, // you can upgrade later with read‑receipts
         },
         { excludeExtraneousValues: true }, // <-- strips everything not @Expose()
       );
+
+      this.messagesGateway.notifyNewMessage(conversationId, {
+        id: savedMessage.id,
+        content: savedMessage.content,
+        senderId: savedMessage.senderId,
+        sender: userFound,
+        createdAt: savedMessage.created_at,
+        time: this.formatTime(savedMessage.created_at),
+        conversationId: savedMessage.conversationId,
+        created_at: savedMessage.created_at,
+        status: 'sent' as const,
+        isMine: false, // the message we just sent
+      });
+
+      const otherParticipants = conversation.participants.filter(
+        (p) => p.isActive && Number(p.userId) !== Number(userFound.id),
+      );
+
+      console.log(otherParticipants, 'otherParticipants');
+      for (const p of otherParticipants) {
+        const recipientId = p.userId.toString();
+
+        console.log(recipientId, p, 'recipientId');
+        // --- WebSocket: Real-time message ---
+        // this.messagesGateway.server
+        //   .to(`conversation:${conversationId}:user:${recipientId}`)
+        //   .emit('newMessage', {
+        //     ...dto,
+        //     isMine: false, // from recipient's POV
+        //   });
+
+        // --- DB + Push Notification ---
+        const recipient = await this.usersService.getUserAccountById(p.userId);
+        if (!recipient) continue;
+
+        const notificationPayload = {
+          title: `${userFound.fullName} sent a message`,
+          message: content.length > 50 ? content.slice(0, 47) + '...' : content,
+          sender: userFound,
+          recipient,
+          type: NOTIFICATION_TYPES.PEER_MESSAGE,
+        };
+
+        await this.notificationService.createNotification(
+          userFound,
+          notificationPayload,
+        );
+      }
 
       // ------------------------------------------------------------
       // 6. Return
