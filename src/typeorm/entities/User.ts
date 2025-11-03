@@ -19,6 +19,9 @@ import { Note } from './Note';
 import { Resource } from './resource';
 import { Document } from './document';
 import { Whiteboard } from './Whiteboard';
+import { Message } from './Message';
+import { ConversationParticipant } from './ConversationParticipant';
+import { UserPeer } from './UserPeer';
 
 @Entity({ name: 'users' })
 export class User {
@@ -86,11 +89,20 @@ export class User {
   @OneToMany(() => ProjectPeer, (projectPeer) => projectPeer.user)
   projectPeers: ProjectPeer[];
 
+  @OneToMany(() => UserPeer, (userPeer) => userPeer.user)
+  userPeers: UserPeer[];
+
   @OneToMany(() => Whiteboard, (whiteboard) => whiteboard.user)
   whiteboards: Whiteboard[];
 
   @OneToMany(() => ProjectComment, (comment) => comment.author)
   projectComments: ProjectComment[];
+
+  @OneToMany(() => Message, (message) => message.sender)
+  sentMessages: Message[];
+
+  @OneToMany(() => ConversationParticipant, (participant) => participant.user)
+  conversationParticipants: ConversationParticipant[];
 
   @OneToMany(() => Document, (document) => document.project)
   documents: Document[];

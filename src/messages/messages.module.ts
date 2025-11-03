@@ -1,0 +1,76 @@
+import { MessagesService } from './services/messages.service';
+import { MessagesController } from './controllers/messages.controller';
+import { forwardRef, Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { User } from 'src/typeorm/entities/User';
+import { Task } from 'src/typeorm/entities/Task';
+import { Note } from 'src/typeorm/entities/Note';
+import { UsersService } from 'src/users/services/users.service';
+import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
+import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
+import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
+import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
+import { UserPeer } from 'src/typeorm/entities/UserPeer';
+import { Status } from 'src/typeorm/entities/Status';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
+import { Tag } from 'src/typeorm/entities/Tag';
+import { Project } from 'src/typeorm/entities/Project';
+import { Post } from 'src/typeorm/entities/Post';
+import { Profile } from 'src/typeorm/entities/Profile';
+import { Notification } from 'src/typeorm/entities/Notification';
+import { AuthModule } from 'src/auth/auth.module';
+import { JwtModule } from '@nestjs/jwt';
+import { UsersModule } from 'src/users/users.module';
+import { MailingModule } from 'src/utils/mailing/mailing.module';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { NotificationsModule } from 'src/notifications/notifications.module';
+import { NotificationsGateway } from 'src/notifications/notifications.gateway';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { Conversation } from 'src/typeorm/entities/Conversation';
+import { Message } from 'src/typeorm/entities/Message';
+import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
+import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
+import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
+
+@Module({
+  imports: [
+    forwardRef(() => NotificationsModule),
+    JwtModule,
+    MailingModule,
+    forwardRef(() => AuthModule),
+    forwardRef(() => UsersModule),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Post,
+      Project,
+      Task,
+      Tag,
+      ProjectPeer,
+      Status,
+      UserPeer,
+      UserPeerInvite,
+      ProjectPeerInvite,
+      ProjectComment,
+      Notification,
+      UserNotificationPreference,
+      Note,
+      ProjectActivity,
+      Conversation,
+      Message,
+      ConversationParticipant,
+      MessageReaction,
+      MessageReadReceipt
+    ]),
+  ],
+  controllers: [MessagesController],
+  providers: [
+    MessagesService,
+    UsersService,
+    NotificationsService,
+    NotificationsGateway,
+  ],
+  exports: [MessagesService],
+
+})
+export class MessagesModule {}

@@ -1823,6 +1823,26 @@ export class UsersService {
     return queryBuilder.getMany();
   }
 
+  // In users.service.ts
+  async getUsersByIds(ids: number[]): Promise<User[]> {
+    if (!ids.length) return [];
+
+    return this.userRepository.find({
+      where: {
+        id: In(ids),
+      },
+      select: [
+        'id',
+        'first_name',
+        'last_name',
+        'username',
+        'email',
+        'avatar',
+        'logged_in',
+      ],
+    });
+  }
+
   // async getUserDshboardData2(user: any): Promise<any> {
   //   try {
   //     const foundUser = await this.getUserAccountById(user.userId);

@@ -42,6 +42,12 @@ import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
 import { ProjectActivitiesModule } from './project-activities/project-activities.module';
 import { ProjectActivity } from './typeorm/entities/ProjectActivity';
+import { Conversation } from './typeorm/entities/Conversation';
+import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
+import { Message } from './typeorm/entities/Message';
+import { MessageReaction } from './typeorm/entities/MessageReaction';
+import { MessageReadReceipt } from './typeorm/entities/MessageReadReceipt';
+import { MessagesModule } from './messages/messages.module';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -81,7 +87,7 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
         Document,
         Resource,
         Whiteboard,
-        ProjectActivity
+        ProjectActivity,
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -113,6 +119,11 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
       Document,
       Resource,
       Whiteboard,
+      Conversation,
+      ConversationParticipant,
+      Message,
+      MessageReaction,
+      MessageReadReceipt,
     ]),
     UsersModule,
     ProjectsModule,
@@ -129,6 +140,7 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
     ResourcesModule,
     WhiteboardsModule,
     ProjectActivitiesModule,
+    MessagesModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],
