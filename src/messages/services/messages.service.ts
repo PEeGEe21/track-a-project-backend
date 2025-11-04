@@ -178,14 +178,28 @@ export class MessagesService {
     // Create a map for quick user lookup
     const userMap = new Map(users.map((u) => [Number(u.id), u]));
 
+    // ------------------------------------------------------------
     // Get last message for each conversation
+    // ------------------------------------------------------------
     const lastMessages = await this.messageRepository
       .createQueryBuilder('message')
-      .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-      .andWhere(
-        'message.id IN (SELECT MAX(id) FROM messages WHERE conversationId IN (:...ids) GROUP BY conversationId)',
-      )
-      .setParameter('ids', conversationIds)
+      .select([
+        'message.id',
+        'message.conversationId',
+        'message.content',
+        'message.senderId',
+        'message.created_at',
+      ])
+      .where((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('MAX(m2.created_at)')
+          .from(Message, 'm2')
+          .where('m2.conversationId = message.conversationId')
+          .getQuery();
+        return `message.created_at = (${subQuery})`;
+      })
+      .andWhere('message.conversationId IN (:...ids)', { ids: conversationIds })
       .getMany();
 
     console.log('✅ Last messages loaded:', lastMessages.length);
@@ -205,6 +219,8 @@ export class MessagesService {
       const lastMessage = lastMessages.find(
         (m) => m.conversationId === conv.id,
       );
+
+      console.log(lastMessage, conv.id, 'lastMessage');
 
       const displayName =
         conv.type === 'direct'
@@ -929,7 +945,7 @@ export class MessagesService {
         return { data: [], success: true, message: 'No connected peers' };
       }
 
-      // ✅ Get all peer IDs from conversations (FIXED)
+      // Get all peer IDs from conversations (FIXED)
       const chattedParticipants = await this.participantRepository
         .createQueryBuilder('participant')
         .select('participant.userId')
