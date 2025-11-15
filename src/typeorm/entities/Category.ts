@@ -12,7 +12,7 @@ import {
 import { User } from './User';
 import { Project } from './Project';
 import { Task } from './Task';
-import { Document } from './document';
+import { Document } from './Document';
 
 @Entity({ name: 'categories' })
 export class Category {

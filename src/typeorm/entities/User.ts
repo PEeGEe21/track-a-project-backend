@@ -17,7 +17,7 @@ import { Task } from './Task';
 import { ProjectComment } from './ProjectComment';
 import { Note } from './Note';
 import { Resource } from './resource';
-import { Document } from './document';
+import { Document } from './Document';
 import { Whiteboard } from './Whiteboard';
 import { Message } from './Message';
 import { ConversationParticipant } from './ConversationParticipant';

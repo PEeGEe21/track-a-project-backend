@@ -17,7 +17,7 @@ import { Tag } from './Tag';
 import { Category } from './Category';
 import { ProjectComment } from './ProjectComment';
 import { Resource } from './resource';
-import { Document } from './document';
+import { Document } from './Document';
 import { Whiteboard } from './Whiteboard';
 import { Status } from './Status';
 import { ProjectStatus } from 'src/utils/constants/project';

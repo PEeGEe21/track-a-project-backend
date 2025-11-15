@@ -36,7 +36,7 @@ import { NotesModule } from './notes/notes.module';
 import { Note } from './typeorm/entities/Note';
 import { ResourcesModule } from './resources/resources.module';
 import { DocumentsModule } from './documents/documents.module';
-import { Document } from './typeorm/entities/document';
+import { Document } from './typeorm/entities/Document';
 import { Resource } from './typeorm/entities/resource';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
@@ -48,6 +48,9 @@ import { Message } from './typeorm/entities/Message';
 import { MessageReaction } from './typeorm/entities/MessageReaction';
 import { MessageReadReceipt } from './typeorm/entities/MessageReadReceipt';
 import { MessagesModule } from './messages/messages.module';
+import { FoldersModule } from './folders/folders.module';
+import { DocumentFile } from './typeorm/entities/DocumentFile';
+import { Folder } from './typeorm/entities/Folder';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -124,6 +127,8 @@ import { MessagesModule } from './messages/messages.module';
       Message,
       MessageReaction,
       MessageReadReceipt,
+      DocumentFile,
+      Folder
     ]),
     UsersModule,
     ProjectsModule,
@@ -141,6 +146,7 @@ import { MessagesModule } from './messages/messages.module';
     WhiteboardsModule,
     ProjectActivitiesModule,
     MessagesModule,
+    FoldersModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],

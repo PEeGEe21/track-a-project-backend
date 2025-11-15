@@ -61,12 +61,9 @@ export class UsersService {
 
   async getUserAccountById(id: number): Promise<User | undefined> {
     const user = await this.userRepository.findOneBy({ id });
-
-    console.log(user);
     if (!user) {
       throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
     }
-
     return user;
   }
 
