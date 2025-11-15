@@ -59,7 +59,15 @@ export class FoldersService {
     } catch (err) {}
   }
 
-  async findAll(userId: number): Promise<Folder[]> {
+  async findAll(user: any): Promise<Folder[]> {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    console.log(userFound, 'www');
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const userId = userFound.id;
+
     // Get all folders for the user
     return await this.foldersRepository.find({
       where: { userId },
@@ -68,20 +76,322 @@ export class FoldersService {
     });
   }
 
-  async findAllWithTree(userId: number): Promise<Folder[]> {
-    // Get root folders (no parent) with their entire tree
-    const rootFolders = await this.foldersRepository.find({
-      where: { userId, parentId: IsNull() },
-    });
+  // folders.service.ts - Updated to include documents
+  async findAllWithTree(user: any): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
 
-    // For each root folder, get its descendants
-    const foldersWithTree = await Promise.all(
-      rootFolders.map(async (folder) => {
-        return await this.foldersRepository.findDescendantsTree(folder);
-      }),
-    );
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
 
-    return foldersWithTree;
+      const userId = userFound.id;
+
+      // Get all folders with document counts
+      const folders = await this.foldersRepository
+        .createQueryBuilder('folder')
+        .leftJoin('folder.documents', 'documents')
+        .select([
+          'folder.id',
+          'folder.name',
+          'folder.parentId',
+          'folder.color',
+          'folder.icon',
+          'folder.description',
+          'folder.createdAt',
+          'folder.updatedAt',
+        ])
+        .addSelect('COUNT(documents.id)', 'documentCount')
+        .where('folder.userId = :userId', { userId })
+        .groupBy('folder.id')
+        .orderBy('folder.name', 'ASC')
+        .getRawAndEntities();
+
+      // Get all documents for these folders
+      const documents = await this.documentsRepository
+        .createQueryBuilder('document')
+        .leftJoinAndSelect('document.files', 'files')
+        .select([
+          'document.id',
+          'document.title',
+          'document.folderId',
+          'document.content',
+          'document.plainText',
+          'document.isPublished',
+          'document.isFavorite',
+          'document.createdAt',
+          'document.updatedAt',
+          'document.metadata',
+        ])
+        .addSelect('files.id')
+        .addSelect('files.filename')
+        .addSelect('files.size')
+        .addSelect('files.mimeType')
+        .where('document.userId = :userId', { userId })
+        .andWhere('document.folderId IS NOT NULL')
+        .orderBy('document.title', 'ASC')
+        .getMany();
+
+      // Early return if no folders
+      if (folders.entities.length === 0) {
+        return {
+          data: [],
+          success: true,
+          message: 'success',
+          error: null,
+        };
+      }
+
+      // Group documents by folderId
+      const documentsByFolder = new Map<string, any[]>();
+      documents.forEach((doc) => {
+        if (doc.folderId) {
+          if (!documentsByFolder.has(doc.folderId)) {
+            documentsByFolder.set(doc.folderId, []);
+          }
+          documentsByFolder.get(doc.folderId)!.push(doc);
+        }
+      });
+
+      // Build tree efficiently (O(n) complexity)
+      const folderMap = new Map();
+      const rootFolders = [];
+
+      // Single pass to create map with documents
+      for (let i = 0; i < folders.entities.length; i++) {
+        const folder = folders.entities[i];
+        const documentCount = parseInt(folders.raw[i].documentCount) || 0;
+
+        folderMap.set(folder.id, {
+          ...folder,
+          children: [],
+          documents: documentsByFolder.get(folder.id) || [],
+          documentCount,
+          stats: {
+            directDocuments: documentCount,
+            totalDocuments: documentCount, // Will be calculated recursively
+          },
+        });
+      }
+
+      // Single pass to build relationships
+      for (const folder of folders.entities) {
+        const current = folderMap.get(folder.id);
+
+        if (folder.parentId) {
+          const parent = folderMap.get(folder.parentId);
+          if (parent) {
+            parent.children.push(current);
+          } else {
+            // Orphaned folder, treat as root
+            rootFolders.push(current);
+          }
+        } else {
+          rootFolders.push(current);
+        }
+      }
+
+      // Calculate total documents recursively
+      const calculateTotals = (folder: any): number => {
+        let total = folder.documentCount || 0;
+        if (folder.children && folder.children.length > 0) {
+          for (const child of folder.children) {
+            total += calculateTotals(child);
+          }
+        }
+        folder.stats.totalDocuments = total;
+        return total;
+      };
+
+      rootFolders.forEach(calculateTotals);
+
+      return {
+        data: rootFolders,
+        success: true,
+        message: 'success',
+        error: null,
+      };
+    } catch (err) {
+      console.error('Find folders tree error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to retrieve folders',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Get single folder with full details
+  async findFolderById(user: any, folderId: string): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const userId = userFound.id;
+
+      // Get folder
+      const folder = await this.foldersRepository.findOne({
+        where: { id: folderId, userId },
+      });
+
+      if (!folder) {
+        throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Get documents in this folder
+      const documents = await this.documentsRepository
+        .createQueryBuilder('document')
+        .leftJoinAndSelect('document.files', 'files')
+        .leftJoinAndSelect('document.category', 'category')
+        .where('document.folderId = :folderId', { folderId })
+        .andWhere('document.userId = :userId', { userId })
+        .orderBy('document.updatedAt', 'DESC')
+        .getMany();
+
+      // Get subfolders
+      const subfolders = await this.foldersRepository.find({
+        where: { parentId: folderId, userId },
+        order: { name: 'ASC' },
+      });
+
+      // Calculate stats
+      const totalSize = documents.reduce((total, doc) => {
+        const docSize =
+          doc.files?.reduce((sum, file) => sum + (file.size || 0), 0) || 0;
+        return total + docSize;
+      }, 0);
+
+      return {
+        data: {
+          ...folder,
+          documents,
+          subfolders,
+          stats: {
+            documentCount: documents.length,
+            subfolderCount: subfolders.length,
+            totalSize,
+          },
+        },
+        success: true,
+        message: 'success',
+        error: null,
+      };
+    } catch (err) {
+      console.error('Find folder by id error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to retrieve folder',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findAllWithTree1(user: any): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const userId = userFound.id;
+
+      // Single optimized query with all needed data
+      const folders = await this.foldersRepository
+        .createQueryBuilder('folder')
+        .select([
+          'folder.id',
+          'folder.name',
+          'folder.parentId',
+          'folder.color',
+          'folder.icon',
+          'folder.description',
+          'folder.createdAt',
+          'folder.updatedAt',
+        ])
+        .where('folder.userId = :userId', { userId })
+        .orderBy('folder.name', 'ASC')
+        .getMany();
+
+      // Early return if no folders
+      if (folders.length === 0) {
+        return {
+          data: [],
+          success: true,
+          message: 'success',
+          error: null,
+        };
+      }
+
+      // Build tree efficiently (O(n) complexity)
+      const folderMap = new Map();
+      const rootFolders = [];
+
+      // Single pass to create map
+      for (const folder of folders) {
+        folderMap.set(folder.id, { ...folder, children: [] });
+      }
+
+      // Single pass to build relationships
+      for (const folder of folders) {
+        const current = folderMap.get(folder.id);
+
+        if (folder.parentId) {
+          const parent = folderMap.get(folder.parentId);
+          if (parent) {
+            parent.children.push(current);
+          } else {
+            // Orphaned folder, treat as root
+            rootFolders.push(current);
+          }
+        } else {
+          rootFolders.push(current);
+        }
+      }
+
+      return {
+        data: rootFolders,
+        success: true,
+        message: 'success',
+        error: null,
+      };
+    } catch (err) {
+      console.error('Find folders tree error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to retrieve folders',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findAllWithTree2(user: any): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      console.log(userFound, 'www');
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const userId = userFound.id;
+      // Get root folders (no parent) with their entire tree
+      const rootFolders = await this.foldersRepository.find({
+        where: { userId, parentId: IsNull() },
+      });
+
+      // For each root folder, get its descendants
+      const foldersWithTree = await Promise.all(
+        rootFolders.map(async (folder) => {
+          return await this.foldersRepository.findDescendantsTree(folder);
+        }),
+      );
+
+      return {
+        data: foldersWithTree,
+        success: true,
+        message: 'success',
+      };
+    } catch (err) {}
   }
 
   async findOne(id: string, userId: number): Promise<Folder> {
@@ -152,6 +462,7 @@ export class FoldersService {
     user: any,
   ): Promise<any> {
     try {
+      console.log(updateFolderDto, 'entered');
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -159,6 +470,7 @@ export class FoldersService {
 
       const folder = await this.findOne(id, userFound.id);
 
+      console.log(updateFolderDto, 'entered');
       // If moving to a new parent, validate it
       if (
         updateFolderDto.parentId &&
@@ -188,7 +500,74 @@ export class FoldersService {
         success: true,
         message: 'Updated Successfully',
       };
-    } catch (err) {}
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  // Move a folder to a new parent
+  async moveFolder(
+    user: any,
+    folderId: string,
+    targetParentId: string,
+  ): Promise<any> {
+    try {
+      const folder = await this.foldersRepository.findOne({
+        where: { id: folderId, userId: user.userId },
+      });
+
+      if (!folder) {
+        throw new HttpException('Folder not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Validate target parent
+      if (targetParentId) {
+        const targetParent = await this.foldersRepository.findOne({
+          where: { id: targetParentId, userId: user.userId },
+        });
+
+        if (!targetParent) {
+          throw new HttpException(
+            'Target folder not found',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+
+        // Prevent moving folder into itself or its descendants
+        const descendants = await this.foldersRepository
+          .createQueryBuilder('folder')
+          .innerJoin(
+            'folders_closure',
+            'closure',
+            'closure.id_descendant = folder.id',
+          )
+          .where('closure.id_ancestor = :folderId', { folderId })
+          .getMany();
+
+        const descendantIds = descendants.map((f) => f.id);
+        if (descendantIds.includes(targetParentId)) {
+          throw new HttpException(
+            'Cannot move folder into itself or its descendants',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+
+      folder.parentId = targetParentId || null;
+      const updatedFolder = await this.foldersRepository.save(folder);
+
+      return {
+        success: true,
+        message: 'Folder moved successfully',
+        data: updatedFolder,
+      };
+    } catch (err) {
+      console.error('Move folder error:', err);
+      throw new HttpException(
+        err.message || 'Failed to move folder',
+        err.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async remove(id: string, user: any): Promise<any> {
@@ -199,24 +578,43 @@ export class FoldersService {
       }
 
       const folder = await this.findOne(id, userFound.id);
+      if (!folder) {
+        throw new BadRequestException('Folder not found');
+      }
 
-      // Check if folder has children
-      const descendants = await this.foldersRepository.findDescendants(folder);
-      if (descendants.length > 1) {
-        // More than just itself
+      // 1. Check for subfolders
+      const childCount = await this.foldersRepository.count({
+        where: { parentId: id },
+      });
+
+      if (childCount > 0) {
         throw new BadRequestException(
           'Cannot delete folder with subfolders. Delete or move subfolders first.',
         );
       }
 
-      // Documents will be set to null (folderId) due to SET NULL on delete
+      // 2. Check for documents
+      const documentCount = await this.documentsRepository.count({
+        where: { folderId: id },
+      });
+
+      if (documentCount > 0) {
+        throw new BadRequestException(
+          'Cannot delete folder containing documents. Move or delete documents first.',
+        );
+      }
+
+      // 3. Now it's safe to delete
       await this.foldersRepository.remove(folder);
 
       return {
         success: true,
         message: 'Deleted Successfully',
       };
-    } catch (err) {}
+    } catch (err) {
+      console.log(err);
+      throw err;
+    }
   }
 
   async getAncestors(id: string, userId: number): Promise<Folder[]> {
@@ -237,8 +635,6 @@ export class FoldersService {
   async findRecentFolders(user: any): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
-      console.log(userFound, 'www');
-
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
@@ -249,6 +645,7 @@ export class FoldersService {
       const recentFolders = await this.foldersRepository
         .createQueryBuilder('folder')
         .where('folder.userId = :userId', { userId })
+        .andWhere('folder.parentId IS NULL')
         .orderBy('folder.updatedAt', 'DESC')
         .limit(10)
         .getMany();
@@ -263,8 +660,6 @@ export class FoldersService {
           };
         }),
       );
-
-      console.log(enrichedFolders, 'recent');
 
       return {
         data: enrichedFolders,

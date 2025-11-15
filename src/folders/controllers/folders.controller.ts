@@ -32,6 +32,7 @@ export class FoldersController {
   @Get()
   @ApiOperation({ summary: 'Get all folders (flat list or tree structure)' })
   findAll(@Req() req, @Query('tree') tree?: string) {
+    console.log(tree, 'tree');
     if (tree === 'true') {
       return this.foldersService.findAllWithTree(req.user);
     }
@@ -41,19 +42,33 @@ export class FoldersController {
   @Get('/recent')
   @ApiOperation({ summary: 'Get all recent folders' })
   findRecentFolders(@Req() req) {
-    console.log("heree")
+    console.log('heree');
     return this.foldersService.findRecentFolders(req.user);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a folder by ID with its contents' })
-  findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req) {
-    return this.foldersService.findOneWithContents(id, req.user);
+  async getFolderById(@Request() req, @Param('id') folderId: string) {
+    return this.foldersService.findFolderById(req.user, folderId);
   }
+
+  @Patch(':id/move')
+  async moveFolder(
+    @Request() req,
+    @Param('id') folderId: string,
+    @Body() body: { parentId: string },
+  ) {
+    return this.foldersService.moveFolder(req.user, folderId, body.parentId);
+  }
+
+  // @Get(':id')
+  // @ApiOperation({ summary: 'Get a folder by ID with its contents' })
+  // findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req) {
+  //   return this.foldersService.findOneWithContents(id, req.user);
+  // }
 
   @Get(':id/breadcrumbs')
   @ApiOperation({ summary: 'Get folder breadcrumbs (path from root)' })
-  getBreadcrumbs(@Param('id', ParseUUIDPipe) id: string, @Req() req) {
+  getBreadcrumbs(@Param('id') id: string, @Req() req) {
     return this.foldersService.getBreadcrumbs(id, req.user);
   }
 
@@ -66,10 +81,11 @@ export class FoldersController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a folder' })
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() updateFolderDto: UpdateFolderDto,
     @Req() req,
   ) {
+    console.log('wewee');
     return this.foldersService.update(id, updateFolderDto, req.user);
   }
 
