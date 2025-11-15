@@ -59,6 +59,14 @@ export class NotesController {
     return this.notesService.updateNotePosition(id, position);
   }
 
+  @Patch(':id/order')
+  updateNoteOrderById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('order') order: number | string,
+  ) {
+    return this.notesService.updateNoteOrder(id, order);
+  }
+
   @Delete(':id')
   deleteNote(@Param('id', ParseIntPipe) id: number) {
     return this.notesService.deleteNote(id);

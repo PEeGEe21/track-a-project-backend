@@ -27,6 +27,9 @@ export class Note {
   @Column({ type: 'json', nullable: true })
   position: { x: number; y: number };
 
+  @Column({ type: 'int', default: 0 })
+  order: number;
+
   @ManyToOne(() => Task, (task) => task.notes)
   @JoinColumn({ name: 'task_id' })
   task: Task;

@@ -69,6 +69,11 @@ export class NotesService {
         });
       }
 
+      queryBuilder
+        .orderBy('note.is_pinned', 'DESC') // pinned first
+        .addOrderBy('note.order', 'ASC') // then by custom order
+        .addOrderBy('note.created_at', 'DESC'); // newest first (fallback)
+
       // 8. Pagination and ordering
       queryBuilder.skip((page - 1) * limit);
       queryBuilder.take(limit);
@@ -216,6 +221,44 @@ export class NotesService {
     }
   }
 
+  async updateNoteOrder(id: number, order: number | string) {
+    try {
+      const note = await this.noteRepository.findOneBy({ id });
+      if (!note) {
+        throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
+      }
+
+      if (!order) {
+        throw new HttpException('Invalid order format', HttpStatus.BAD_REQUEST);
+      }
+
+      const updateResult = await this.noteRepository.update(id, {
+        order: Number(order),
+      });
+
+      if (updateResult.affected < 1) {
+        throw new HttpException(
+          'Failed to update position',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const updatedNote = await this.noteRepository.findOneBy({ id });
+
+      return {
+        success: 'success',
+        message: 'Note position updated successfully',
+        data: updatedNote,
+      };
+    } catch (error) {
+      console.error('Error updating note position:', error);
+      throw new HttpException(
+        'Error updating note position',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async findNote(id: number): Promise<any> {
     try {
       const note = await this.noteRepository.findOne({
@@ -259,7 +302,7 @@ export class NotesService {
     }
   }
 
-  async createNote(payload: any, user): Promise<any> {
+  async createNote2(payload: any, user): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -291,6 +334,60 @@ export class NotesService {
       });
 
       // Save note
+      const savedNote = await this.noteRepository.save(newNote);
+
+      return {
+        success: 'success',
+        message: 'Note created successfully',
+        data: savedNote,
+      };
+    } catch (err) {
+      console.error('Error saving Note:', err);
+      throw new HttpException(
+        'Error saving Note',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async createNote(payload: any, user): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      const { note, color, is_pinned = false, position, taskId } = payload;
+
+      // ----- 1. Find the highest current order for this user -----
+      const maxOrderResult = await this.noteRepository
+        .createQueryBuilder('note')
+        .leftJoin('note.user', 'owner')
+        .select('MAX(note.`order`)', 'max')
+        .where('owner.id = :userId', { userId: userFound.id })
+        .getRawOne();
+
+      const nextOrder = (maxOrderResult?.max ?? 0) + 1;
+
+      // ----- 2. Task handling (unchanged) -----
+      let task = null;
+      if (taskId) {
+        task = await this.taskRepository.findOne({ where: { id: taskId } });
+        if (!task) {
+          return { error: 'error', message: 'Task not found' };
+        }
+      }
+
+      // ----- 3. Create note with proper order -----
+      const newNote = this.noteRepository.create({
+        note,
+        color: color || '#FFD700',
+        is_pinned,
+        position: position ?? { x: 0, y: 0 },
+        order: nextOrder, // NEW
+        user: userFound,
+        ...(task && { task }),
+      });
+
       const savedNote = await this.noteRepository.save(newNote);
 
       return {
