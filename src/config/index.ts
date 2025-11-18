@@ -80,7 +80,7 @@ export const config = {
   secret: envVars.JWT_ACCESS_TOKEN_SECRET,
   expiresIn: envVars.JWT_ACCESS_EXPIRES_IN,
   refreshSecret: envVars.JWT_REFRESH_TOKEN_SECRET,
-  feBaseUrl: envVars.FE_BASE_URL,
+  feBaseUrl: envVars.FRONTEND_URL,
   accountVerificationTtl: envVars.ACCOUNT_VERIFICATION_TTL,
   accountVerificationUrl: envVars.ACCOUNT_VERIFICATION_URL,
   verifyHash: envVars.VERIFY_HASH_HOOK,

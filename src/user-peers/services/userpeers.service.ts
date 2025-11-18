@@ -260,7 +260,88 @@ export class UserpeersService {
     }
   }
 
-  async acceptInvite(user: any, id) {
+  async acceptInvite(user: any, id: any) {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const invite = await this.userPeerInvitesRepository.findOne({
+        where: { id },
+        relations: ['inviter_user_id'],
+      });
+
+      if (!invite) {
+        throw new HttpException('Invite not found', HttpStatus.NOT_FOUND);
+      }
+
+      // Check if user is trying to accept their own invite
+      if (invite.email !== foundUser.email) {
+        throw new HttpException(
+          'This invite is not for you',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Validate invite status
+      const response = await this.userService.getPeerInviteCodeStatus(
+        invite.invite_code,
+        true,
+      );
+
+      console.log(invite, response, 'invite validation');
+
+      if (!response.success) {
+        return {
+          success: false,
+          message: response.message,
+        };
+      }
+
+      // Update invite status to accepted
+      invite.status = 'accepted';
+      await this.userPeerInvitesRepository.save(invite);
+
+      // Create the peer connection
+      const createSuccess = await this.userService.createUserPeer(
+        invite.invite_code,
+        foundUser,
+      );
+
+      console.log(createSuccess, 'peer creation result');
+
+      if (!createSuccess || !createSuccess.success) {
+        // Rollback invite status if peer creation fails
+        invite.status = 'pending';
+        await this.userPeerInvitesRepository.save(invite);
+
+        return {
+          success: false,
+          message: 'Failed to create peer connection',
+        };
+      }
+
+      return {
+        success: true,
+        invite_status: invite.status,
+        message: 'Invite has been accepted successfully',
+      };
+    } catch (err) {
+      console.error('Error accepting invite:', err);
+
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
+      throw new HttpException(
+        'Failed to accept invite',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async acceptInvite2(user: any, id) {
     try {
       const foundUser = await this.userService.getUserAccountById(user.userId);
       if (!foundUser) {

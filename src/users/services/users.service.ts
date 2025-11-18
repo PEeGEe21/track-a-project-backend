@@ -69,7 +69,7 @@ export class UsersService {
 
   async getUserAccountByEmail(email: string) {
     const user = await this.userRepository.findOneBy({ email });
-    console.log(user, email, 'userr');
+    // console.log(user, email, 'userr');
 
     // if (!user) {
     //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
@@ -360,6 +360,146 @@ export class UsersService {
         );
       }
 
+      const results = [];
+
+      for (const email of peerEmailsArray) {
+        try {
+          // Skip if trying to invite yourself
+          if (foundUser?.email === email) {
+            console.log(`Skipping self-invite for ${email}`);
+            continue;
+          }
+
+          // Check if user account exists
+          const foundPeer = await this.checkUserAccountEmailExists(email);
+          const foundPeerUser = foundPeer
+            ? await this.getUserAccountByEmail(email)
+            : null;
+
+          // Check BOTH directions for existing peer relationship
+          let existingPeer = null;
+          if (foundPeerUser) {
+            existingPeer = await this.userPeerRepository.findOne({
+              where: [
+                // Check if foundUser has foundPeerUser as peer
+                {
+                  user: { id: foundUser?.id },
+                  peer: { id: foundPeerUser?.id },
+                },
+                // Check if foundPeerUser has foundUser as peer (reverse)
+                {
+                  user: { id: foundPeerUser?.id },
+                  peer: { id: foundUser?.id },
+                },
+              ],
+            });
+          }
+
+          // Skip if peer relationship already exists
+          if (existingPeer) {
+            console.log(`Peer relationship already exists with ${email}`);
+            continue;
+          }
+
+          // Check for existing pending invite
+          const existingInvite = await this.userPeerInviteRepository.findOne({
+            where: {
+              inviter_user_id: { id: foundUser?.id },
+              email,
+              status: 'pending',
+            },
+          });
+
+          if (existingInvite) {
+            console.log(`Pending invite already exists for ${email}`);
+            continue;
+          }
+
+          const inviteCode = this.generateInviteCode();
+
+          // Save the invite
+          await this.userPeerInviteRepository.save({
+            inviter_user_id: foundUser,
+            email,
+            invite_code: inviteCode,
+            invited_as: invite_as.toLowerCase(),
+            status: 'pending',
+            due_date: addDays(new Date(), 7), // optional 7-day expiry
+          });
+
+          // Only send notification if the user already has an account
+          if (foundPeer && foundPeerUser) {
+            const payload = {
+              recipient: foundPeerUser,
+              sender: user,
+              title: 'You received an invite',
+              message: `${user?.email} sent you an invite to be their Peer`,
+              type: 'peer_request',
+            };
+
+            await this.notificationService.createNotification(
+              foundPeer,
+              payload,
+            );
+          }
+
+          // Send email invite
+          await this.sendInviteMail(
+            email,
+            foundPeer,
+            foundUser,
+            invite_as,
+            inviteCode,
+            foundPeerUser,
+          );
+
+          results.push({ email, status: 'sent' });
+        } catch (err) {
+          console.error(`Error sending invite to ${email}:`, err);
+          results.push({ email, status: 'failed', error: err.message });
+          // Continue with next email instead of failing everything
+        }
+      }
+
+      console.log('Peer invite results:', results);
+
+      return {
+        success: true,
+        message: 'Peer Invite Sent Successfully',
+        details: results,
+      };
+    } catch (err) {
+      console.error('Error in sending peer invite:', err);
+      throw new UnauthorizedException('Could Not Send Peer Invite');
+    }
+  }
+
+  async sendPeerInvite2(user: any, inviteData): Promise<any> {
+    try {
+      const { emails, selectedRole: invite_as } = inviteData;
+      const foundUser = await this.getUserAccountById(user.userId);
+
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const peerEmailsArray = await this.validatePeerInviteEmails(emails);
+
+      // Basic email regex (reasonable coverage)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      // Validate all emails first
+      const invalidEmails = peerEmailsArray.filter(
+        (email: string) => !emailRegex.test(email),
+      );
+
+      if (invalidEmails.length > 0) {
+        throw new HttpException(
+          `Invalid email address(es) provided: ${invalidEmails.join(', ')}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       // console.log(peerEmailsArray, invite_as)
       // return
       try {
@@ -371,11 +511,16 @@ export class UsersService {
 
           const existingPeer = foundPeer
             ? await this.userPeerRepository.findOne({
-                where: { user: { id: user?.id }, peer: { id: foundPeer?.id } },
+                where: {
+                  user: { id: foundUser?.id },
+                  peer: { id: foundPeerUser?.id },
+                },
               })
             : null;
 
-          console.log(foundPeer, existingPeer || foundUser?.email == email);
+          // console.log(foundPeer, existingPeer, existingPeer || foundUser?.email == email);
+          // console.log(foundPeer, foundPeerUser, "sending peer invite");
+          // return
           // return;
           // skip if existting peer and current user email is incuded
           if (existingPeer || foundUser?.email == email) continue;
@@ -486,6 +631,106 @@ export class UsersService {
     isActive: boolean;
     message: string;
   }> {
+    try {
+      const invite = await this.userPeerInviteRepository.findOne({
+        where: { invite_code: inviteCode },
+      });
+
+      console.log(invite, 'invite lookup');
+
+      if (!invite) {
+        return {
+          success: false,
+          status: 'invalid',
+          isActive: false,
+          message: 'Invite not found.',
+        };
+      }
+
+      // Check if already accepted or rejected
+      if (invite.status === 'accepted') {
+        return {
+          success: false,
+          status: 'accepted',
+          isActive: false,
+          message: 'Invite has already been accepted.',
+        };
+      }
+
+      if (invite.status === 'declined') {
+        return {
+          success: false,
+          status: 'rejected',
+          isActive: false,
+          message: 'Invite was rejected.',
+        };
+      }
+
+      // Check expiration
+      if (markExpire && invite.due_date) {
+        // Use UTC time consistently
+        const now = new Date();
+        const isExpired = invite.due_date <= now;
+
+        if (isExpired && invite.status === 'pending') {
+          invite.status = 'expired';
+          await this.userPeerInviteRepository.save(invite);
+
+          return {
+            success: false,
+            status: 'expired',
+            isActive: false,
+            message: 'Invite has expired.',
+          };
+        }
+      }
+
+      if (invite.status === 'expired') {
+        return {
+          success: false,
+          status: 'expired',
+          isActive: false,
+          message: 'Invite has expired.',
+        };
+      }
+
+      // If still pending and valid
+      if (invite.status === 'pending') {
+        return {
+          success: true,
+          status: 'pending',
+          isActive: true,
+          message: 'Invite is valid and pending.',
+        };
+      }
+
+      // Any other status
+      return {
+        success: false,
+        status: invite.status,
+        isActive: false,
+        message: 'Invite is no longer valid.',
+      };
+    } catch (err) {
+      console.error('Error checking invite status:', err);
+      return {
+        success: false,
+        status: 'error',
+        isActive: false,
+        message: 'Error checking invite status.',
+      };
+    }
+  }
+
+  async getPeerInviteCodeStatus2(
+    inviteCode: string,
+    markExpire = true,
+  ): Promise<{
+    success: boolean;
+    status: string;
+    isActive: boolean;
+    message: string;
+  }> {
     const invite = await this.userPeerInviteRepository.findOne({
       where: { invite_code: inviteCode },
     });
@@ -575,6 +820,137 @@ export class UsersService {
   }
 
   async createUserPeer(inviteCode: string, newUser: User) {
+    try {
+      const invite = await this.userPeerInviteRepository.findOne({
+        where: { invite_code: inviteCode },
+        relations: ['inviter_user_id'],
+      });
+
+      console.log(invite, 'invite in create user peer');
+
+      if (!invite) {
+        console.log('Invalid invite code');
+        return {
+          success: false,
+          message: 'Invalid invite code',
+        };
+      }
+
+      if (!invite.inviter_user_id) {
+        console.log('Inviter not found');
+        return {
+          success: false,
+          message: 'Inviter not found',
+        };
+      }
+
+      const invitedBy = await this.getUserAccountById(
+        invite.inviter_user_id.id,
+      );
+
+      if (!invitedBy) {
+        console.log('Inviter account not found');
+        return {
+          success: false,
+          message: 'Inviter account not found',
+        };
+      }
+
+      console.log(invite.status, 'invite status');
+
+      if (invite.status !== 'accepted') {
+        console.log('Invite not in accepted status');
+        return {
+          success: false,
+          message: 'Invite must be accepted first',
+        };
+      }
+
+      // Check if peer connection already exists in either direction
+      const existingConnection = await this.userPeerRepository
+        .createQueryBuilder('user_peer')
+        .where(
+          '(user_peer.user_id = :user1 AND user_peer.peer_id = :user2) OR (user_peer.user_id = :user2 AND user_peer.peer_id = :user1)',
+          { user1: invitedBy.id, user2: newUser.id },
+        )
+        .getOne();
+
+      console.log(existingConnection, 'existing connection check');
+
+      if (existingConnection) {
+        console.log(
+          `Users ${invitedBy.id} and ${newUser.id} are already connected`,
+        );
+        return {
+          success: false,
+          message: 'Users are already connected as peers',
+        };
+      }
+
+      // Create bidirectional peer relationship
+      const peerToUser = this.userPeerRepository.create({
+        status: UserPeerStatus.CONNECTED,
+        connection_type: invite.invited_as,
+        is_confirmed: true,
+        user: { id: invitedBy.id },
+        peer: { id: newUser.id },
+      });
+
+      const userToPeer = this.userPeerRepository.create({
+        status: UserPeerStatus.CONNECTED,
+        connection_type: invite.invited_as,
+        is_confirmed: true,
+        user: { id: newUser.id },
+        peer: { id: invitedBy.id },
+      });
+
+      await this.userPeerRepository.save([peerToUser, userToPeer]);
+
+      // Send notification to the inviter
+      const payloadToInviter = {
+        recipient: invitedBy,
+        sender: newUser,
+        title: 'Peer Invite Accepted',
+        message: `${newUser.email} has accepted your invitation to be a Peer`,
+        type: 'peer_request',
+      };
+
+      await this.notificationService.createNotification(
+        invitedBy,
+        payloadToInviter,
+      );
+
+      // Send notification to the new user
+      const payloadToNewUser = {
+        recipient: newUser,
+        sender: invitedBy,
+        title: 'Peer Connection Established',
+        message: `You are now connected with ${invitedBy.email} as a Peer`,
+        type: 'peer_request',
+      };
+
+      await this.notificationService.createNotification(
+        newUser,
+        payloadToNewUser,
+      );
+
+      console.log('Peer connection created successfully');
+
+      return {
+        success: true,
+        message: 'Peer connection created successfully',
+      };
+    } catch (err) {
+      console.error('Error creating user peer:', err);
+      return {
+        success: false,
+        message: 'Failed to create peer connection',
+        error: err.message,
+      };
+    }
+  }
+
+  async createUserPeer2(inviteCode: string, newUser: User) {
     try {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
