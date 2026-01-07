@@ -51,6 +51,12 @@ import { MessagesModule } from './messages/messages.module';
 import { FoldersModule } from './folders/folders.module';
 import { DocumentFile } from './typeorm/entities/DocumentFile';
 import { Folder } from './typeorm/entities/Folder';
+import { MenusModule } from './menus/menus.module';
+import { UserOrganization } from './typeorm/entities/UserOrganization';
+import { Organization } from './typeorm/entities/Organization';
+import { GlobalMenu } from './typeorm/entities/GlobalMenu';
+import { OrganizationMenu } from './typeorm/entities/OrganizationMenu';
+import { OrganizationsModule } from './organizations/organizations.module';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -91,6 +97,10 @@ import { Folder } from './typeorm/entities/Folder';
         Resource,
         Whiteboard,
         ProjectActivity,
+        UserOrganization,
+        OrganizationMenu,
+        GlobalMenu,
+        Organization,
       ],
       synchronize: true,
       autoLoadEntities: true,
@@ -128,7 +138,11 @@ import { Folder } from './typeorm/entities/Folder';
       MessageReaction,
       MessageReadReceipt,
       DocumentFile,
-      Folder
+      Folder,
+      UserOrganization,
+      OrganizationMenu,
+      GlobalMenu,
+      Organization,
     ]),
     UsersModule,
     ProjectsModule,
@@ -147,6 +161,8 @@ import { Folder } from './typeorm/entities/Folder';
     ProjectActivitiesModule,
     MessagesModule,
     FoldersModule,
+    MenusModule,
+    OrganizationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],

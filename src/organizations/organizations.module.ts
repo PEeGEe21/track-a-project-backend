@@ -1,16 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Post } from '../typeorm/entities/Post';
-import { Profile } from '../typeorm/entities/Profile';
-import { User } from '../typeorm/entities/User';
-import { UsersController } from './controllers//users.controller';
-import { UsersService } from './services/users.service';
-import { Project } from 'src/typeorm/entities/Project';
-import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
-import { JwtModule } from '@nestjs/jwt';
-import { config } from 'src/config';
-import { UserPeersModule } from 'src/user-peers/userpeers.module';
-import { UserpeersService } from 'src/user-peers/services/userpeers.service';
+import { OrganizationsService } from './services/organizations.service';
+import { OrganizationsController } from './controllers/organizations.controller';
+import { UsersService } from 'src/users/services/users.service';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { Status } from 'src/typeorm/entities/Status';
 import { Tag } from 'src/typeorm/entities/Tag';
@@ -23,34 +14,35 @@ import { NotificationsService } from 'src/notifications/services/notifications.s
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
 import { Resource } from 'src/typeorm/entities/resource';
-import { AuthModule } from 'src/auth/auth.module';
-
-import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
-import { Conversation } from 'src/typeorm/entities/Conversation';
-import { Message } from 'src/typeorm/entities/Message';
-import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
-import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
-import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
+import { AuthModule } from 'src/auth/auth.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
-
+import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
+import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { UsersModule } from 'src/users/users.module';
+import { JwtModule } from '@nestjs/jwt';
+import { User } from 'src/typeorm/entities/User';
+import { Profile } from 'src/typeorm/entities/Profile';
+import { Project } from 'src/typeorm/entities/Project';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
+import { Post } from 'src/typeorm/entities/Post';
 
 @Module({
   imports: [
+    forwardRef(() => NotificationsModule),
     JwtModule,
     MailingModule,
-    ConfigModule,
-    // NotificationsModule,
-    forwardRef(() => NotificationsModule),
-    // forwardRef(() => AuthModule),
-    // forwardRef(() => UserPeersModule),
+    forwardRef(() => AuthModule),
+    forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -59,28 +51,24 @@ import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
       Task,
       Tag,
       ProjectPeer,
-      ProjectPeerInvite,
-      ProjectComment,
       Status,
       UserPeer,
       UserPeerInvite,
+      ProjectPeerInvite,
+      ProjectComment,
       Notification,
       UserNotificationPreference,
       Note,
-      Resource,
       ProjectActivity,
+      MessageReaction,
+      MessageReadReceipt,
       UserOrganization,
-      Organization
+      OrganizationMenu,
+      GlobalMenu,
+      Organization,
     ]),
   ],
-  controllers: [UsersController],
-  providers: [
-    UsersService,
-    MailingService,
-    NotificationsService,
-    ConfigService,
-    NotificationsGateway,
-  ],
-  exports: [UsersService],
+  controllers: [OrganizationsController],
+  providers: [OrganizationsService, UsersService],
 })
-export class UsersModule {}
+export class OrganizationsModule {}

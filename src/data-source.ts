@@ -12,6 +12,20 @@ import { UserPeer } from './typeorm/entities/UserPeer';
 import { Category } from './typeorm/entities/Category';
 import { Note } from './typeorm/entities/Note';
 import { ProjectComment } from './typeorm/entities/ProjectComment';
+import { UserOrganization } from './typeorm/entities/UserOrganization';
+import { OrganizationMenu } from './typeorm/entities/OrganizationMenu';
+import { GlobalMenu } from './typeorm/entities/GlobalMenu';
+import { Organization } from './typeorm/entities/Organization';
+import { Document } from './typeorm/entities/Document';
+import { Folder } from './typeorm/entities/Folder';
+import { Resource } from './typeorm/entities/resource';
+import { Whiteboard } from './typeorm/entities/Whiteboard';
+import { Conversation } from './typeorm/entities/Conversation';
+import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
+import { Message } from './typeorm/entities/Message';
+import { MessageReaction } from './typeorm/entities/MessageReaction';
+import { MessageReadReceipt } from './typeorm/entities/MessageReadReceipt';
+import { DocumentFile } from './typeorm/entities/DocumentFile';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -35,5 +49,19 @@ export const AppDataSource = new DataSource({
     Category,
     Note,
     ProjectComment,
+    Document,
+    Resource,
+    Whiteboard,
+    Conversation,
+    ConversationParticipant,
+    Message,
+    MessageReaction,
+    MessageReadReceipt,
+    DocumentFile,
+    Folder,
+    UserOrganization,
+    OrganizationMenu,
+    GlobalMenu,
+    Organization,
   ],
 });

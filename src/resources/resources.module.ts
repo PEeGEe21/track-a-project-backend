@@ -30,6 +30,7 @@ import { SupabaseStorageService } from 'src/supabase/supabase-storage.service';
 import { ConfigModule } from '@nestjs/config';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -57,7 +58,8 @@ import { ProjectActivitiesModule } from 'src/project-activities/project-activiti
       UserNotificationPreference,
       Note,
       Resource,
-      ProjectActivity
+      ProjectActivity,
+      UserOrganization
     ]),
   ],
   controllers: [ResourcesController],

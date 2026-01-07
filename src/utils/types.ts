@@ -82,3 +82,13 @@ export interface WhiteboardState {
   appState: any;
   files: any;
 }
+
+export enum UserOrderBy {
+  ASC = 'ASC',
+  DESC = 'DESC',
+}
+
+export enum UserStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+}

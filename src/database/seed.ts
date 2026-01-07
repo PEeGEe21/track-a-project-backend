@@ -9,8 +9,10 @@ import { AppDataSource } from '../data-source';
 // import { seedUserPeers } from './seeds/userpeers.seed';
 // import { seedProjectPeers } from './seeds/projectpeers.seed';
 // import { seedUserNames } from './seeds/seedUserNames';
-import { seedNotes } from './seeds/note.seed';
-
+// import { seedUserNames } from './seeds/seedUserNames';
+// import { seedNotes } from './seeds/note.seed';
+// import { seedGlobalMenus } from './seeds/global-menu.seed';
+// import { seedOrganizationsAndLinks } from './seeds/organization.seed';
 
 const runSeed = async () => {
   try {
@@ -21,7 +23,9 @@ const runSeed = async () => {
     // await seedCategories(AppDataSource);
     // await seedTags(AppDataSource);
     // await seedProjects(AppDataSource);
-    await seedNotes(AppDataSource);
+    // await seedGlobalMenus(AppDataSource);
+    // await seedOrganizationsAndLinks(AppDataSource);
+    // await seedNotes(AppDataSource);
     // await seedUserPeers(AppDataSource);
     // await seedProjectPeers(AppDataSource);
     // await seedUserNames(AppDataSource);

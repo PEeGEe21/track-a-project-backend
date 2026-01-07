@@ -40,6 +40,7 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Resource } from 'src/typeorm/entities/resource';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
       UserNotificationPreference,
       Resource,
       ProjectActivity,
+      UserOrganization
     ]),
   ],
   controllers: [AuthController],

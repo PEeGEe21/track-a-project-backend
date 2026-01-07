@@ -50,6 +50,7 @@ import { CreateUserProfileDto } from '../dtos/create-profile-peer.dto';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
+import { UserRole } from 'src/utils/constants/user_roles';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -294,8 +295,25 @@ export class AuthService {
   async loginWithEmail(loginDto: EmailLoginDto): Promise<LoginResponseDto> {
     const { email, password } = loginDto;
     const user = await this.usersService.getUserAccountByEmail(email);
+    console.log(loginDto, 'loginDto');
     if (user) return this.loginUser(user, password, false, null);
     return this.loginUser(user, password, false);
+  }
+
+  async loginWithAdmin(loginDto: EmailLoginDto): Promise<LoginResponseDto> {
+    const { email, password } = loginDto;
+    const user = await this.usersService.getUserAccountByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException(
+        'SignIn Failed!, Incorrect login credentials',
+      );
+    }
+    if (user.role == UserRole.SUPER_ADMIN)
+      return this.loginUser(user, password, false, null);
+    else
+      throw new UnauthorizedException(
+        'SignIn Failed! Not An Admin!!',
+      );
   }
 
   private async loginUser(
@@ -318,6 +336,8 @@ export class AuthService {
       user.email,
     );
 
+    console.log(userPassword, password);
+
     const isCorrectPassword = await bcrypt.compare(password, userPassword);
 
     if (!isCorrectPassword) {
@@ -328,45 +348,56 @@ export class AuthService {
     // }
     let profileImage: any;
 
-    let updateUser = null;
-
-    const payload = {
-      email: user.email,
-      sub: user.id,
-    };
-
+    console.log(
+      user.id,
+      user.email,
+      user.role,
+      'user.id, user.email, user.role',
+    );
     await this.setUserLoggedIn(user.id, true);
-    const tokens = await this.getTokens(user.id, user.email);
+    const tokens = await this.getTokens(user.id, user.email, user.role);
 
     delete user.password;
-    // user = portal && updateUser ? updateUser : user;
+
+    if (user?.role == UserRole.SUPER_ADMIN) {
+      return {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        success: 'success',
+        message: 'Logged in successfully',
+        user: {
+          ...user,
+        },
+      };
+    }
+
+    const userOrganizations = await this.usersService.getUserOrganizationsById(
+      user.id,
+    );
 
     return {
-      // accessToken: this.jwt.sign(payload),
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       success: 'success',
       message: 'Logged in successfully',
       user: {
         ...user,
+        organizations: userOrganizations,
       },
     };
   }
 
   async setUserLoggedIn(id: number, loggedIn: boolean) {
-    const user = await this.userRepository.findOneById(id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    const updatedUser = await this.userRepository.update(
-      { id: id },
+    const result = await this.userRepository.update(
+      { id },
       { logged_in: loggedIn },
     );
 
-    const userupdate = await this.userRepository.findOneById(id);
+    if (!result.affected) {
+      throw new NotFoundException('User not found');
+    }
 
-    return userupdate;
+    return this.userRepository.findOne({ where: { id } });
   }
 
   // sign up as peer
@@ -492,7 +523,7 @@ export class AuthService {
 
       console.log(profile, 'profile details');
       await this.setUserLoggedIn(user.id, true);
-      const tokens = await this.getTokens(user.id, user.email);
+      const tokens = await this.getTokens(user.id, user.email, user.role);
 
       console.log(tokens, 'rotke');
       // if (config.env === 'production') {
@@ -863,9 +894,20 @@ export class AuthService {
   //   };
   // }
 
-  async getTokens(userId: number, email: string) {
+  async getTokens(userId: number, email: string, role: string = 'member') {
     try {
-      const payload = { sub: userId, email };
+      const userOrganizations =
+        (await this.usersService.getUserOrganizationsById(userId)) ?? [];
+
+      const payload = {
+        sub: userId,
+        email,
+        role: role,
+        userOrganizations: userOrganizations.map((uo) => ({
+          organization_id: uo.organization_id,
+          subscriptionTier: uo.organization?.subscription_tier ?? null,
+        })),
+      };
 
       const accessToken = await this.jwt.signAsync(payload, {
         secret: process.env.JWT_ACCESS_TOKEN_SECRET,
@@ -883,6 +925,7 @@ export class AuthService {
       };
     } catch (error) {
       console.log(error);
+      throw error;
     }
   }
 
@@ -898,7 +941,11 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_TOKEN_SECRET,
       });
 
-      const tokens = await this.getTokens(payload.sub, payload.email);
+      const tokens = await this.getTokens(
+        payload.sub,
+        payload.email,
+        payload.role,
+      );
       return {
         success: 'success',
         accessToken: tokens.accessToken,
@@ -922,7 +969,6 @@ export class AuthService {
 
       await this.setUserLoggedIn(user.id, false);
 
-      console.log(user, 'logged out user');
       return {
         success: 'success',
         message: 'Logged out successfully',

@@ -43,6 +43,13 @@ export class AuthController {
     return this.authService.loginWithEmail(loginDto);
   }
 
+  @Post('/login-admin')
+  async loginWithAdmin(
+    @Body() loginDto: EmailLoginDto,
+  ): Promise<LoginResponseDto> {
+    return this.authService.loginWithAdmin(loginDto);
+  }
+
   @Post('/signup')
   async userSignup(
     @Body() userSignupDto: any,

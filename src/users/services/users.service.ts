@@ -16,6 +16,7 @@ import {
   CreateUserPostParams,
   CreateUserProfileParams,
   UpdateUserParams,
+  UserStatus,
 } from '../../utils/types';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
@@ -37,6 +38,10 @@ import { Task } from 'src/typeorm/entities/Task';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import * as moment from 'moment';
 import { ActivityType } from 'src/utils/constants/activity';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { AuthUser } from 'src/types/users';
+import { PaginatedResponse } from 'src/types/pagination';
+import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 
 @Injectable()
 export class UsersService {
@@ -54,6 +59,8 @@ export class UsersService {
     private projectPeerRepository: Repository<ProjectPeer>,
     @InjectRepository(UserPeerInvite)
     private userPeerInviteRepository: Repository<UserPeerInvite>,
+    @InjectRepository(UserOrganization)
+    private userOrganizationRepository: Repository<UserOrganization>,
     private jwtService: JwtService,
     private MailingService: MailingService,
     private notificationService: NotificationsService,
@@ -75,6 +82,20 @@ export class UsersService {
     //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
     // }
     return user;
+  }
+
+  async getUserRole(id: number) {
+    const user = await this.userRepository.findOneBy({ id });
+    return user.role;
+  }
+
+  async getUserOrganizationsById(userId: number) {
+    const organizations = this.userOrganizationRepository.find({
+      where: { user_id: userId },
+      relations: ['organization'],
+    });
+
+    return organizations;
   }
 
   // async getUserAccountByPhoneNumber(
@@ -248,6 +269,57 @@ export class UsersService {
   async getUserAccountPassword(email: string): Promise<string | undefined> {
     const user = await this.userRepository.findOneBy({ email });
     return user?.password;
+  }
+
+  async findAllUsers(
+    authUser: AuthUser,
+    query: FindUsersQueryDto,
+  ): Promise<PaginatedResponse<User>> {
+    const { page = 1, limit = 10, search, orderBy, status } = query;
+
+    const foundUser = await this.getUserAccountById(authUser.userId);
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.user_organizations', 'userOrganizations')
+      .leftJoinAndSelect('userOrganizations.organization', 'organization');
+
+    if (search) {
+      qb.andWhere(
+        `(LOWER(user.first_name) LIKE :search
+        OR LOWER(user.last_name) LIKE :search
+        OR LOWER(user.email) LIKE :search
+        OR LOWER(user.username) LIKE :search)`,
+        { search: `%${search.toLowerCase()}%` },
+      );
+    }
+
+    if (status) {
+      qb.andWhere('user.is_active = :active', {
+        active: status === UserStatus.ACTIVE,
+      });
+    }
+
+    qb.orderBy('user.created_at', orderBy);
+    qb.skip((page - 1) * limit).take(limit);
+
+    const [result, total] = await qb.getManyAndCount();
+
+    return {
+      data: result,
+      meta: {
+        current_page: page,
+        from: (page - 1) * limit + 1,
+        last_page: Math.ceil(total / limit),
+        per_page: limit,
+        to: (page - 1) * limit + result.length,
+        total,
+      },
+      success: true,
+    };
   }
 
   async findUsers() {

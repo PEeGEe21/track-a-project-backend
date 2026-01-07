@@ -67,7 +67,6 @@ export class ResourcesController {
     @Query('created_by') created_by?: string,
     @Query('type') type?: string,
   ) {
-    console.log('in heree');
     return this.resourcesService.findAllResources(
       req.user,
       page,

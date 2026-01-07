@@ -8,8 +8,12 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   Req,
+  SerializeOptions,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { CreateUserDto } from '../dtos/CreateUser.dto';
 //   import { CreateUserPostDto } from '../../dtos/CreateUserPost.dto';
@@ -19,16 +23,30 @@ import { UsersService } from '../services/users.service';
 import { UpdateUserPasswordDto } from '../dtos/UpdateUserPassword.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Request } from 'express';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 
 @Controller('users')
 export class UsersController {
   constructor(private userService: UsersService) {}
 
-  @UseGuards(JwtAuthGuard)
+  // ============================================
+  // Super Admin Routes
+  // ============================================
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('super_admin')
   @Get('/')
-  getUsers() {
-    return this.userService.findUsers();
+  findAllUsers(@Query() query: FindUsersQueryDto, @Req() req: any) {
+    return this.userService.findAllUsers(req.user, query);
   }
+
+  // @UseGuards(JwtAuthGuard)
+  // @Get('/')
+  // getUsers() {
+  //   return this.userService.findUsers();
+  // }
 
   @UseGuards(JwtAuthGuard)
   @Get('/profile')
@@ -49,16 +67,12 @@ export class UsersController {
   }
 
   @Post('/check-invite-code-status/:inviteCode')
-  checkPeerInviteCodeStatus(
-    @Param('inviteCode') inviteCode: string,
-  ) {
+  checkPeerInviteCodeStatus(@Param('inviteCode') inviteCode: string) {
     return this.userService.getPeerInviteCodeStatus(inviteCode);
   }
 
   @Post('/submit-peer-invite-code')
-  submitPeerInviteCodeStatus(
-    @Body() inviteData: any,
-  ) {
+  submitPeerInviteCodeStatus(@Body() inviteData: any) {
     return this.userService.submitPeerInviteCodeStatus(inviteData);
   }
 
@@ -125,12 +139,4 @@ export class UsersController {
   getUserSettings(@Param('id', ParseIntPipe) id: number) {
     return this.userService.getUserSettings(id);
   }
-
-  //   @Post(':id/posts')
-  //   createUserPost(
-  //     @Param('id', ParseIntPipe) id: number,
-  //     @Body() createUserPostDto: CreateUserPostDto,
-  //   ) {
-  //     return this.userService.createUserPost(id, createUserPostDto);
-  //   }
 }

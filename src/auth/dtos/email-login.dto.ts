@@ -13,6 +13,8 @@ export class EmailLoginDto {
   // @IsLowercase()
   email: string;
 
+  @IsString()
+  @IsNotEmpty()
+  @Length(8, 128)
   password: string;
-
 }

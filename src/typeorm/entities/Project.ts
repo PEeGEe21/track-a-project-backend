@@ -20,7 +20,7 @@ import { Resource } from './resource';
 import { Document } from './Document';
 import { Whiteboard } from './Whiteboard';
 import { Status } from './Status';
-import { ProjectStatus } from 'src/utils/constants/project';
+import { ProjectStatus } from '../../utils/constants/project';
 
 @Entity({ name: 'projects' })
 export class Project {

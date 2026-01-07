@@ -1,11 +1,10 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { NotesService } from './services/notes.service';
-import { NotesController } from './controllers/notes.controller';
+import { MenusService } from './services/menus.service';
+import { MenusController } from './controllers/menus.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/typeorm/entities/User';
 import { Task } from 'src/typeorm/entities/Task';
 import { Note } from 'src/typeorm/entities/Note';
-import { UsersService } from 'src/users/services/users.service';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
@@ -26,14 +25,21 @@ import { NotificationsService } from 'src/notifications/services/notifications.s
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { Conversation } from 'src/typeorm/entities/Conversation';
+import { Message } from 'src/typeorm/entities/Message';
+import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
+import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
+import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
+import { UsersService } from 'src/users/services/users.service';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
+import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
 
 @Module({
   imports: [
     forwardRef(() => NotificationsModule),
-
     JwtModule,
-    // UsersModule,
     MailingModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
@@ -54,16 +60,24 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       UserNotificationPreference,
       Note,
       ProjectActivity,
-      UserOrganization
+      Conversation,
+      Message,
+      ConversationParticipant,
+      MessageReaction,
+      MessageReadReceipt,
+      UserOrganization,
+      OrganizationMenu,
+      GlobalMenu,
+      Organization,
     ]),
   ],
-  controllers: [NotesController],
+  controllers: [MenusController],
   providers: [
-    NotesService,
+    MenusService,
     UsersService,
     NotificationsService,
     NotificationsGateway,
   ],
-  exports: [NotesService],
+  exports: [MenusService],
 })
-export class NotesModule {}
+export class MenusModule {}

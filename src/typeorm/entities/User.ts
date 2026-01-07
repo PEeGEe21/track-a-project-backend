@@ -22,6 +22,9 @@ import { Whiteboard } from './Whiteboard';
 import { Message } from './Message';
 import { ConversationParticipant } from './ConversationParticipant';
 import { UserPeer } from './UserPeer';
+import { UserOrganization } from './UserOrganization';
+import { UserRole } from '../../utils/constants/user_roles';
+import { Exclude, Expose } from 'class-transformer';
 
 @Entity({ name: 'users' })
 export class User {
@@ -49,8 +52,19 @@ export class User {
   @Column({ unique: true })
   email: string;
 
+  @Exclude()
   @Column()
   password: string;
+
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.MEMBER,
+  })
+  role: UserRole;
+
+  @Column({ default: true })
+  is_active: boolean;
 
   @CreateDateColumn()
   created_at: Date;
@@ -110,6 +124,10 @@ export class User {
   @OneToMany(() => Resource, (resource) => resource.project)
   resources: Resource[];
 
+  @OneToMany(() => UserOrganization, (uo) => uo.user)
+  user_organizations: UserOrganization[];
+
+  @Expose()
   get fullName(): string {
     return `${this.first_name ?? ''} ${this.last_name ?? ''}`.trim();
   }
