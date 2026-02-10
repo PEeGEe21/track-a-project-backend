@@ -25,10 +25,12 @@ import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificatio
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectsGateway } from './projects.gateway';
 import { Status } from 'src/typeorm/entities/Status';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
@@ -48,7 +50,9 @@ import { ProjectActivitiesModule } from 'src/project-activities/project-activiti
       UserNotificationPreference,
       Status,
       Resource,
-      ProjectActivity
+      ProjectActivity,
+      UserOrganization,
+      Organization,
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),

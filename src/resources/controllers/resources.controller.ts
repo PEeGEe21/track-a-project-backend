@@ -14,6 +14,7 @@ import {
   Req,
   Request,
   Res,
+  Headers,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResourcesService } from '../services/resources.service';
@@ -24,8 +25,12 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { MulterFile } from '../../types/multer.types';
 import { SimplePreviewService } from '../../services/simple-preview.service';
 import { Response } from 'express';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 
 @UseGuards(JwtAuthGuard)
+@UseGuards(OrganizationAccessGuard, SubscriptionGuard)
 @Controller('resources')
 export class ResourcesController {
   constructor(
@@ -34,18 +39,27 @@ export class ResourcesController {
   ) {}
 
   @Post()
-  create(@Body() createResourceDto: CreateResourceDto, @Req() req: any) {
-    return this.resourcesService.create(createResourceDto, req.user);
+  create(
+    @Headers('x-organization-id') organizationId: string,
+    @Body() createResourceDto: CreateResourceDto,
+    @Req() req: any,
+  ) {
+    return this.resourcesService.create(
+      createResourceDto,
+      req.user,
+      organizationId,
+    );
   }
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   uploadFile(
+    @Headers('x-organization-id') organizationId: string,
     @Body() uploadFileDto: UploadFileDto,
     @Req() req: any,
     @UploadedFile() file?: MulterFile,
   ) {
-    return this.resourcesService.uploadFile(file, uploadFileDto, req.user);
+    return this.resourcesService.uploadFile(file, uploadFileDto, req.user, organizationId);
   }
 
   // @Get()
@@ -58,6 +72,7 @@ export class ResourcesController {
 
   @Get()
   findAllResources(
+    @Headers('x-organization-id') organizationId: string,
     @Req() req: any,
     @Query('page') page: number,
     @Query('limit') limit: number,
@@ -68,6 +83,7 @@ export class ResourcesController {
     @Query('type') type?: string,
   ) {
     return this.resourcesService.findAllResources(
+      organizationId,
       req.user,
       page,
       limit,

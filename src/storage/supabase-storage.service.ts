@@ -2,9 +2,10 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
 import { MulterFile } from '../types/multer.types';
+import { StorageService } from 'src/types/storage.interface';
 
 @Injectable()
-export class SupabaseStorageService {
+export class SupabaseStorageService implements StorageService {
   private supabase: SupabaseClient;
   private bucketName: string;
 
@@ -12,7 +13,7 @@ export class SupabaseStorageService {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
     const bucketName = this.configService.get<string>('SUPABASE_BUCKET_NAME');
-    
+
     this.bucketName = bucketName;
 
     if (!supabaseUrl || !supabaseKey || !bucketName) {
@@ -32,10 +33,12 @@ export class SupabaseStorageService {
   /**
    * Initialize bucket if it doesn't exist
    */
-  private async initializeBucket(){
+  private async initializeBucket() {
     try {
       const { data: buckets } = await this.supabase.storage.listBuckets();
-      const bucketExists = buckets?.some(bucket => bucket.name === this.bucketName);
+      const bucketExists = buckets?.some(
+        (bucket) => bucket.name === this.bucketName,
+      );
 
       if (!bucketExists) {
         await this.supabase.storage.createBucket(this.bucketName, {
@@ -52,7 +55,7 @@ export class SupabaseStorageService {
             'text/*',
           ],
         });
-        console.log(`Bucket '${this.bucketName}' created successfully`);
+        // console.log(`Bucket '${this.bucketName}' created successfully`);
       }
     } catch (error) {
       console.error('Error initializing bucket:', error.message);
@@ -120,7 +123,10 @@ export class SupabaseStorageService {
   /**
    * Get signed URL for private files (expires in 1 hour by default)
    */
-  async getSignedUrl(filePath: string, expiresIn: number = 3600): Promise<string> {
+  async getSignedUrl(
+    filePath: string,
+    expiresIn: number = 3600,
+  ): Promise<string> {
     try {
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
@@ -145,24 +151,26 @@ export class SupabaseStorageService {
   /**
    * Download file from Supabase Storage
    */
-  async downloadFile(filePath: string): Promise<Blob> {
+  async downloadFile(filePath: string): Promise<Buffer> {
     try {
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .download(filePath);
 
       if (error) {
-        console.log(error, 'error')
+        console.log(error, 'error');
         throw new HttpException(
           `Failed to download file: ${error.message}`,
           HttpStatus.NOT_FOUND,
         );
       }
 
-      console.log(data, 'data')
+      console.log(data, 'data');
 
+      const arrayBuffer = await data.arrayBuffer();
+      return Buffer.from(arrayBuffer);
 
-      return data;
+      // return data;
     } catch (error) {
       throw new HttpException(
         `Failed to download file: ${error.message}`,
@@ -250,10 +258,7 @@ export class SupabaseStorageService {
         });
 
       if (error || !data || data.length === 0) {
-        throw new HttpException(
-          'File not found',
-          HttpStatus.NOT_FOUND,
-        );
+        throw new HttpException('File not found', HttpStatus.NOT_FOUND);
       }
 
       return data[0];

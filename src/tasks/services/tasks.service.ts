@@ -75,7 +75,7 @@ export class TasksService {
     return res;
   }
 
-  async updateTask(id: number, updateTaskDetails: any, user) {
+  async updateTask(id: number, updateTaskDetails: any, user, organizationId) {
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -176,6 +176,7 @@ export class TasksService {
       }
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
         projectId: updatedTask.project.id,
         userId: userFound.id,
         activityType: ActivityType.TASK_UPDATED,
@@ -210,6 +211,7 @@ export class TasksService {
     taskId: number,
     updateDto: UpdateTaskStatusDto,
     user: any,
+    organizationId: string,
   ) {
     return await this.dataSource.transaction(async (manager) => {
       const userFound = await manager.getRepository(User).findOne({
@@ -269,6 +271,7 @@ export class TasksService {
       });
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
         projectId: updatedTask.project.id,
         userId: userFound.id,
         activityType: ActivityType.STATUS_CHANGE,
@@ -399,6 +402,7 @@ export class TasksService {
     id: number,
     priorityStatus: any,
     user: any,
+    organizationId: string
   ): Promise<any> {
     try {
       const userFound = await this.userRepository.findOneBy({
@@ -442,6 +446,7 @@ export class TasksService {
       console.log(updatedTask, 'updatedTask');
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
         projectId: updatedTask.project.id,
         userId: userFound.id,
         activityType: ActivityType.TASK_UPDATED,
@@ -474,7 +479,11 @@ export class TasksService {
     }
   }
 
-  async deleteTask(id: number, user: any): Promise<any> {
+  async deleteTask(
+    id: number,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -489,9 +498,11 @@ export class TasksService {
       if (!task) {
         return { error: 'error', message: 'Task not found' }; // Or throw a NotFoundException
       }
+
       await this.taskRepository.delete(id);
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
         projectId: task.project.id,
         userId: userFound.id,
         activityType: ActivityType.TASK_DELETED,
@@ -546,7 +557,12 @@ export class TasksService {
     return data;
   }
 
-  async createTask(id: number, payload: any, user: any): Promise<any> {
+  async createTask(
+    id: number,
+    payload: any,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -609,6 +625,7 @@ export class TasksService {
       }
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
         projectId: project.id,
         userId: userFound.id,
         activityType: ActivityType.TASK_CREATED,

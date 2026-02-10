@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Conversation } from './Conversation';
+import { Organization } from './Organization';
 
 @Entity({ name: 'conversation_participants' })
 @Index(['conversationId', 'userId'], { unique: true })
@@ -58,6 +59,13 @@ export class ConversationParticipant {
 
   @Column({ type: 'timestamp', nullable: true })
   leftAt: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

@@ -84,15 +84,15 @@ export const globalMenuSeedData = [
     order_index: 9,
     is_active: false,
     required_tier: SubscriptionTier.PROFESSIONAL,
-  },
-  {
-    label: 'Settings',
-    href: '/settings',
-    icon: 'settings',
-    order_index: 10,
-    is_active: true,
-    required_tier: SubscriptionTier.FREE,
-  },
+  }
+  // {
+  //   label: 'Settings',
+  //   href: '/settings',
+  //   icon: 'settings',
+  //   order_index: 10,
+  //   is_active: true,
+  //   required_tier: SubscriptionTier.FREE,
+  // },
 ];
 
 export const seedGlobalMenus = async (dataSource: DataSource) => {

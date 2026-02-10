@@ -1268,11 +1268,16 @@ export class UsersService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      delete foundUser.password;
+      // delete foundUser.password;
+
+      const userOrganizations = await this.getUserOrganizationsById(foundUser.id);
 
       return {
         success: true,
-        data: foundUser,
+        data: {
+          ...foundUser,
+          organizations: userOrganizations,
+        },
       };
     } catch (err) {
       console.error('Error in getUserProfile:', err);
@@ -1418,7 +1423,7 @@ export class UsersService {
    * --------------------------------------------------------------
    * Fetches comprehensive dashboard analytics for the authenticated user
    */
-  async getUserDashboardData(user: any): Promise<any> {
+  async getUserDashboardData(user: any, organizationId: string): Promise<any> {
     try {
       const foundUser = await this.userRepository.findOne({
         where: { id: user.userId },

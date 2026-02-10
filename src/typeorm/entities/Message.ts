@@ -14,6 +14,7 @@ import { User } from './User';
 import { Conversation } from './Conversation';
 import { MessageReaction } from './MessageReaction';
 import { MessageReadReceipt } from './MessageReadReceipt';
+import { Organization } from './Organization';
 
 @Entity({ name: 'messages' })
 @Index(['conversationId', 'created_at'])
@@ -75,6 +76,13 @@ export class Message {
 
   @OneToMany(() => MessageReadReceipt, (receipt) => receipt.message)
   readReceipts: MessageReadReceipt[];
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

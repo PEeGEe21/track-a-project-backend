@@ -51,6 +51,14 @@ import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 import { UserRole } from 'src/utils/constants/user_roles';
+import { CreateOrganizationSignUpDto } from '../dtos/create-organization-signup.dto';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
+import { OrganizationRole } from 'src/utils/constants/org_roles';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { JoinOrganizationSignUpDto } from '../dtos/join-organization-signup.dto';
+import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
+import { LoginDto } from '../dtos/login.dto';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -83,6 +91,12 @@ export class AuthService {
     private userPeerInviteRepository: Repository<UserPeerInvite>,
     @InjectRepository(UserPeer)
     private userPeerRepository: Repository<UserPeer>,
+    @InjectRepository(Organization)
+    private organizationRepository: Repository<Organization>,
+    @InjectRepository(UserOrganization)
+    private userOrganizationRepository: Repository<UserOrganization>,
+    @InjectRepository(OrganizationInvitation)
+    private orgInvitationRepository: Repository<OrganizationInvitation>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -310,10 +324,7 @@ export class AuthService {
     }
     if (user.role == UserRole.SUPER_ADMIN)
       return this.loginUser(user, password, false, null);
-    else
-      throw new UnauthorizedException(
-        'SignIn Failed! Not An Admin!!',
-      );
+    else throw new UnauthorizedException('SignIn Failed! Not An Admin!!');
   }
 
   private async loginUser(
@@ -903,9 +914,10 @@ export class AuthService {
         sub: userId,
         email,
         role: role,
+        portal: role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
         userOrganizations: userOrganizations.map((uo) => ({
           organization_id: uo.organization_id,
-          subscriptionTier: uo.organization?.subscription_tier ?? null,
+          subscription_tier: uo.organization?.subscription_tier ?? null,
         })),
       };
 
@@ -987,5 +999,400 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  // new sign up
+
+  /**
+   * SCENARIO A: Sign up with new organization (becomes ORG_ADMIN)
+   */
+  async signUpWithOrganization(dto: CreateOrganizationSignUpDto) {
+    // Check if email already exists
+    const existingUser = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Generate unique slug from organization name
+    const slug = await this.generateUniqueSlug(dto.organization_name);
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Start transaction
+    const queryRunner =
+      this.userRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Create user
+      const user = queryRunner.manager.create(User, {
+        email: dto.email,
+        password: hashedPassword,
+        first_name: dto.first_name,
+        last_name: dto.last_name,
+        username: dto.email.split('@')[0], // Generate username from email
+        role: UserRole.MEMBER, // Default global role
+        is_active: true,
+      });
+      await queryRunner.manager.save(user);
+
+      // Create organization
+      const organization = queryRunner.manager.create(Organization, {
+        name: dto.organization_name,
+        slug: slug,
+        subscription_tier: SubscriptionTier.FREE,
+        max_users: 5,
+        max_projects: 10,
+        is_active: true,
+      });
+      await queryRunner.manager.save(organization);
+
+      // Create user-organization relationship (as ORG_ADMIN)
+      const userOrganization = queryRunner.manager.create(UserOrganization, {
+        user_id: user.id,
+        organization_id: organization.id,
+        role: OrganizationRole.ORG_ADMIN, // First user becomes admin
+      });
+      await queryRunner.manager.save(userOrganization);
+
+      await queryRunner.commitTransaction();
+
+      // Generate JWT token
+      const token = await this.generateToken(
+        user,
+        organization,
+        OrganizationRole.ORG_ADMIN,
+      );
+
+      return {
+        user: this.sanitizeUser(user),
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          subscription_tier: organization.subscription_tier,
+          role: userOrganization.role,
+        },
+        token,
+        message: 'Organization created successfully',
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * SCENARIO B: Sign up via invitation (joins existing organization)
+   */
+  async signUpWithInvitation(dto: JoinOrganizationSignUpDto) {
+    // Validate invitation token
+    const invitation = await this.orgInvitationRepository.findOne({
+      where: { token: dto.invite_token, accepted: false },
+      relations: ['organization'],
+    });
+
+    if (!invitation) {
+      throw new BadRequestException('Invalid or expired invitation token');
+    }
+
+    // Check if invitation expired
+    if (invitation.expires_at && new Date() > invitation.expires_at) {
+      throw new BadRequestException('Invitation has expired');
+    }
+
+    // Verify email matches invitation
+    if (invitation.email.toLowerCase() !== dto.email.toLowerCase()) {
+      throw new BadRequestException('Email does not match invitation');
+    }
+
+    // Check if email already exists
+    const existingUser = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Check organization capacity
+    const currentMemberCount = await this.userOrganizationRepository.count({
+      where: { organization_id: invitation.organization_id },
+    });
+
+    if (currentMemberCount >= invitation.organization.max_users) {
+      throw new BadRequestException(
+        'Organization has reached maximum user capacity',
+      );
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Start transaction
+    const queryRunner =
+      this.userRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Create user
+      const user = queryRunner.manager.create(User, {
+        email: dto.email,
+        password: hashedPassword,
+        first_name: dto.first_name,
+        last_name: dto.last_name,
+        username: dto.email.split('@')[0],
+        role: UserRole.MEMBER,
+        is_active: true,
+      });
+      await queryRunner.manager.save(user);
+
+      // Create user-organization relationship
+      const userOrganization = queryRunner.manager.create(UserOrganization, {
+        user_id: user.id,
+        organization_id: invitation.organization_id,
+        role: invitation.invited_role, // Role from invitation
+      });
+      await queryRunner.manager.save(userOrganization);
+
+      // Mark invitation as accepted
+      invitation.accepted = true;
+      await queryRunner.manager.save(invitation);
+
+      await queryRunner.commitTransaction();
+
+      // Generate JWT token
+      const token = await this.generateToken(
+        user,
+        invitation.organization,
+        invitation.invited_role,
+      );
+
+      return {
+        user: this.sanitizeUser(user),
+        organization: {
+          id: invitation.organization.id,
+          name: invitation.organization.name,
+          slug: invitation.organization.slug,
+          subscription_tier: invitation.organization.subscription_tier,
+          role: userOrganization.role,
+        },
+        token,
+        message: 'Successfully joined organization',
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Login - handles both single and multi-organization scenarios
+   */
+  async login(dto: LoginDto) {
+    // Find user by email
+    const user = await this.userRepository.findOne({
+      where: { email: dto.email },
+      relations: ['user_organizations', 'user_organizations.organization'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Check if user is active
+    if (!user.is_active) {
+      throw new UnauthorizedException('Account is inactive');
+    }
+
+    // Get user's organizations
+    const userOrganizations = user.user_organizations.filter(
+      (uo) => uo.organization.is_active,
+    );
+
+    if (userOrganizations.length === 0) {
+      throw new UnauthorizedException('No active organization found');
+    }
+
+    // Determine which organization to use
+    let selectedUserOrg: UserOrganization;
+
+    if (userOrganizations.length === 1) {
+      // Single organization - auto-select
+      selectedUserOrg = userOrganizations[0];
+    } else {
+      // Multiple organizations
+      if (!dto.organization_id) {
+        // Return list of organizations for user to choose
+        return {
+          requiresOrganizationSelection: true,
+          organizations: userOrganizations.map((uo) => ({
+            id: uo.organization.id,
+            name: uo.organization.name,
+            slug: uo.organization.slug,
+            subscription_tier: uo.organization.subscription_tier,
+            role: uo.role,
+          })),
+        };
+      }
+
+      // Find the selected organization
+      selectedUserOrg = userOrganizations.find(
+        (uo) => uo.organization_id === dto.organization_id,
+      );
+
+      if (!selectedUserOrg) {
+        throw new BadRequestException('Invalid organization selected');
+      }
+    }
+
+    // Update logged_in status
+    user.logged_in = true;
+    await this.userRepository.save(user);
+
+    // Generate JWT token
+    const token = await this.generateToken(
+      user,
+      selectedUserOrg.organization,
+      selectedUserOrg.role,
+    );
+
+    console.log(token, 'tokentoken');
+
+    return {
+      user: this.sanitizeUser(user),
+      organization: {
+        id: selectedUserOrg.organization.id,
+        name: selectedUserOrg.organization.name,
+        slug: selectedUserOrg.organization.slug,
+        subscription_tier: selectedUserOrg.organization.subscription_tier,
+        role: selectedUserOrg.role,
+      },
+      organizationRole: selectedUserOrg.role,
+      allOrganizations: userOrganizations.map((uo) => ({
+        id: uo.organization.id,
+        name: uo.organization.name,
+        slug: uo.organization.slug,
+        subscription_tier: uo.organization.subscription_tier,
+        role: uo.role,
+      })),
+      token,
+    };
+  }
+
+  /**
+   * Validate invitation token (for frontend to check before signup)
+   */
+  async validateInvitation(token: string) {
+    const invitation = await this.orgInvitationRepository.findOne({
+      where: { token, accepted: false },
+      relations: ['organization'],
+    });
+
+    if (!invitation) {
+      throw new NotFoundException('Invalid invitation token');
+    }
+
+    if (invitation.expires_at && new Date() > invitation.expires_at) {
+      throw new BadRequestException('Invitation has expired');
+    }
+
+    return {
+      email: invitation.email,
+      organization: {
+        id: invitation.organization.id,
+        name: invitation.organization.name,
+        slug: invitation.organization.slug,
+      },
+      invited_role: invitation.invited_role,
+    };
+  }
+
+  /**
+   * Helper: Generate unique slug from organization name
+   */
+  private async generateUniqueSlug(name: string): Promise<string> {
+    let slug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    let counter = 1;
+    let uniqueSlug = slug;
+
+    while (
+      await this.organizationRepository.findOne({ where: { slug: uniqueSlug } })
+    ) {
+      uniqueSlug = `${slug}-${counter}`;
+      counter++;
+    }
+
+    return uniqueSlug;
+  }
+
+  /**
+   * Helper: Generate JWT token
+   */
+  private async generateToken(
+    user: User,
+    organization: Organization,
+    organizationRole: OrganizationRole,
+  ) {
+    const userOrganizations =
+      (await this.usersService.getUserOrganizationsById(user.id)) ?? [];
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      portal: user.role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
+      // currentOrganizationId: organization.id,
+      organizationRole: organizationRole, // Role within current org
+      userOrganizations: userOrganizations.map((uo) => ({
+        organization_id: uo.organization_id,
+        subscription_tier: uo.organization?.subscription_tier ?? null,
+        role: uo.role ?? null,
+      })),
+    };
+
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_ACCESS_TOKEN_SECRET,
+      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN,
+    });
+
+    const refreshToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_REFRESH_TOKEN_SECRET,
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
+    });
+
+    console.log(accessToken, 'accessToken');
+    return {
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  /**
+   * Helper: Remove sensitive data from user object
+   */
+  private sanitizeUser(user: User) {
+    const { password, authStrategy, ...sanitized } = user;
+    return sanitized;
   }
 }

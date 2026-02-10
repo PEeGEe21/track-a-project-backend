@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
+import { Organization } from './Organization';
 
 @Entity('user_peers')
 export class UserPeer {
@@ -41,6 +42,13 @@ export class UserPeer {
 
   @Column({ type: 'varchar', nullable: true })
   connection_type: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

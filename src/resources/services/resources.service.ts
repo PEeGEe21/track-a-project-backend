@@ -4,11 +4,12 @@ import {
   HttpStatus,
   NotFoundException,
   StreamableFile,
+  ForbiddenException,
 } from '@nestjs/common';
 import * as path from 'path';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
-import { Resource } from '../../typeorm/entities/resource';
+import { Resource } from '../../typeorm/entities/Resource';
 import { Project } from '../../typeorm/entities/Project';
 import { Task } from '../../typeorm/entities/Task';
 import { User } from '../../typeorm/entities/User';
@@ -19,10 +20,12 @@ import { FirebaseStorageService } from '../../firebase/firebase-storage.service'
 import { MulterFile } from '../../types/multer.types';
 import { SimplePreviewService } from '../../services/simple-preview.service';
 import { UsersService } from 'src/users/services/users.service';
-import { SupabaseStorageService } from 'src/supabase/supabase-storage.service';
+import { SupabaseStorageService } from 'src/storage/supabase-storage.service';
 import { Response } from 'express';
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Injectable()
 export class ResourcesService {
@@ -34,6 +37,10 @@ export class ResourcesService {
     @InjectRepository(Task)
     private taskRepository: Repository<Task>,
     @InjectRepository(User)
+    private userOrgRepository: Repository<UserOrganization>,
+    @InjectRepository(UserOrganization)
+    private organizationRepository: Repository<Organization>,
+    @InjectRepository(Organization)
     private userRepository: Repository<User>,
     private firebaseStorageService: FirebaseStorageService,
     private supabaseStorageService: SupabaseStorageService,
@@ -45,8 +52,30 @@ export class ResourcesService {
   async create(
     createResourceDto: CreateResourceDto,
     user: any,
+    organizationId: string,
   ): Promise<Resource> {
     const { projectId, taskId, ...resourceData } = createResourceDto;
+
+    // Verify organization exists
+    const organization = await this.organizationRepository.findOneBy({
+      id: organizationId,
+    });
+
+    if (!organization) {
+      throw new HttpException('Organization not found', HttpStatus.BAD_REQUEST);
+    }
+
+    // const userOrg = await this.userOrgRepository.findOne({
+    //   where: {
+    //     user_id: user.userId,
+    //     organization_id: organizationId,
+    //   },
+    //   relations: ['organization'],
+    // });
+
+    // if (!userOrg.organization.is_active) {
+    //   throw new ForbiddenException('Organization is not active');
+    // }
 
     // Verify user exists
     const userFound = await this.userRepository.findOneBy({ id: user.userId });
@@ -95,6 +124,8 @@ export class ResourcesService {
       project,
       task,
       createdBy: userFound,
+      organization: organization,
+      organization_id: organization.id,
     });
 
     return await this.resourceRepository.save(resource);
@@ -104,8 +135,17 @@ export class ResourcesService {
     file: MulterFile,
     uploadFileDto: UploadFileDto,
     user: any,
+    organizationId: string,
   ): Promise<any> {
     const { projectId, taskId, ...resourceData } = uploadFileDto;
+
+    const organization = await this.organizationRepository.findOneBy({
+      id: organizationId,
+    });
+
+    if (!organization) {
+      throw new HttpException('Organization not found', HttpStatus.BAD_REQUEST);
+    }
 
     // console.log(file, uploadFileDto, 'uploadFileDto');
     // return;
@@ -193,11 +233,14 @@ export class ResourcesService {
         project,
         task,
         createdBy: userFound,
+        organization: organization,
+        organization_id: organization.id,
       });
 
       const savedResource = await this.resourceRepository.save(resource);
 
       await this.projectActivitiesService.createActivity({
+        organization_id: organization.id,
         projectId: project.id,
         userId: userFound.id,
         activityType: ActivityType.RESOURCE_ADDED,
@@ -223,6 +266,7 @@ export class ResourcesService {
   }
 
   async findAllResources(
+    organizationId: string,
     user: any,
     page = 1,
     limit = 10,
@@ -239,6 +283,7 @@ export class ResourcesService {
 
     const queryBuilder = this.resourceRepository
       .createQueryBuilder('resource')
+      .leftJoinAndSelect('resource.organization', 'organization')
       .leftJoinAndSelect('resource.project', 'project')
       .leftJoinAndSelect('resource.task', 'task')
       .leftJoinAndSelect('resource.createdBy', 'createdBy');
@@ -249,6 +294,12 @@ export class ResourcesService {
         `(LOWER(resource.title) LIKE :search OR LOWER(resource.description) LIKE :search)`,
         { search: lowered },
       );
+    }
+
+    if (organizationId) {
+      queryBuilder.andWhere('resource.organization_id = :organizationId', {
+        organizationId,
+      });
     }
 
     if (projectId) {
@@ -373,7 +424,7 @@ export class ResourcesService {
   async findOne(id: number): Promise<Resource> {
     const resource = await this.resourceRepository.findOne({
       where: { id },
-      relations: ['project', 'task', 'createdBy'],
+      relations: ['project', 'task', 'createdBy', 'organization'],
     });
 
     if (!resource) {
@@ -448,6 +499,7 @@ export class ResourcesService {
     }
 
     await this.projectActivitiesService.createActivity({
+      organization_id: resource.organization_id,
       projectId: resource.project.id,
       userId: userFound.id,
       activityType: ActivityType.RESOURCE_DELETED,
@@ -469,8 +521,10 @@ export class ResourcesService {
   async downloadFile(id: number, user: any, res: Response): Promise<void> {
     const resource = await this.findOne(id);
 
-    // Check permissions
-    const userFound = await this.userRepository.findOneBy({ id: user.userId });
+    const userFound = await this.userRepository.findOneBy({
+      id: user.userId,
+    });
+
     if (!userFound) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
@@ -483,92 +537,127 @@ export class ResourcesService {
     }
 
     try {
-      // Extract file path from URL
-      const url = new URL(resource.file_path);
+      const buffer = await this.supabaseStorageService.downloadFile(resource.file_path);
 
-      // For public URLs: /storage/v1/object/public/{bucket}/{path}
-      // We need to extract everything after the bucket name
-      const pathParts = url.pathname.split('/');
-      const publicIndex = pathParts.indexOf('public');
-
-      if (publicIndex === -1) {
-        throw new Error('Invalid storage URL format');
-      }
-
-      // Skip 'public' and bucket name, get the rest
-      const filePath = pathParts.slice(publicIndex + 2).join('/');
-
-      console.log('Extracted file path:', filePath);
-
-      // Download from Supabase
-      const fileBlob = await this.supabaseStorageService.downloadFile(
-        decodeURIComponent(filePath),
-      );
-
-      // Convert Blob to Buffer
-      const arrayBuffer = await fileBlob.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      // Set headers and send
       res.set({
-        'Content-Type': fileBlob.type || 'application/octet-stream',
+        'Content-Type': resource.type || 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${resource.title}"`,
         'Content-Length': buffer.length,
       });
 
-      console.log(buffer);
       res.send(buffer);
     } catch (error) {
       console.error('Download error:', error);
       throw new HttpException(
-        `Failed to download file: ${error.message}`,
+        'Failed to download file',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
-  async downloadFile2(id: number, user: any, res: Response): Promise<void> {
-    const resource = await this.findOne(id);
-    const userFound = await this.userRepository.findOneBy({ id: user.userId });
+  // async downloadFile2(id: number, user: any, res: Response): Promise<void> {
+  //   const resource = await this.findOne(id);
 
-    if (!userFound)
-      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-    if (!resource.file_path)
-      throw new HttpException(
-        'No file associated with this resource',
-        HttpStatus.BAD_REQUEST,
-      );
+  //   // Check permissions
+  //   const userFound = await this.userRepository.findOneBy({ id: user.userId });
+  //   if (!userFound) {
+  //     throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+  //   }
 
-    try {
-      const url = new URL(resource.file_path);
-      const pathParts = url.pathname.split('/');
-      const publicIndex = pathParts.indexOf('public');
-      if (publicIndex === -1) throw new Error('Invalid storage URL format');
+  //   if (!resource.file_path) {
+  //     throw new HttpException(
+  //       'No file associated with this resource',
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+  //   }
 
-      const filePath = pathParts.slice(publicIndex + 2).join('/');
-      const fileBlob = await this.supabaseStorageService.downloadFile(
-        decodeURIComponent(filePath),
-      );
-      const arrayBuffer = await fileBlob.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+  //   try {
+  //     // Extract file path from URL
+  //     const url = new URL(resource.file_path);
 
-      const fileName = `${resource.title}${path.extname(filePath) || ''}`;
+  //     // For public URLs: /storage/v1/object/public/{bucket}/{path}
+  //     // We need to extract everything after the bucket name
+  //     const pathParts = url.pathname.split('/');
+  //     const publicIndex = pathParts.indexOf('public');
 
-      res.set({
-        'Content-Type': fileBlob.type || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${fileName}"`,
-        'Content-Length': buffer.length,
-      });
+  //     if (publicIndex === -1) {
+  //       throw new Error('Invalid storage URL format');
+  //     }
 
-      res.send(buffer);
-    } catch (error) {
-      console.error('Download error:', error);
-      throw new HttpException(
-        `Failed to download file: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
+  //     // Skip 'public' and bucket name, get the rest
+  //     const filePath = pathParts.slice(publicIndex + 2).join('/');
+
+  //     console.log('Extracted file path:', filePath);
+
+  //     // Download from Supabase
+  //     const fileBlob = await this.supabaseStorageService.downloadFile(
+  //       decodeURIComponent(filePath),
+  //     );
+
+  //     // Convert Blob to Buffer
+  //     const arrayBuffer = await fileBlob.arrayBuffer();
+  //     const buffer = Buffer.from(arrayBuffer);
+
+  //     // Set headers and send
+  //     res.set({
+  //       'Content-Type': fileBlob.type || 'application/octet-stream',
+  //       'Content-Disposition': `attachment; filename="${resource.title}"`,
+  //       'Content-Length': buffer.length,
+  //     });
+
+  //     console.log(buffer);
+  //     res.send(buffer);
+  //   } catch (error) {
+  //     console.error('Download error:', error);
+  //     throw new HttpException(
+  //       `Failed to download file: ${error.message}`,
+  //       HttpStatus.INTERNAL_SERVER_ERROR,
+  //     );
+  //   }
+  // }
+
+  // async downloadFile3(id: number, user: any, res: Response): Promise<void> {
+  //   const resource = await this.findOne(id);
+  //   const userFound = await this.userRepository.findOneBy({ id: user.userId });
+
+  //   if (!userFound)
+  //     throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+  //   if (!resource.file_path)
+  //     throw new HttpException(
+  //       'No file associated with this resource',
+  //       HttpStatus.BAD_REQUEST,
+  //     );
+
+  //   try {
+  //     const url = new URL(resource.file_path);
+  //     const pathParts = url.pathname.split('/');
+  //     const publicIndex = pathParts.indexOf('public');
+  //     if (publicIndex === -1) throw new Error('Invalid storage URL format');
+
+  //     const filePath = pathParts.slice(publicIndex + 2).join('/');
+  //     const fileBlob = await this.supabaseStorageService.downloadFile(
+  //       decodeURIComponent(filePath),
+  //     );
+  //     const arrayBuffer = await fileBlob.arrayBuffer();
+  //     const buffer = Buffer.from(arrayBuffer);
+
+  //     const fileName = `${resource.title}${path.extname(filePath) || ''}`;
+
+  //     res.set({
+  //       'Content-Type': fileBlob.type || 'application/octet-stream',
+  //       'Content-Disposition': `attachment; filename="${fileName}"`,
+  //       'Content-Length': buffer.length,
+  //     });
+
+  //     res.send(buffer);
+  //   } catch (error) {
+  //     console.error('Download error:', error);
+  //     throw new HttpException(
+  //       `Failed to download file: ${error.message}`,
+  //       HttpStatus.INTERNAL_SERVER_ERROR,
+  //     );
+  //   }
+  // }
 
   // async downloadFile2(
   //   id: number,

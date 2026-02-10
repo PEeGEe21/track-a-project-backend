@@ -7,10 +7,12 @@ import {
   JoinTable,
   CreateDateColumn,
   UpdateDateColumn,
+  JoinColumn,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
 import { Task } from './Task';
+import { Organization } from './Organization';
 
 @Entity({ name: 'tags' })
 export class Tag {
@@ -31,6 +33,13 @@ export class Tag {
 
   @ManyToMany(() => Project, (project) => project.tags)
   projects: Project[];
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   createdAt: Date;

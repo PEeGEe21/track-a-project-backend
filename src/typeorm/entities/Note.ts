@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Task } from './Task';
+import { Organization } from './Organization';
 
 @Entity({ name: 'notes' })
 export class Note {
@@ -37,6 +38,13 @@ export class Note {
   @ManyToOne(() => User, (user) => user.notes)
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

@@ -18,7 +18,7 @@ import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
@@ -35,6 +35,7 @@ import { Profile } from 'src/typeorm/entities/Profile';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { Post } from 'src/typeorm/entities/Post';
+import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { Post } from 'src/typeorm/entities/Post';
       OrganizationMenu,
       GlobalMenu,
       Organization,
+      OrganizationInvitation,
     ]),
   ],
   controllers: [OrganizationsController],

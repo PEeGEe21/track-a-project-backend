@@ -11,6 +11,7 @@ import { User } from './User';
 import { Project } from './Project';
 import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from '../../utils/constants/projectPeerEnums';
+import { Organization } from './Organization';
 
 @Entity({ name: 'project_peers' })
 export class ProjectPeer {
@@ -40,6 +41,13 @@ export class ProjectPeer {
 
   @Column({ type: 'boolean', default: false })
   is_confirmed: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

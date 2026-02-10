@@ -10,6 +10,7 @@ import { UpdateOrgMenuDto } from '../dto/update-org-menu.dto';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
 import { ReorderMenusDto } from '../dto/reorder-menu.dto';
+import { AuthUser } from 'src/types/users';
 
 @Injectable()
 export class MenusService {
@@ -127,7 +128,7 @@ export class MenusService {
 
   async getMenusForOrganization(
     organizationId: string,
-    subscriptionTier: SubscriptionTier,
+    user: AuthUser,
   ): Promise<GlobalMenu[]> {
     // Define tier hierarchy
     const tierOrder = {
@@ -137,39 +138,66 @@ export class MenusService {
       [SubscriptionTier.ENTERPRISE]: 3,
     };
 
+    const currentOrg = user?.userOrganizations.find(
+      (uo) => uo.organization_id === organizationId,
+    );
+
+    const subscriptionTier = currentOrg?.subscription_tier;
+
+    console.log(subscriptionTier, 'subscriptionTier');
     const userTierLevel = tierOrder[subscriptionTier];
 
+    console.log('here');
     // Get all tiers user has access to
     const allowedTiers = Object.entries(tierOrder)
       .filter(([_, level]) => level <= userTierLevel)
       .map(([tier]) => tier as SubscriptionTier);
 
     // Get active global menus for user's tier
-    const globalMenus = await this.globalMenuRepository.find({
-      where: {
-        is_active: true,
-        required_tier: In(allowedTiers),
-      },
-      relations: ['children'],
-      order: { order_index: 'ASC' },
-    });
+    // const globalMenus = await this.globalMenuRepository.find({
+    //   where: {
+    //     is_active: true,
+    //     required_tier: In(allowedTiers),
+    //   },
+    //   relations: ['children'],
+    //   order: { order_index: 'ASC' },
+    // });
+
+    const globalMenus = await this.globalMenuRepository
+      .createQueryBuilder('menu')
+      .where('menu.is_active = :isActive', { isActive: true })
+      .leftJoinAndSelect('menu.children', 'children')
+      .orderBy('menu.order_index', 'ASC')
+      .getMany();
 
     // Get organization's menu customizations
     const orgMenus = await this.organizationMenuRepository.find({
       where: { organization_id: organizationId },
     });
 
+    console.log(orgMenus, organizationId, 'vv');
+
     const orgMenuMap = new Map(orgMenus.map((om) => [om.global_menu_id, om]));
 
+    console.log(orgMenuMap, "orgMenuMap")
     // Filter and customize menus
     const filteredMenus = globalMenus
       .map((menu) => {
         const orgMenu = orgMenuMap.get(menu.id);
 
+        const menuTierLevel = tierOrder[menu.required_tier];
+        const hasTierAccess = userTierLevel >= menuTierLevel;
+
         // Skip if org disabled this menu
         if (orgMenu && !orgMenu.is_enabled) {
           return null;
         }
+
+        // Skip if user doesn't have tier access
+        // if (!hasTierAccess) {
+        //   console.log(`Menu ${menu.label} blocked by tier`);
+        //   return null;
+        // }
 
         // Apply customizations
         if (orgMenu) {
@@ -183,6 +211,8 @@ export class MenusService {
         return menu;
       })
       .filter(Boolean);
+
+    console.log(filteredMenus, 'filteredMenus');
 
     return this.buildMenuTree(filteredMenus);
   }

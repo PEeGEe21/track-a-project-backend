@@ -14,6 +14,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Document } from './Document';
+import { Organization } from './Organization';
 
 @Entity('folders')
 @Tree('closure-table')
@@ -54,6 +55,13 @@ export class Folder {
   // Documents in this folder
   @OneToMany(() => Document, (document) => document.folder)
   documents: Document[];
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   createdAt: Date;

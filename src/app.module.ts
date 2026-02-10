@@ -37,7 +37,7 @@ import { Note } from './typeorm/entities/Note';
 import { ResourcesModule } from './resources/resources.module';
 import { DocumentsModule } from './documents/documents.module';
 import { Document } from './typeorm/entities/Document';
-import { Resource } from './typeorm/entities/resource';
+import { Resource } from './typeorm/entities/Resource';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
 import { ProjectActivitiesModule } from './project-activities/project-activities.module';
@@ -103,6 +103,8 @@ import { OrganizationsModule } from './organizations/organizations.module';
         Organization,
       ],
       synchronize: true,
+      // migrationsRun: true, // Auto-run migrations on startup
+      migrations: ['dist/migrations/**/*{.ts,.js}'],
       autoLoadEntities: true,
       // extra: {
       //   timezone: '+00:00',

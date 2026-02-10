@@ -16,11 +16,12 @@ import { ProjectPeer } from './ProjectPeer';
 import { Tag } from './Tag';
 import { Category } from './Category';
 import { ProjectComment } from './ProjectComment';
-import { Resource } from './resource';
+import { Resource } from './Resource';
 import { Document } from './Document';
 import { Whiteboard } from './Whiteboard';
 import { Status } from './Status';
 import { ProjectStatus } from '../../utils/constants/project';
+import { Organization } from './Organization';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -82,6 +83,14 @@ export class Project {
   @ManyToOne(() => User, (user) => user.projects)
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  // Organization that owns this project
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @OneToMany(() => Task, (task) => task.project)
   tasks: Task[];

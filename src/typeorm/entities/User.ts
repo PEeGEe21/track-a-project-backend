@@ -16,7 +16,7 @@ import { Status } from './Status';
 import { Task } from './Task';
 import { ProjectComment } from './ProjectComment';
 import { Note } from './Note';
-import { Resource } from './resource';
+import { Resource } from './Resource';
 import { Document } from './Document';
 import { Whiteboard } from './Whiteboard';
 import { Message } from './Message';

@@ -22,11 +22,18 @@ export class SubscriptionGuard implements CanActivate {
     if (!requiredTier) return true;
 
     const request = context.switchToHttp().getRequest();
+    const user = request.user;
+    const orgId = request.headers['x-organization-id'];
 
     // Super admins bypass subscription checks
-    if (request.user?.role === 'super_admin') return true;
+    if (user?.role === 'super_admin') return true;
 
-    const userTier = request.organizationSubscriptionTier;
+    const orgData = user.userOrganizations.find(uo => uo.organization_id === orgId);
+    if (!orgData) {
+      throw new ForbiddenException('User does not belong to this organization');
+    }
+
+    const userTier = orgData.subscription_tier;
     if (!userTier) {
       throw new ForbiddenException('Organization subscription not found');
     }

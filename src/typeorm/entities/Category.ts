@@ -8,11 +8,13 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
 import { Task } from './Task';
 import { Document } from './Document';
+import { Organization } from './Organization';
 
 @Entity({ name: 'categories' })
 export class Category {
@@ -30,6 +32,13 @@ export class Category {
 
   @ManyToMany(() => Project, (project) => project.categories)
   projects: Project[];
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   createdAt: Date;

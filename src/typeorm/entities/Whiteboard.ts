@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Project } from './Project';
 import { User } from './User';
+import { Organization } from './Organization';
 
 @Entity('whiteboards')
 export class Whiteboard {
@@ -56,4 +57,11 @@ export class Whiteboard {
   @ManyToOne(() => User, (user) => user.whiteboards)
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 }

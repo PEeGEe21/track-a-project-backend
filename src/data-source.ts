@@ -18,7 +18,7 @@ import { GlobalMenu } from './typeorm/entities/GlobalMenu';
 import { Organization } from './typeorm/entities/Organization';
 import { Document } from './typeorm/entities/Document';
 import { Folder } from './typeorm/entities/Folder';
-import { Resource } from './typeorm/entities/resource';
+import { Resource } from './typeorm/entities/Resource';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
 import { Conversation } from './typeorm/entities/Conversation';
 import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
@@ -26,6 +26,12 @@ import { Message } from './typeorm/entities/Message';
 import { MessageReaction } from './typeorm/entities/MessageReaction';
 import { MessageReadReceipt } from './typeorm/entities/MessageReadReceipt';
 import { DocumentFile } from './typeorm/entities/DocumentFile';
+import { ProjectActivity } from './typeorm/entities/ProjectActivity';
+import { OrganizationInvitation } from './typeorm/entities/OrganizationInvitation';
+import { UserPeerInvite } from './typeorm/entities/UserPeerInvite';
+import { UserNotificationPreference } from './typeorm/entities/UserNotificationPreference';
+import { Notification } from './typeorm/entities/Notification';
+import { ProjectPeerInvite } from './typeorm/entities/ProjectPeerInvite';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -36,6 +42,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DATABASE_NAME,
   ssl: false,
   synchronize: false, // or true for local dev
+  migrations: ['src/migrations/*.ts'],
   entities: [
     User,
     Profile,
@@ -46,9 +53,12 @@ export const AppDataSource = new DataSource({
     ProjectPeer,
     Status,
     UserPeer,
+    UserPeerInvite,
     Category,
     Note,
     ProjectComment,
+    ProjectPeerInvite,
+    ProjectActivity,
     Document,
     Resource,
     Whiteboard,
@@ -63,5 +73,9 @@ export const AppDataSource = new DataSource({
     OrganizationMenu,
     GlobalMenu,
     Organization,
+    OrganizationInvitation,
+    Notification,
+    UserNotificationPreference,
   ],
+  migrationsTransactionMode: 'each',
 });

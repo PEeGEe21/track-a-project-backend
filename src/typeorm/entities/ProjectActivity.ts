@@ -9,7 +9,8 @@ import {
 } from 'typeorm';
 import { Project } from './Project';
 import { User } from './User';
-import { ActivityType } from 'src/utils/constants/activity';
+import { ActivityType } from '../../utils/constants/activity';
+import { Organization } from './Organization';
 
 @Entity('project_activities')
 @Index(['project', 'createdAt'])
@@ -50,6 +51,13 @@ export class ProjectActivity {
 
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, any>;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -10,6 +10,7 @@ import {
 import { User } from './User';
 import { Task } from './Task';
 import { Project } from './Project';
+import { Organization } from './Organization';
 
 @Entity({ name: 'status' })
 export class Status {
@@ -37,12 +38,19 @@ export class Status {
   @OneToMany(() => Task, (task) => task.status)
   tasks: Task[];
 
-  @ManyToOne(() => Project, project => project.statuses)
+  @ManyToOne(() => Project, (project) => project.statuses)
   project: Project;
 
   @ManyToOne(() => User, (user) => user.status)
   @JoinColumn({ name: 'user_id' })
   user: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL'})
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

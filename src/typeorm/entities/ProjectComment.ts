@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Project } from './Project';
 import { User } from './User';
+import { Organization } from './Organization';
 @Entity({ name: 'project_comments' })
 export class ProjectComment {
   @PrimaryGeneratedColumn('uuid')
@@ -49,6 +50,13 @@ export class ProjectComment {
 
   @Column({ default: false })
   is_me: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

@@ -2,7 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ResourcesService } from './services/resources.service';
 import { ResourcesController } from './controllers/resources.controller';
-import { Resource } from '../typeorm/entities/resource';
+import { Resource } from '../typeorm/entities/Resource';
 import { Project } from '../typeorm/entities/Project';
 import { Task } from '../typeorm/entities/Task';
 import { User } from '../typeorm/entities/User';
@@ -26,11 +26,12 @@ import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { Note } from 'src/typeorm/entities/Note';
 import { Notification } from 'src/typeorm/entities/Notification';
-import { SupabaseStorageService } from 'src/supabase/supabase-storage.service';
+import { SupabaseStorageService } from 'src/storage/supabase-storage.service';
 import { ConfigModule } from '@nestjs/config';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
@@ -59,7 +60,8 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       Note,
       Resource,
       ProjectActivity,
-      UserOrganization
+      UserOrganization,
+      Organization,
     ]),
   ],
   controllers: [ResourcesController],
@@ -70,6 +72,11 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
     SupabaseStorageService,
     SimplePreviewService,
   ],
-  exports: [ResourcesService, FirebaseStorageService, SupabaseStorageService, SimplePreviewService],
+  exports: [
+    ResourcesService,
+    FirebaseStorageService,
+    SupabaseStorageService,
+    SimplePreviewService,
+  ],
 })
 export class ResourcesModule {}

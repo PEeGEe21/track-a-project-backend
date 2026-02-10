@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -9,6 +10,7 @@ import {
   Req,
   Res,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
@@ -21,6 +23,9 @@ import { RequestOtpDto } from '../dtos/request-otp.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { AuthService } from '../services/auth.service';
 import { SignUpResponseDto } from '../dtos/signup-response.dto';
+import { CreateOrganizationDto } from 'src/organizations/dto/create-organization.dto';
+import { JoinOrganizationDto } from 'src/organizations/dto/join-organization.dto';
+import { LoginRequestDto } from '../dtos/login-request.dto';
 
 const testt = [];
 
@@ -35,6 +40,45 @@ export class AuthController {
   // ): Promise<LoginResponseDto> {
   //   return this.authService.loginWithPhoneNumber(loginDto);
   // }
+
+  /**
+   * POST /auth/signup/create-organization
+   * Sign up with new organization (becomes ORG_ADMIN)
+   */
+  @Post('signup/create-organization')
+  async signUpWithOrganization(
+    @Body(ValidationPipe) dto: CreateOrganizationDto,
+  ) {
+    return this.authService.signUpWithOrganization(dto);
+  }
+
+  /**
+   * POST /auth/signup/join-organization
+   * Sign up via invitation (joins existing organization)
+   */
+  @Post('signup/join-organization')
+  async signUpWithInvitation(@Body(ValidationPipe) dto: JoinOrganizationDto) {
+    return this.authService.signUpWithInvitation(dto);
+  }
+
+  /**
+   * POST /auth/login
+   * Login endpoint
+   */
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body(ValidationPipe) dto: LoginRequestDto) {
+    return this.authService.login(dto);
+  }
+
+  /**
+   * GET /auth/validate-invitation?token=xxx
+   * Validate invitation token before signup
+   */
+  @Get('validate-invitation')
+  async validateInvitation(@Query('token') token: string) {
+    return this.authService.validateInvitation(token);
+  }
 
   @Post('/login-email')
   async loginWithEmail(
@@ -51,28 +95,19 @@ export class AuthController {
   }
 
   @Post('/signup')
-  async userSignup(
-    @Body() userSignupDto: any,
-  ): Promise<SignUpResponseDto> {
+  async userSignup(@Body() userSignupDto: any): Promise<SignUpResponseDto> {
     return this.authService.signUp(userSignupDto);
   }
 
   @Get('/access-token')
-  async refresh(
-    @Query('refreshToken') refreshToken: string,
-  ): Promise<any> {
+  async refresh(@Query('refreshToken') refreshToken: string): Promise<any> {
     return this.authService.refreshToken(refreshToken);
   }
-  
+
   @Post('/logout')
-  async logout(
-    @Body('refreshToken') refreshToken: string,
-  ): Promise<any> {
+  async logout(@Body('refreshToken') refreshToken: string): Promise<any> {
     return this.authService.logOut(refreshToken);
   }
-  
-
-
 
   // @Post('/send-signup-otp')
   // async sendSignupOTP(@Body() otpDto: RequestOtpDto): Promise<boolean> {
@@ -142,13 +177,9 @@ export class AuthController {
     return testt;
   }
 
-
-
   @Get('/facebook')
   @UseGuards(AuthGuard('facebook'))
   async facebookLogin(): Promise<any> {
     return HttpStatus.OK;
   }
-
-
 }

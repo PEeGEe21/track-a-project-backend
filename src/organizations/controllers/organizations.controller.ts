@@ -9,6 +9,8 @@ import {
   UseGuards,
   Query,
   Req,
+  Request,
+  ValidationPipe,
 } from '@nestjs/common';
 import { OrganizationsService } from '../services/organizations.service';
 import { CreateOrganizationDto } from '../dto/create-organization.dto';
@@ -17,6 +19,8 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { FindOrganizationsQueryDto } from '../dto/FindOrganizationsQuery.dto';
+import { InviteUserDto } from '../dto/invite-users.dto';
+import { FindOrganizationsInvitesQuery } from '../dto/FindOrganizationsInvitesQuery.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
@@ -65,5 +69,51 @@ export class OrganizationsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.organizationsService.remove(+id);
+  }
+
+  @Post('invitations')
+  async createInvitation(
+    @Body(ValidationPipe) dto: InviteUserDto,
+    @Request() req,
+  ) {
+    return this.organizationsService.createInvitation({
+      ...dto,
+      invited_by: req.user.userId,
+    });
+  }
+
+  @Get('organization/:organizationId/invites')
+  async getOrganizationInvitations(
+    @Param('organizationId') organizationId: string,
+    @Query() query: FindOrganizationsInvitesQuery,
+    @Request() req,
+  ) {
+    return this.organizationsService.getOrganizationInvitations(
+      organizationId,
+      query,
+      req.user.userId,
+    );
+  }
+
+  @Post('invitations/:invitationId/resend')
+  async resendInvitation(
+    @Param('invitationId') invitationId: string,
+    @Request() req,
+  ) {
+    return this.organizationsService.resendInvitation(
+      invitationId,
+      req.user.userId,
+    );
+  }
+
+  @Delete('invitations/:invitationId')
+  async revokeInvitation(
+    @Param('invitationId') invitationId: string,
+    @Request() req,
+  ) {
+    return this.organizationsService.revokeInvitation(
+      invitationId,
+      req.user.userId,
+    );
   }
 }

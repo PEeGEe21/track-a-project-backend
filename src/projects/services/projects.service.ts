@@ -38,10 +38,12 @@ import { ProjectsGateway } from '../projects.gateway';
 import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { Status } from 'src/typeorm/entities/Status';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -132,6 +134,7 @@ export class ProjectsService {
 
   async findUserProjects(
     user: any,
+    organizationId: string,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -147,10 +150,16 @@ export class ProjectsService {
       }
 
       // 2. Use the query builder
-      const queryBuilder = this.projectRepository.createQueryBuilder('project');
+      // const queryBuilder = this.projectRepository.createQueryBuilder('project');
+      // Use TenantQueryHelper for organization filtering
+      const queryBuilder = TenantQueryHelper.createOrganizationQuery(
+        this.projectRepository,
+        organizationId,
+        'project',
+      );
 
       // 1. Select project fields (all fields by default)
-      queryBuilder.select('project');
+      // queryBuilder.select('project');
 
       // 2. Join owner (exclude sensitive fields)
       queryBuilder.leftJoin('project.user', 'owner').addSelect([
@@ -351,7 +360,11 @@ export class ProjectsService {
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
   }
 
-  async deleteProject(user: any, id: number): Promise<any> {
+  async deleteProject(
+    user: any,
+    id: number,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -359,7 +372,11 @@ export class ProjectsService {
       }
 
       const project = await this.projectRepository.findOne({
-        where: { id: id, user: { id: userFound.id } },
+        where: {
+          id: id,
+          user: { id: userFound.id },
+          organization_id: organizationId,
+        },
       });
 
       if (!project) {
@@ -381,7 +398,79 @@ export class ProjectsService {
     }
   }
 
-  async getProjectsPeer(user: any, id: number, query?: string) {
+  async getProjectsPeer(
+    user: any,
+    id: number,
+    organizationId: string,
+    query?: string,
+  ) {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Verify project exists and belongs to organization
+      const project = await this.projectRepository.findOne({
+        where: { id, organization_id: organizationId },
+      });
+
+      if (!project) {
+        throw new HttpException(
+          'Project not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Build query with organization filtering
+      const queryBuilder = this.projectPeerRepository
+        .createQueryBuilder('project_peer')
+        .innerJoin(
+          'project_peer.project',
+          'project',
+          'project.organization_id = :organizationId',
+          { organizationId },
+        )
+        .innerJoinAndSelect('project_peer.user', 'user')
+        .where('project_peer.project.id = :projectId', {
+          projectId: project.id,
+        })
+        .andWhere('project_peer.organization_id = :organizationId', {
+          organizationId,
+        })
+        .select([
+          'project_peer.id',
+          'user.id',
+          'user.first_name',
+          'user.last_name',
+          'user.email',
+          'user.avatar',
+        ]);
+
+      if (query) {
+        const lowerQuery = query.toLowerCase();
+        queryBuilder.andWhere(
+          `(LOWER(user.first_name) LIKE LOWER(:query) OR LOWER(user.last_name) LIKE LOWER(:query) OR LOWER(user.email) LIKE LOWER(:query))`,
+          { query: `%${lowerQuery}%` },
+        );
+      }
+
+      const project_peers = await queryBuilder.getMany();
+
+      return {
+        success: true,
+        data: project_peers,
+      };
+    } catch (err) {
+      console.error('Error fetching project peers:', err);
+      throw new HttpException(
+        err?.message || 'Failed to fetch project peers',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getProjectsPeer2(user: any, id: number, query?: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -493,28 +582,57 @@ export class ProjectsService {
   //   }
   // }
 
-  async getProjectTasks(id: number, user: any): Promise<any> {
-    console.log(id);
-    const project = await this.projectRepository.findOneBy({ id });
-    if (!project)
-      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+  async getProjectTasks(
+    id: number,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
 
-    const tasks = await this.taskRepository.find({
-      where: {
-        project: { id: project.id },
-      },
-      relations: ['tags', 'project', 'status', 'assignees'],
-    });
+      // Verify project exists and belongs to organization
+      const project = await this.projectRepository.findOne({
+        where: { id, organization_id: organizationId },
+      });
 
-    let resp = {
-      success: 'success',
-      data: tasks,
-    };
-    console.log(resp);
-    return resp;
+      if (!project) {
+        throw new HttpException(
+          'Project not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Get tasks with organization filtering
+      const tasks = await this.taskRepository.find({
+        where: {
+          project: { id: project.id },
+          organization_id: organizationId,
+        },
+        relations: ['tags', 'project', 'status', 'assignees'],
+        order: { created_at: 'DESC' },
+      });
+
+      return {
+        success: 'success',
+        data: tasks,
+      };
+    } catch (err) {
+      console.error('Error fetching project tasks:', err);
+      throw new HttpException(
+        err?.message || 'Failed to fetch project tasks',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
-  async createProject(user: any, createProjectDetails: any) {
+  async createProject(
+    user: any,
+    organizationId: string,
+    createProjectDetails: any,
+  ) {
     try {
       // Validate user exists
       const userFound = await this.usersService.getUserAccountById(user.userId);
@@ -540,6 +658,7 @@ export class ProjectsService {
         status: createProjectDetails.status,
         user: userFound,
         categories: categories ?? [],
+        organization_id: organizationId, // Add organization_id
       };
 
       // const savedProject = null;
@@ -571,6 +690,7 @@ export class ProjectsService {
         this.statusRepository.create({
           ...s,
           project: savedProject,
+          organization_id: organizationId,
           isActive: true,
         }),
       );
@@ -824,7 +944,12 @@ export class ProjectsService {
     );
   }
 
-  async sendProjectComment(user: any, projectId: number, commentData: any) {
+  async sendProjectComment(
+    user: any,
+    projectId: number,
+    commentData: any,
+    organizationId: string,
+  ) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -906,6 +1031,7 @@ export class ProjectsService {
       }
 
       const payload = {
+        organization_id: organizationId,
         projectId: project.id,
         userId: userFound.id,
         activityType: ActivityType.PROJECT_COMMENT,
@@ -917,7 +1043,7 @@ export class ProjectsService {
           content_id: newSavedMessage.id ?? '',
           content: newSavedMessage.content ?? '',
         },
-      }
+      };
 
       await this.projectActivitiesService.createActivity(payload);
 
@@ -1127,6 +1253,7 @@ export class ProjectsService {
 
   async findProjectPeersInvite(
     user: any,
+    organizationId: string,
     page = 1,
     limit = 10,
     search?: string,
@@ -1135,18 +1262,26 @@ export class ProjectsService {
     orderBy: any = 'DESC',
   ): Promise<any> {
     try {
-      console.log('here');
       const foundUser = await this.usersService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log('wwewe');
+      // Use TenantQueryHelper for organization filtering
+      const queryBuilder = TenantQueryHelper.createOrganizationQuery(
+        this.projectPeerInviteRepository,
+        organizationId,
+        'project_peer_invites',
+      );
 
-      const queryBuilder = this.projectPeerInviteRepository
-        .createQueryBuilder('project_peer_invites')
+      queryBuilder
         .leftJoin('project_peer_invites.inviter_user_id', 'inviter')
-        .leftJoin('project_peer_invites.project', 'project')
+        .leftJoin(
+          'project_peer_invites.project',
+          'project',
+          'project.organization_id = :organizationId',
+          { organizationId },
+        )
         .addSelect([
           'inviter.id',
           'inviter.first_name',
@@ -1159,21 +1294,23 @@ export class ProjectsService {
 
       switch (type) {
         case 'by_me':
-          queryBuilder.where('project_peer_invites.inviter_user_id = :id', {
+          queryBuilder.andWhere('project_peer_invites.inviter_user_id = :id', {
             id: foundUser.id,
           });
           break;
         case 'to_me':
         default:
-          queryBuilder.where('project_peer_invites.email = :email', {
+          queryBuilder.andWhere('project_peer_invites.email = :email', {
             email: foundUser.email,
           });
           break;
       }
 
-      queryBuilder.orderBy('project_peer_invites.created_at', orderBy); // <-- new line
-      queryBuilder.addOrderBy('project_peer_invites.id', orderBy); // fallback order
+      // Ordering
+      queryBuilder.orderBy('project_peer_invites.created_at', orderBy);
+      queryBuilder.addOrderBy('project_peer_invites.id', orderBy);
 
+      // Search filter
       if (search) {
         const lowered = `%${search.toLowerCase()}%`;
         queryBuilder.andWhere(
@@ -1182,27 +1319,30 @@ export class ProjectsService {
         );
       }
 
-      // Handle status
+      // Status filter
       if (status && status !== 'all') {
         const loweredStatus = status.toLowerCase();
-        queryBuilder.andWhere(
-          `LOWER(project_peer_invites.status) = :status`, // assuming you have a `status` column
-          { status: loweredStatus },
-        );
+        queryBuilder.andWhere(`LOWER(project_peer_invites.status) = :status`, {
+          status: loweredStatus,
+        });
       }
 
+      // Pagination
       queryBuilder.skip((page - 1) * limit).take(limit);
 
       const [result, total] = await queryBuilder.getManyAndCount();
       const lastPage = Math.ceil(total / limit);
 
-      const pendingInvites =
-        await this.countProjectPendingPeerInvites(foundUser);
+      const pendingInvites = await this.countProjectPendingPeerInvites(
+        foundUser,
+        organizationId,
+      );
+
       return {
         data: result,
         meta: {
           current_page: Number(page),
-          from: (page - 1) * limit + 1,
+          from: total > 0 ? (page - 1) * limit + 1 : 0,
           last_page: lastPage,
           per_page: Number(limit),
           to: (page - 1) * limit + result.length,
@@ -1212,23 +1352,31 @@ export class ProjectsService {
         success: true,
       };
     } catch (error) {
-      console.error('Error fetching project peers:', error);
+      console.error('Error fetching project peers invites:', error);
       throw new HttpException(
-        'An Error Occurred While Fetching Project Peers',
+        'An Error Occurred While Fetching Project Peer Invites',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
-  async countPendingPeerInvites(user: any): Promise<any> {
+  async countPendingPeerInvites(
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
     const foundUser = await this.usersService.getUserAccountById(user.userId);
     if (!foundUser) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
-    const receivedPending =
-      await this.countProjectPendingPeerInvites(foundUser);
-    const sentPending =
-      await this.countSentProjectPendingPeerInvites(foundUser);
+
+    const receivedPending = await this.countProjectPendingPeerInvites(
+      foundUser,
+      organizationId,
+    );
+    const sentPending = await this.countSentProjectPendingPeerInvites(
+      foundUser,
+      organizationId,
+    );
 
     return {
       data: { receivedPending, sentPending },
@@ -1236,44 +1384,59 @@ export class ProjectsService {
     };
   }
 
-  async countProjectPendingPeerInvites(user) {
+  async countProjectPendingPeerInvites(
+    user: User,
+    organizationId: string,
+  ): Promise<number> {
     return await this.projectPeerInviteRepository.count({
       where: {
         email: user?.email,
         status: 'pending',
+        organization_id: organizationId,
       },
     });
   }
 
-  async countSentProjectPendingPeerInvites(user) {
+  async countSentProjectPendingPeerInvites(
+    user: User,
+    organizationId: string,
+  ): Promise<number> {
     return await this.projectPeerInviteRepository.count({
       where: {
-        inviter_user_id: user,
+        inviter_user_id: { id: user.id },
         status: 'pending',
+        organization_id: organizationId,
       },
     });
   }
 
-  async acceptPeerInvite(user: any, id) {
+  async acceptPeerInvite(user: any, id: number, organizationId: string) {
     try {
       const foundUser = await this.usersService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      let message;
       const invite = await this.projectPeerInviteRepository.findOne({
-        where: { id: id },
+        where: {
+          id: id,
+          organization_id: organizationId, // Verify organization
+        },
         relations: ['project'],
       });
+
+      if (!invite) {
+        throw new HttpException(
+          'Invite not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
 
       const response = await this.getPeerInviteCodeStatus(
         invite?.invite_code,
         true,
+        organizationId,
       );
-
-      // console.log(invite, response, response.success, 'invitee');
-      // return;
 
       if (response.success) {
         invite.status = 'accepted';
@@ -1285,13 +1448,12 @@ export class ProjectsService {
           invite?.invite_code,
           foundUser,
           invite?.project,
+          organizationId,
         );
-
-        // return
-        console.log(createSuccess, invite, response, 'invitee');
 
         if (createSuccess?.success) {
           await this.projectActivitiesService.createActivity({
+            organization_id: organizationId,
             projectId: invite?.project.id,
             userId: foundUser.id,
             activityType: ActivityType.PEER_ADDED,
@@ -1303,45 +1465,54 @@ export class ProjectsService {
             metadata: { projectTitle: invite?.project.title ?? '' },
           });
 
-          message = 'Invite has been Accepted';
           return {
             success: true,
             invite_status: invite.status,
-            message: message,
+            message: 'Invite has been Accepted',
           };
         }
       }
-      // return
 
       return {
         success: false,
         message: response?.message,
       };
     } catch (err) {
-      console.log(err, 'error');
+      console.error('Error accepting peer invite:', err);
+      throw new HttpException(
+        err?.message || 'Error accepting peer invite',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  async rejectPeerInvite(user: any, id) {
+  async rejectPeerInvite(user: any, id: number, organizationId: string) {
     try {
       const foundUser = await this.usersService.getUserAccountById(user.userId);
       if (!foundUser) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      let message;
       const invite = await this.projectPeerInviteRepository.findOne({
-        where: { id: id },
+        where: {
+          id: id,
+          organization_id: organizationId, // Verify organization
+        },
         relations: ['project'],
       });
+
+      if (!invite) {
+        throw new HttpException(
+          'Invite not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
 
       const response = await this.getPeerInviteCodeStatus(
         invite?.invite_code,
         true,
+        organizationId,
       );
-
-      console.log(invite, response, response.success, 'invitee');
-      // return;
 
       if (response?.success) {
         invite.status = 'declined';
@@ -1351,16 +1522,14 @@ export class ProjectsService {
           invite?.invite_code,
           foundUser,
           invite?.project,
+          organizationId,
         );
 
-        console.log(createSuccess, invite, response, 'invitee');
-
         if (createSuccess?.success) {
-          message = 'Invite has been Rejected';
           return {
             success: true,
             invite_status: invite.status,
-            message: message,
+            message: 'Invite has been Rejected',
           };
         }
       }
@@ -1369,10 +1538,82 @@ export class ProjectsService {
         success: false,
         message: response?.message,
       };
-    } catch (err) {}
+    } catch (err) {
+      console.error('Error rejecting peer invite:', err);
+      throw new HttpException(
+        err?.message || 'Error rejecting peer invite',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async getPeerInviteCodeStatus(
+    inviteCode: string,
+    markExpire = true,
+    organizationId?: string,
+  ): Promise<{
+    success: boolean;
+    status: string;
+    isActive: boolean;
+    message: string;
+  }> {
+    const whereCondition: any = { invite_code: inviteCode };
+
+    // Add organization filter if provided
+    if (organizationId) {
+      whereCondition.organization_id = organizationId;
+    }
+
+    const invite = await this.projectPeerInviteRepository.findOne({
+      where: whereCondition,
+    });
+
+    if (!invite) {
+      return {
+        success: false,
+        status: 'invalid',
+        isActive: false,
+        message: 'Invite not found.',
+      };
+    }
+
+    if (markExpire) {
+      const now = addHours(new Date(), 1);
+      const isExpired = invite.due_date ? invite.due_date <= now : true;
+
+      if (isExpired && invite.status === 'pending') {
+        invite.status = 'expired';
+        await this.projectPeerInviteRepository.save(invite);
+      }
+    }
+
+    if (invite.status === 'expired') {
+      return {
+        success: false,
+        status: 'expired',
+        isActive: false,
+        message: 'Invite has expired.',
+      };
+    }
+
+    if (invite.status !== 'pending') {
+      return {
+        success: false,
+        status: invite.status,
+        isActive: false,
+        message: 'Invite is no longer valid.',
+      };
+    }
+
+    return {
+      success: true,
+      status: 'pending',
+      isActive: true,
+      message: 'Invite is valid and pending.',
+    };
+  }
+
+  async getPeerInviteCodeStatus2(
     inviteCode: string,
     markExpire = true,
   ): Promise<{
@@ -1433,7 +1674,104 @@ export class ProjectsService {
     };
   }
 
-  async createProjectPeer(inviteCode: string, newUser: User, project: Project) {
+  async createProjectPeer(
+    inviteCode: string,
+    newUser: User,
+    project: Project,
+    organizationId: string,
+  ) {
+    try {
+      const invite = await this.projectPeerInviteRepository.findOne({
+        where: {
+          invite_code: inviteCode,
+          organization_id: organizationId,
+        },
+        relations: ['inviter_user_id'],
+      });
+
+      if (!invite) {
+        return null;
+      }
+
+      const invitedBy = await this.getUserAccountById(
+        invite.inviter_user_id.id,
+      );
+
+      if (invite.status !== 'accepted') {
+        return null;
+      }
+
+      // Check for existing connection in the same organization
+      const existingConnection = await this.projectPeerRepository
+        .createQueryBuilder('project_peer')
+        .leftJoin('project_peer.project', 'project')
+        .where('project.id = :projectId', { projectId: project.id })
+        .andWhere('project.organization_id = :organizationId', {
+          organizationId,
+        })
+        .andWhere(
+          '((project_peer.user_id = :user1 AND project_peer.added_by = :user2) OR (project_peer.user_id = :user2 AND project_peer.added_by = :user1))',
+          {
+            user1: invitedBy.id,
+            user2: newUser.id,
+          },
+        )
+        .getOne();
+
+      if (existingConnection) {
+        console.log(
+          `Users ${invitedBy.id} and ${newUser.id} are already connected to the project. Skipping peer creation.`,
+        );
+        return null;
+      }
+
+      // Create the project peer with organization_id
+      const peerToUser = this.projectPeerRepository.create({
+        status: ProjectPeerStatus.CONNECTED,
+        is_confirmed: true,
+        project: project,
+        addedBy: { id: invitedBy.id },
+        user: { id: newUser.id },
+        organization_id: organizationId,
+      });
+
+      await this.projectPeerRepository.save(peerToUser);
+
+      // Send notifications
+      const payload = {
+        recipient: newUser,
+        sender: invitedBy,
+        title: 'Project Peer Invite Acceptance',
+        message: `You accepted the invitation to be a Peer on the project: ${project?.title}`,
+        type: 'project_peer_request',
+      };
+      await this.notificationService.createNotification(newUser, payload);
+
+      const payload2 = {
+        recipient: invitedBy,
+        sender: newUser,
+        title: 'Project Peer Invite Acceptance',
+        message: `${newUser?.fullName} has accepted your invitation to be a Project Peer on ${project?.title}`,
+        type: 'project_peer_request',
+      };
+      await this.notificationService.createNotification(invitedBy, payload2);
+
+      return {
+        success: true,
+      };
+    } catch (err) {
+      console.error('Error creating project peer:', err);
+      return {
+        success: false,
+      };
+    }
+  }
+
+  async createProjectPeer2(
+    inviteCode: string,
+    newUser: User,
+    project: Project,
+  ) {
     try {
       const invite = await this.projectPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1538,7 +1876,44 @@ export class ProjectsService {
     }
   }
 
-  async rejectUserPeer(inviteCode: string, newUser: User, project) {
+  async rejectUserPeer(
+    inviteCode: string,
+    newUser: User,
+    project: Project,
+    organizationId: string,
+  ) {
+    try {
+      const invite = await this.projectPeerInviteRepository.findOne({
+        where: {
+          invite_code: inviteCode,
+          organization_id: organizationId,
+        },
+        relations: ['inviter_user_id'],
+      });
+
+      if (!invite) {
+        return null;
+      }
+
+      const invitedBy = await this.getUserAccountById(
+        invite.inviter_user_id.id,
+      );
+
+      if (invite.status !== 'declined') {
+        return null;
+      }
+
+      await this.notifyReceiver(invitedBy, newUser, project);
+      await this.notifyInviter(invitedBy, newUser, project);
+
+      return { success: true };
+    } catch (err) {
+      console.error('Error rejecting peer invite:', err);
+      return { success: false, message: 'Failed to reject peer invite.' };
+    }
+  }
+
+  async rejectUserPeer2(inviteCode: string, newUser: User, project) {
     try {
       const invite = await this.projectPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1730,7 +2105,7 @@ export class ProjectsService {
     }
   }
 
-  async getUserProjects(id: number) {
+  async getUserProjects(id: number, organizationId: string) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -1740,6 +2115,7 @@ export class ProjectsService {
     const projects = await this.projectRepository.find({
       where: {
         user: user,
+        organization_id: organizationId,
       },
       relations: ['user', 'tasks'],
     });
@@ -1751,7 +2127,244 @@ export class ProjectsService {
     return data;
   }
 
-  async sendProjectInvite(userId: number, projectId: number, emails: any[]) {
+  async sendProjectInvite(
+    userId: number,
+    projectId: number,
+    emails: any[],
+    organizationId: string,
+  ) {
+    try {
+      // Verify the inviting user exists and has access to the organization
+      const user = await this.userRepository.findOne({
+        where: { id: userId },
+        relations: ['profile'],
+      });
+
+      if (!user) {
+        throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+      }
+
+      const userProfile = await this.profileRepository.findOne({
+        where: { user: user },
+      });
+
+      if (!userProfile) {
+        return {
+          error: 'error',
+          message: 'Your user profile not found, please update your profile',
+        };
+      }
+
+      // Verify project exists and belongs to the organization
+      const project = await this.projectRepository.findOne({
+        where: { id: projectId, organization_id: organizationId },
+        relations: ['user'],
+      });
+
+      if (!project) {
+        throw new HttpException(
+          'Project not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Verify the user is authorized to send invites for this project
+      // (either owner or existing peer with appropriate permissions)
+      const isOwner = project.user.id === userId;
+      const isProjectPeer = await this.projectPeerRepository.exists({
+        where: {
+          project: { id: projectId },
+          user: { id: userId },
+          organization_id: organizationId,
+        },
+      });
+
+      if (!isOwner && !isProjectPeer) {
+        throw new HttpException(
+          'You do not have permission to invite users to this project',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const results = [];
+      const errors = [];
+
+      for (const userEmail of emails) {
+        try {
+          // Skip if trying to invite self
+          if (userEmail === user.email) {
+            errors.push({
+              email: userEmail,
+              reason: 'Cannot invite yourself',
+            });
+            continue;
+          }
+
+          const checkUserAccount =
+            await this.usersService.getUserAccountByEmail(userEmail);
+
+          // If user exists, verify they're in the organization
+          if (checkUserAccount) {
+            // Check if user is already a member of the organization
+            const isInOrganization = await this.userRepository
+              .createQueryBuilder('user')
+              .innerJoin('user.user_organizations', 'uo')
+              .where('user.id = :userId', { userId: checkUserAccount.id })
+              .andWhere('uo.organization_id = :organizationId', {
+                organizationId,
+              })
+              .getExists();
+
+            if (!isInOrganization) {
+              errors.push({
+                email: userEmail,
+                reason: 'User is not a member of this organization',
+              });
+              continue;
+            }
+
+            // Check if user is already a project peer
+            const existingProjectPeer =
+              await this.projectPeerRepository.findOne({
+                where: {
+                  project: { id: projectId },
+                  user: { id: checkUserAccount.id },
+                  organization_id: organizationId,
+                },
+              });
+
+            if (existingProjectPeer) {
+              errors.push({
+                email: userEmail,
+                reason: 'User is already a member of this project',
+              });
+              continue;
+            }
+
+            // Check if there's already a pending invite
+            const existingInvite =
+              await this.projectPeerInviteRepository.findOne({
+                where: {
+                  email: userEmail,
+                  project: { id: projectId },
+                  organization_id: organizationId,
+                  status: 'pending',
+                },
+              });
+
+            if (existingInvite) {
+              errors.push({
+                email: userEmail,
+                reason: 'An invite is already pending for this user',
+              });
+              continue;
+            }
+          }
+
+          // Generate invite code and create invite
+          const inviteCode = this.usersService.generateInviteCode();
+          const inviteExpiry = addDays(new Date(), 7);
+
+          let peerEmail;
+          let eventLink;
+          let peerAccount = false;
+
+          if (checkUserAccount) {
+            // User exists and is in organization
+            peerEmail = `You just received a project invitation from ${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view the project invitation.`;
+            eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
+            peerAccount = true;
+
+            // Create project peer invite for existing user
+            await this.projectPeerInviteRepository.save({
+              inviter_user_id: user,
+              email: userEmail,
+              project: project,
+              invite_code: inviteCode,
+              status: 'pending',
+              due_date: inviteExpiry,
+              organization_id: organizationId,
+            });
+
+            // Create notification
+            const notification = {
+              title: 'Project Invitation',
+              message: `${user.profile.firstname} ${user.profile.lastname} invited you to join the project "${project.title}"`,
+              sender: user,
+              recipient: checkUserAccount,
+              type: NOTIFICATION_TYPES.PROJECT_PEER_REQUEST,
+            };
+
+            await this.notificationService.createNotification(
+              user,
+              notification,
+            );
+          } else {
+            // User doesn't exist - invite them to both platform and project
+            peerEmail = `You just received a project invitation and an invite to join the ProjexTrackr platform from ${user.profile.firstname} ${user.profile.lastname}. Accept the invite to onboard and view the project.`;
+            eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+            peerAccount = false;
+
+            // Create project peer invite for non-existing user
+            await this.projectPeerInviteRepository.save({
+              inviter_user_id: user,
+              email: userEmail,
+              project: project,
+              invite_code: inviteCode,
+              status: 'pending',
+              due_date: inviteExpiry,
+              organization_id: organizationId,
+            });
+          }
+
+          // Send email
+          await this.MailingService.sendPeerProject(
+            userEmail,
+            user,
+            eventLink,
+            peerAccount,
+            peerEmail,
+          );
+
+          results.push({
+            email: userEmail,
+            status: 'sent',
+          });
+        } catch (emailError) {
+          console.error(
+            `Error processing invite for ${userEmail}:`,
+            emailError,
+          );
+          errors.push({
+            email: userEmail,
+            reason: emailError.message || 'Failed to send invite',
+          });
+        }
+      }
+
+      // Return detailed results
+      return {
+        success: true,
+        message: `Processed ${emails.length} invite(s)`,
+        results: {
+          sent: results.length,
+          failed: errors.length,
+          details: {
+            successful: results,
+            failed: errors,
+          },
+        },
+      };
+    } catch (err) {
+      console.error('Error in sendProjectInvite:', err);
+      throw new HttpException(
+        err?.message || 'An error occurred while sending project invites',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async sendProjectInvite2(userId: number, projectId: number, emails: any[]) {
     // const {emails } = peeremails
 
     // const peeremails = json.parse(emails);
@@ -1823,7 +2436,173 @@ export class ProjectsService {
     }
   }
 
-  async projectOverviewData(projectId: number, user: any) {
+  async projectOverviewData(
+    projectId: number,
+    user: any,
+    organizationId: string,
+  ) {
+    try {
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      // Get project with peers using QueryBuilder with organization filtering
+      const project = await this.projectRepository
+        .createQueryBuilder('project')
+        .leftJoin(
+          'project.projectPeers',
+          'projectPeers',
+          'projectPeers.organization_id = :organizationId',
+          { organizationId },
+        )
+        .leftJoinAndSelect('projectPeers.user', 'user')
+        .select([
+          'project.id',
+          'project.title',
+          'project.description',
+          'projectPeers.id',
+          'user.id',
+          'user.first_name',
+          'user.last_name',
+          'user.avatar',
+          'user.email',
+        ])
+        .where('project.id = :projectId', { projectId })
+        .andWhere('project.organization_id = :organizationId', {
+          organizationId,
+        })
+        .getOne();
+
+      if (!project) {
+        throw new HttpException(
+          'Project not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Get statuses using QueryBuilder with organization filtering
+      const statuses = await this.statusRepository
+        .createQueryBuilder('status')
+        .innerJoin(
+          'status.project',
+          'project',
+          'project.organization_id = :organizationId',
+          { organizationId },
+        )
+        .select(['status.id', 'status.title', 'status.color'])
+        .where('status.project.id = :projectId', { projectId: project.id })
+        .getMany();
+
+      // Get tasks with counts grouped by status (optimized single query)
+      const taskCounts = await this.taskRepository
+        .createQueryBuilder('task')
+        .innerJoin(
+          'task.project',
+          'project',
+          'project.organization_id = :organizationId',
+          { organizationId },
+        )
+        .select('task.status.id', 'statusId')
+        .addSelect('COUNT(task.id)', 'count')
+        .where('task.project.id = :projectId', { projectId })
+        .andWhere('task.organization_id = :organizationId', { organizationId })
+        .groupBy('task.status.id')
+        .getRawMany();
+
+      // Get tasks with assignees
+      const tasks = await this.taskRepository
+        .createQueryBuilder('task')
+        .innerJoin(
+          'task.project',
+          'project',
+          'project.organization_id = :organizationId',
+          { organizationId },
+        )
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignees')
+        .select([
+          'task.id',
+          'task.title',
+          'task.description',
+          'task.due_date',
+          'task.priority',
+          'status.id',
+          'status.title',
+          'status.color',
+          'assignees.id',
+          'assignees.first_name',
+          'assignees.last_name',
+          'assignees.avatar',
+          'assignees.email',
+        ])
+        .where('task.project.id = :projectId', { projectId })
+        .andWhere('task.organization_id = :organizationId', { organizationId })
+        .getMany();
+
+      // Compute task counts by priority
+      const priorityCounts = {
+        urgent: tasks.filter((t) => t.priority === 3).length,
+        high: tasks.filter((t) => t.priority === 2).length,
+        medium: tasks.filter((t) => t.priority === 1).length,
+        low: tasks.filter((t) => t.priority === 0).length,
+      };
+
+      // Format chart data (suitable for ApexCharts, Chart.js, etc.)
+      const priorityChartData = {
+        labels: ['Low', 'Medium', 'High', 'Urgent'],
+        series: [
+          priorityCounts.low,
+          priorityCounts.medium,
+          priorityCounts.high,
+          priorityCounts.urgent,
+        ],
+      };
+
+      const statusCounts: Record<number, number> = {};
+      statuses.forEach((status) => {
+        statusCounts[status.id] = 0;
+      });
+
+      taskCounts.forEach((row) => {
+        if (row.statusId && statusCounts.hasOwnProperty(row.statusId)) {
+          statusCounts[row.statusId] = parseInt(row.count);
+        }
+      });
+
+      const statusArray = statuses.map(
+        (status) => statusCounts[status.id] || 0,
+      );
+
+      return {
+        projectPeers:
+          project.projectPeers?.map((peer) => ({
+            id: peer.user.id,
+            first_name: peer.user.first_name,
+            last_name: peer.user.last_name,
+            avatar: peer.user.avatar,
+            email: peer.user.email,
+          })) || [],
+        tasks: tasks,
+        totalTasks: tasks.length,
+        statusBreakdown: statusArray,
+        statuses: statuses.map((s) => ({
+          id: s.id,
+          title: s.title,
+          color: s.color,
+        })),
+        priorityChartData,
+      };
+    } catch (err) {
+      console.error('Error in ProjectOverviewData:', err);
+      throw new HttpException(
+        err?.message || 'Failed to get project overview',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async projectOverviewData2(projectId: number, user: any) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -1953,7 +2732,7 @@ export class ProjectsService {
     }
   }
 
-  async projectOverviewData2(projectId: number, user: any) {
+  async projectOverviewData3(projectId: number, user: any) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -2037,6 +2816,422 @@ export class ProjectsService {
    * @param user        – the authenticated caller (owner / admin)
    */
   async projectPeerAnalytics(
+    projectId: number,
+    peerUserId: number,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
+    try {
+      // Verify caller
+      const caller = await this.usersService.getUserAccountById(user.userId);
+      if (!caller)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      // Verify project exists and belongs to organization
+      const project = await this.projectRepository.findOne({
+        where: { id: projectId, organization_id: organizationId },
+        relations: ['user'],
+      });
+
+      if (!project) {
+        throw new HttpException(
+          'Project not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      // Check if user is owner
+      const isOwner = Number(project.user.id) === peerUserId;
+
+      // If not owner, verify they are a peer in this organization
+      if (!isOwner) {
+        const isPeer = await this.projectPeerRepository.exists({
+          where: {
+            project: { id: projectId },
+            user: { id: peerUserId },
+            organization_id: organizationId,
+          },
+        });
+
+        if (!isPeer) {
+          throw new HttpException(
+            'User not found in project',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+      }
+
+      // Helper dates (UTC)
+      const now = new Date();
+      const sevenDaysAgo = addDays(now, -7);
+      const thirtyDaysAgo = addDays(now, -30);
+      const sixtyDaysAgo = addDays(now, -60);
+
+      // TASK METRICS (assigned to the peer) with organization filter
+      const taskQb = this.taskRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignee')
+        .where('task.project_id = :projectId', { projectId })
+        .andWhere('task.organization_id = :organizationId', { organizationId })
+        .andWhere('assignee.id = :peerUserId', { peerUserId });
+
+      const tasks = await taskQb.getMany();
+
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'done',
+      ).length;
+      const todoTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'todo',
+      ).length;
+      const inProgressTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in progress',
+      ).length;
+      const inReviewTasks = tasks.filter(
+        (t) => t.status?.title?.toLowerCase() === 'in review',
+      ).length;
+
+      const overdueTasks = tasks.filter(
+        (t) =>
+          t.due_date &&
+          new Date(t.due_date) < now &&
+          t.status?.title?.toLowerCase() !== 'done',
+      ).length;
+      const onTimeTasks = tasks.filter(
+        (t) => t.due_date && new Date(t.due_date) >= now,
+      ).length;
+
+      const urgentPriorityTasks = tasks.filter((t) => t.priority === 3).length;
+      const highPriorityTasks = tasks.filter((t) => t.priority === 2).length;
+      const mediumPriorityTasks = tasks.filter((t) => t.priority === 1).length;
+      const lowPriorityTasks = tasks.filter((t) => t.priority === 0).length;
+
+      // COMMENT METRICS with organization filter
+      const totalComments = await this.projectCommentRepository.count({
+        where: {
+          projectId,
+          authorId: peerUserId,
+          organization_id: organizationId,
+        },
+      });
+
+      // Mentions of the peer in any comment
+      const mentions = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('c.organization_id = :organizationId', { organizationId })
+        .andWhere('FIND_IN_SET(:peerUserId, c.mentions)', { peerUserId })
+        .getCount();
+
+      // ACTIVITY & STREAK with organization filter
+      const weeklyActivitiesRaw = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('DATE(pa.createdAt)', 'date')
+        .addSelect('COUNT(*)', 'count')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .andWhere('pa.organization_id = :organizationId', { organizationId })
+        .andWhere('pa.createdAt >= :sevenDaysAgo', { sevenDaysAgo })
+        .groupBy('DATE(pa.createdAt)')
+        .getRawMany();
+
+      const weeklyActivityChart = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = addDays(now, -i);
+        const dateStr = moment(date).format('YYYY-MM-DD');
+        const dayName = moment(date).format('ddd');
+
+        const activity = weeklyActivitiesRaw.find((a) => {
+          const activityDate = moment(a.date).format('YYYY-MM-DD');
+          return activityDate === dateStr;
+        });
+
+        weeklyActivityChart.push({
+          day: dayName,
+          date: dateStr,
+          count: activity ? parseInt(activity.count) : 0,
+        });
+      }
+
+      // Calculate active streak
+      const allActivityDates = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('DISTINCT DATE(pa.created_at)', 'date')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .andWhere('pa.organization_id = :organizationId', { organizationId })
+        .orderBy('DATE(pa.created_at)', 'DESC')
+        .getRawMany();
+
+      let activeStreak = 0;
+      let checkDate = moment().startOf('day');
+
+      for (const row of allActivityDates) {
+        const activityDate = moment(row.date).startOf('day');
+
+        if (activityDate.isSame(checkDate, 'day')) {
+          activeStreak++;
+          checkDate = checkDate.subtract(1, 'day');
+        } else if (activityDate.isBefore(checkDate)) {
+          break;
+        }
+      }
+
+      // Last active timestamp
+      const lastActivityRaw = await this.projectActivityRepository
+        .createQueryBuilder('pa')
+        .select('MAX(pa.created_at)', 'last')
+        .where('pa.projectId = :projectId', { projectId })
+        .andWhere('pa.userId = :peerUserId', { peerUserId })
+        .andWhere('pa.organization_id = :organizationId', { organizationId })
+        .getRawOne();
+
+      const lastActive = lastActivityRaw?.last
+        ? moment(lastActivityRaw.last).fromNow()
+        : 'Never';
+
+      // TRENDS (last 30 days vs previous 30 days)
+      const currentPeriodComments = await this.projectActivityRepository.count({
+        where: {
+          projectId,
+          userId: peerUserId,
+          activityType: ActivityType.PROJECT_COMMENT,
+          organization_id: organizationId,
+          createdAt: Between(thirtyDaysAgo, now),
+        },
+      });
+
+      const previousPeriodComments = await this.projectActivityRepository.count(
+        {
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: ActivityType.PROJECT_COMMENT,
+            organization_id: organizationId,
+            createdAt: Between(sixtyDaysAgo, thirtyDaysAgo),
+          },
+        },
+      );
+
+      const commentsTrend = this.calculateTrend(
+        currentPeriodComments,
+        previousPeriodComments,
+      );
+
+      // Tasks trend
+      const currentPeriodTaskActivities =
+        await this.projectActivityRepository.count({
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: In([
+              ActivityType.TASK_CREATED,
+              ActivityType.TASK_COMPLETED,
+            ]),
+            organization_id: organizationId,
+            createdAt: Between(thirtyDaysAgo, now),
+          },
+        });
+
+      const previousPeriodTaskActivities =
+        await this.projectActivityRepository.count({
+          where: {
+            projectId,
+            userId: peerUserId,
+            activityType: In([
+              ActivityType.TASK_CREATED,
+              ActivityType.TASK_COMPLETED,
+            ]),
+            organization_id: organizationId,
+            createdAt: Between(sixtyDaysAgo, thirtyDaysAgo),
+          },
+        });
+
+      const tasksTrend = this.calculateTrend(
+        currentPeriodTaskActivities,
+        previousPeriodTaskActivities,
+      );
+
+      // AVERAGE RESPONSE TIME
+      const commentsWithReplies = await this.projectCommentRepository
+        .createQueryBuilder('c')
+        .leftJoin(
+          'project_comments',
+          'reply',
+          'reply.author.id = c.id AND reply.projectId = c.projectId AND reply.organization_id = :organizationId',
+          { organizationId },
+        )
+        .where('c.projectId = :projectId', { projectId })
+        .andWhere('c.authorId = :peerUserId', { peerUserId })
+        .andWhere('c.organization_id = :organizationId', { organizationId })
+        .andWhere('reply.id IS NOT NULL')
+        .select([
+          'c.created_at as commentTime',
+          'MIN(reply.created_at) as firstReplyTime',
+        ])
+        .groupBy('c.id')
+        .getRawMany();
+
+      let avgResponseTime = 'N/A';
+      if (commentsWithReplies.length > 0) {
+        const totalResponseTime = commentsWithReplies.reduce((sum, item) => {
+          const diff =
+            new Date(item.firstReplyTime).getTime() -
+            new Date(item.commentTime).getTime();
+          return sum + diff;
+        }, 0);
+
+        const avgMs = totalResponseTime / commentsWithReplies.length;
+        const avgHours = avgMs / (1000 * 60 * 60);
+
+        if (avgHours < 1) {
+          avgResponseTime = `${Math.round(avgHours * 60)} min`;
+        } else if (avgHours < 24) {
+          avgResponseTime = `${avgHours.toFixed(1)} hrs`;
+        } else {
+          avgResponseTime = `${(avgHours / 24).toFixed(1)} days`;
+        }
+      }
+
+      // COLLABORATION SCORE
+      const taskCompletionRate =
+        totalTasks > 0 ? completedTasks / totalTasks : 0;
+      const activityScore = Math.min(totalComments / 20, 1);
+      const engagementScore = Math.min(mentions / 10, 1);
+      const reliabilityScore =
+        overdueTasks === 0 ? 1 : Math.max(0, 1 - overdueTasks / totalTasks);
+
+      const collaborationScore = Math.min(
+        100,
+        Math.round(
+          taskCompletionRate * 35 +
+            activityScore * 25 +
+            engagementScore * 20 +
+            reliabilityScore * 20,
+        ),
+      );
+
+      // RECENT TASKS
+      const recentTasks = tasks
+        .sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at))
+        .slice(0, 5)
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status?.title,
+          priority: t.priority,
+          due_date: t.due_date,
+        }));
+
+      // RECENT ACTIVITIES
+      const recentActivities = await this.projectActivityRepository.find({
+        where: {
+          projectId,
+          userId: peerUserId,
+          organization_id: organizationId,
+        },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+
+      const formattedActivities = recentActivities.map((activity) => ({
+        type: activity.activityType,
+        description: activity.description,
+        entityType: activity.entityType,
+        entityId: activity.entityId,
+        created_at: activity.createdAt,
+        timeAgo: moment(activity.createdAt).fromNow(),
+      }));
+
+      // ADDITIONAL METRICS
+      const isPeerAdmin = isOwner;
+      let memberSince = moment(project.created_at).fromNow();
+
+      if (!isOwner) {
+        const project_peer = await this.projectPeerRepository.findOne({
+          where: {
+            project: { id: projectId },
+            user: { id: peerUserId },
+            organization_id: organizationId,
+          },
+        });
+        if (project_peer) {
+          memberSince = moment(project_peer.created_at).fromNow();
+        }
+      }
+
+      const resourcesAdded = await this.projectActivityRepository.count({
+        where: {
+          projectId,
+          userId: peerUserId,
+          activityType: ActivityType.RESOURCE_ADDED,
+          organization_id: organizationId,
+        },
+      });
+
+      const resourcesCreated = await this.resourceRepository.count({
+        where: {
+          project: { id: projectId },
+          createdBy: { id: peerUserId },
+          organization_id: organizationId,
+        },
+      });
+
+      const data = {
+        totalTasks,
+        completedTasks,
+        todoTasks,
+        inProgressTasks,
+        inReviewTasks,
+        overdueTasks,
+        onTimeTasks,
+        urgentPriorityTasks,
+        highPriorityTasks,
+        mediumPriorityTasks,
+        lowPriorityTasks,
+        totalComments,
+        mentions,
+        resourcesAdded,
+        documentsCreated: 0,
+        resourcesCreated,
+        codeReviews: 0,
+        meetingsAttended: 0,
+        activeStreak,
+        lastActive,
+        avgResponseTime,
+        collaborationScore,
+        tasksTrend,
+        commentsTrend,
+        weeklyActivityChart,
+        recentTasks,
+        recentActivity: formattedActivities,
+        isOnline: false,
+        isPeerAdmin,
+        memberSince,
+        badges: this.calculateBadges({
+          completedTasks,
+          totalComments,
+          activeStreak,
+          collaborationScore,
+        }),
+      };
+
+      return {
+        success: true,
+        message: 'Analytics Processed',
+        data,
+      };
+    } catch (err) {
+      console.error('projectPeerAnalytics error:', err);
+      throw new HttpException(
+        err?.message || 'Failed to fetch peer analytics',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async projectPeerAnalytics2(
     projectId: number,
     peerUserId: number,
     user: any,
@@ -2504,6 +3699,7 @@ export class ProjectsService {
 
   async findProjectActivities(
     user: any,
+    organizationId: string,
     page = 1,
     limit = 10,
     search?: string,
@@ -2514,9 +3710,17 @@ export class ProjectsService {
     if (!caller)
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
 
-    const queryBuilder = this.projectActivityRepository
-      .createQueryBuilder('activity')
-      .leftJoinAndSelect('activity.user', 'user');
+    // const queryBuilder = this.projectActivityRepository
+    //   .createQueryBuilder('activity')
+    //   .leftJoinAndSelect('activity.user', 'user');
+
+    const queryBuilder = TenantQueryHelper.createOrganizationQuery(
+      this.projectActivityRepository,
+      organizationId,
+      'activity',
+    );
+
+    queryBuilder.leftJoinAndSelect('activity.user', 'user');
 
     if (search) {
       const lowered = `%${search.toLowerCase()}%`;
@@ -2526,12 +3730,20 @@ export class ProjectsService {
     }
 
     if (projectId) {
-      queryBuilder.andWhere('activity.project.id = :projectId', { projectId });
+      queryBuilder
+        .leftJoin('activity.project', 'project')
+        .andWhere('activity.projectId = :projectId', { projectId })
+        .andWhere('project.organization_id = :organizationId', {
+          organizationId,
+        });
+      // queryBuilder.andWhere('activity.project.id = :projectId', { projectId });
     }
 
     if (type) {
       queryBuilder.andWhere('activity.activityType', { type });
     }
+
+    queryBuilder.orderBy('activity.createdAt', 'DESC');
 
     queryBuilder.skip((page - 1) * limit).take(limit);
 
@@ -2554,6 +3766,7 @@ export class ProjectsService {
 
   async findProjectActivitiesChart(
     user: any,
+    organizationId: string,
     period: '7days' | '30days' | '60days' = '7days',
     projectId?: number,
     userId?: string,
@@ -2583,18 +3796,30 @@ export class ProjectsService {
           startDate,
           now,
         })
-        .groupBy('DATE(activity.createdAt)')
-        .orderBy('date', 'ASC');
+        .andWhere('activity.organization_id = :organizationId', {
+          organizationId,
+        });
+
+      // .groupBy('DATE(activity.createdAt)')
+      // .orderBy('date', 'ASC');
 
       if (projectId) {
         // Use the projectId column that exists in your entity
-        queryBuilder.andWhere('activity.projectId = :projectId', { projectId });
+        // queryBuilder.andWhere('activity.projectId = :projectId', { projectId });
+        queryBuilder
+          .leftJoin('activity.project', 'project')
+          .andWhere('activity.projectId = :projectId', { projectId })
+          .andWhere('project.organization_id = :organizationId', {
+            organizationId,
+          });
       }
 
       if (userId) {
         // Use the userId column that exists in your entity
         queryBuilder.andWhere('activity.userId = :userId', { userId });
       }
+
+      queryBuilder.groupBy('DATE(activity.createdAt)').orderBy('date', 'ASC');
 
       const rawResults = await queryBuilder.getRawMany();
 

@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './User';
+import { Organization } from './Organization';
 
 @Entity('user_notification_preferences')
 export class UserNotificationPreference {
@@ -30,6 +31,13 @@ export class UserNotificationPreference {
 
   @Column({ type: 'boolean', default: false })
   push: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

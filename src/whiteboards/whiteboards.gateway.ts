@@ -21,6 +21,7 @@ interface WhiteboardState {
 
 interface WhiteboardUpdatePayload {
   projectId: string;
+  organizationId: string;
   userId: string;
   state: WhiteboardState;
   whiteboardId?: string;
@@ -38,6 +39,7 @@ interface TitleUpdatePayload {
   projectId?: string;
   whiteboardId: string;
   userId: string;
+  organizationId: string;
   title: string;
 }
 
@@ -64,6 +66,7 @@ export class WhiteboardsGateway
     const userId = client.handshake.auth?.userId;
     const userName = client.handshake.auth?.userName;
     const projectId = client.handshake.query?.projectId as string | undefined;
+    const organizationId = client.handshake.auth?.organizationId as string | undefined;
 
     this.logger.log(`Client attempting connection: ${client.id}`);
 
@@ -74,7 +77,7 @@ export class WhiteboardsGateway
     }
 
     // Allow connecting without project
-    client.data = { userId, userName, projectId: projectId || null };
+    client.data = { userId, userName, projectId: projectId || null, organizationId };
 
     this.logger.log(
       `Client connected: ${
@@ -109,9 +112,10 @@ export class WhiteboardsGateway
       userId: string;
       userName: string;
       whiteboardId?: string;
+      organizationId: string
     },
   ) {
-    const { projectId, userId, userName, whiteboardId } = data;
+    const { projectId, userId, userName, whiteboardId, organizationId } = data;
 
     // Create room ID
     const roomId = projectId ? `project-${projectId}` : `user-${userId}`;
@@ -136,11 +140,13 @@ export class WhiteboardsGateway
     if (projectId) {
       // Project whiteboard
       initialState = await this.whiteboardsService.getWhiteboardState(
+        organizationId,
         Number(projectId),
       );
     } else {
       // Standalone whiteboard (per-user)
       initialState = (await this.whiteboardsService.getWhiteboardState(
+        organizationId,
         null,
         whiteboardId,
       )) || {
@@ -169,9 +175,9 @@ export class WhiteboardsGateway
   @SubscribeMessage('whiteboard:leave')
   async handleLeave(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { projectId: string; userId: string },
+    @MessageBody() data: { projectId: string; userId: string; organizationId: string },
   ) {
-    const { projectId, userId } = data;
+    const { projectId, userId, organizationId } = data;
 
     await client.leave(`project-${projectId}`);
 
@@ -194,13 +200,14 @@ export class WhiteboardsGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: WhiteboardUpdatePayload,
   ) {
-    const { projectId, userId, state, whiteboardId, title } = payload;
+    const { projectId, userId, state, whiteboardId, title, organizationId } = payload;
 
     const roomId = projectId ? `project-${projectId}` : `user-${userId}`;
 
     client.to(roomId).emit('whiteboard:update', { ...state, title });
 
     await this.whiteboardsService.saveWhiteboardState(
+      organizationId,
       projectId ? Number(projectId) : null,
       state,
       userId,

@@ -13,6 +13,7 @@ import { User } from './User';
 import { Category } from './Category';
 import { Folder } from './Folder';
 import { DocumentFile } from './DocumentFile';
+import { Organization } from './Organization';
 
 @Entity('documents')
 export class Document {
@@ -24,7 +25,7 @@ export class Document {
 
   @Column('text')
   content: string;
-  
+
   @Column({ type: 'text', nullable: true })
   plainText: string;
 
@@ -47,9 +48,9 @@ export class Document {
   userId: number;
 
   // ADD FOLDER RELATION
-  @ManyToOne(() => Folder, (folder) => folder.documents, { 
+  @ManyToOne(() => Folder, (folder) => folder.documents, {
     onDelete: 'SET NULL',
-    nullable: true 
+    nullable: true,
   })
   @JoinColumn({ name: 'folderId' })
   folder: Folder;
@@ -60,9 +61,9 @@ export class Document {
   @Column({ default: false })
   isFavorite: boolean;
 
-  @OneToMany(() => DocumentFile, (file) => file.document, { 
+  @OneToMany(() => DocumentFile, (file) => file.document, {
     cascade: true,
-    eager: true 
+    eager: true,
   })
   files: DocumentFile[];
 
@@ -79,6 +80,13 @@ export class Document {
     onDelete: 'CASCADE',
   })
   project: Project;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   createdAt: Date;

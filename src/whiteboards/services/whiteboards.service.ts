@@ -9,6 +9,7 @@ import { UsersService } from 'src/users/services/users.service';
 // import {uuidv4}
 import { v4 as uuidv4 } from 'uuid';
 import { WhiteboardState } from 'src/utils/types';
+import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 
 @Injectable()
 export class WhiteboardsService {
@@ -29,6 +30,7 @@ export class WhiteboardsService {
   ) {}
 
   async getWhiteboardState(
+    organizationId: string,
     projectId?: number | null,
     whiteboardId?: string,
   ): Promise<WhiteboardState> {
@@ -36,21 +38,38 @@ export class WhiteboardsService {
       let whiteboard = null;
 
       // Try project-based lookup first (only if valid projectId)
-      if (projectId && !isNaN(projectId)) {
-        this.logger.debug(`Looking up whiteboard for project ID: ${projectId}`);
-        whiteboard = await this.whiteboardRepository.findOne({
-          where: { project: { id: projectId } },
-        });
-      }
+      // if (projectId && !isNaN(projectId)) {
+      //   this.logger.debug(`Looking up whiteboard for project ID: ${projectId}`);
+      //   whiteboard = await this.whiteboardRepository.findOne({
+      //     where: { project: { id: projectId } },
+      //   });
+      // }
 
-      // If not found and a whiteboardId was provided, try by whiteboardId
-      if (!whiteboard && whiteboardId) {
-        this.logger.debug(
-          `Looking up whiteboard for whiteboardId: ${whiteboardId}`,
-        );
-        whiteboard = await this.whiteboardRepository.findOne({
-          where: { whiteboardId },
+      // // If not found and a whiteboardId was provided, try by whiteboardId
+      // if (!whiteboard && whiteboardId) {
+      //   this.logger.debug(
+      //     `Looking up whiteboard for whiteboardId: ${whiteboardId}`,
+      //   );
+      //   whiteboard = await this.whiteboardRepository.findOne({
+      //     where: { whiteboardId },
+      //   });
+      // }
+
+      // Build query with organization filter
+      const qb = TenantQueryHelper.createOrganizationQuery(
+        this.whiteboardRepository,
+        organizationId,
+        'whiteboard',
+      );
+
+      if (projectId && !isNaN(projectId)) {
+        qb.andWhere('whiteboard.project_id = :projectId', { projectId });
+        whiteboard = await qb.getOne();
+      } else if (whiteboardId) {
+        qb.andWhere('whiteboard.whiteboardId = :whiteboardId', {
+          whiteboardId,
         });
+        whiteboard = await qb.getOne();
       }
 
       // Return default empty whiteboard state if not found
@@ -124,10 +143,23 @@ export class WhiteboardsService {
     }
   }
 
-  async create(uploadFileDto, user: any): Promise<any> {
+  async create(uploadFileDto, user: any, organizationId: string): Promise<any> {
     try {
       const { projectId, elements, appState, files, whiteboardId } =
         uploadFileDto;
+
+      if (projectId) {
+        const project = await this.projectRepository.findOne({
+          where: { id: projectId, organization_id: organizationId },
+        });
+
+        if (!project) {
+          throw new HttpException(
+            'Project not found in this organization',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+      }
 
       const state = {
         elements,
@@ -135,7 +167,13 @@ export class WhiteboardsService {
         files,
       };
 
-      await this.performSave(projectId, state, user?.userId, whiteboardId);
+      await this.performSave(
+        organizationId,
+        projectId,
+        state,
+        user?.userId,
+        whiteboardId,
+      );
 
       return {
         success: true,
@@ -150,6 +188,7 @@ export class WhiteboardsService {
   }
 
   async saveWhiteboardState(
+    organizationId: string,
     projectId: number | null,
     state: WhiteboardState,
     userId: string,
@@ -175,6 +214,7 @@ export class WhiteboardsService {
       const pending = this.pendingStates.get(key);
       if (pending) {
         await this.performSave(
+          organizationId,
           projectId,
           pending.state,
           pending.userId,
@@ -190,6 +230,7 @@ export class WhiteboardsService {
   }
 
   private async performSave(
+    organizationId: string,
     projectId: number | null,
     state: WhiteboardState,
     userId: string,
@@ -256,6 +297,7 @@ export class WhiteboardsService {
           lastModifiedBy: userFound,
           user: userFound,
           title: title || 'Whiteboard',
+          organization_id: organizationId,
         });
         await this.whiteboardRepository.save(newWhiteboard);
         this.logger.log(
@@ -339,14 +381,20 @@ export class WhiteboardsService {
     }
   }
 
-  async deleteWhiteboard(boardId: string): Promise<any> {
+  async deleteWhiteboard(
+    boardId: string,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const board = await this.whiteboardRepository.findOne({
-        where: { id: boardId },
+        where: { id: boardId, organization_id: organizationId },
       });
 
       if (!board) {
-        throw new Error('Board not found');
+        throw new HttpException(
+          'Whiteboard not found in this organization',
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       const resp = await this.whiteboardRepository.delete(board.id);
@@ -397,7 +445,194 @@ export class WhiteboardsService {
     }
   }
 
+  /**
+   * Get all user whiteboards with tenant isolation
+   */
   async getAllUserWhiteboards(
+    user: any,
+    organizationId: string,
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    projectId?: string,
+    orderBy: any = 'DESC',
+    sortBy: any = 'updated_at',
+    group: string = 'all',
+  ): Promise<any> {
+    try {
+      const userFound = await this.usersService.getUserAccountById(
+        user.userId,
+      );
+      if (!userFound) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const qb = TenantQueryHelper.createOrganizationQuery(
+        this.whiteboardRepository,
+        organizationId,
+        'whiteboard',
+      );
+
+      // Select fields
+      qb.select([
+        'whiteboard.id',
+        'whiteboard.whiteboardId',
+        'whiteboard.title',
+        'whiteboard.description',
+        'whiteboard.created_at',
+        'whiteboard.updated_at',
+        'whiteboard.thumbnail',
+      ]);
+
+      // Join project and verify it's in same organization
+      qb.leftJoin(
+        'whiteboard.project',
+        'project',
+        'project.organization_id = :organizationId',
+        { organizationId },
+      )
+        .addSelect([
+          'project.id',
+          'project.title',
+          'project.description',
+          'project.color',
+          'project.icon',
+        ])
+        .leftJoin('project.user', 'owner')
+        .addSelect([
+          'owner.id',
+          'owner.first_name',
+          'owner.last_name',
+          'owner.email',
+          'owner.avatar',
+        ]);
+
+      // Join project peers (also scoped to organization)
+      qb.leftJoin(
+        'project.projectPeers',
+        'projectPeers',
+        'projectPeers.organization_id = :organizationId',
+      )
+        .leftJoin('projectPeers.user', 'peerUsers')
+        .addSelect([
+          'peerUsers.id',
+          'peerUsers.first_name',
+          'peerUsers.last_name',
+          'peerUsers.email',
+          'peerUsers.avatar',
+        ]);
+
+      // Tags and categories
+      qb.leftJoinAndSelect('project.tags', 'tags').leftJoinAndSelect(
+        'project.categories',
+        'categories',
+      );
+
+      // Last modified by
+      qb.leftJoin('whiteboard.lastModifiedBy', 'lastModifiedBy').addSelect([
+        'lastModifiedBy.id',
+        'lastModifiedBy.first_name',
+        'lastModifiedBy.last_name',
+        'lastModifiedBy.email',
+        'lastModifiedBy.avatar',
+      ]);
+
+      // Filter by specific project (already org-scoped)
+      if (projectId) {
+        qb.andWhere('project.id = :projectId', {
+          projectId: Number(projectId),
+        });
+      }
+
+      // Apply group filters (all within organization)
+      switch (group) {
+        case 'my':
+          qb.andWhere('whiteboard.user_id = :userId', {
+            userId: userFound.id,
+          });
+          break;
+
+        case 'peer':
+          qb.andWhere((qb) => {
+            const subQuery = qb
+              .subQuery()
+              .select('pp.project_id')
+              .from('project_peers', 'pp')
+              .where('pp.user_id = :userId', { userId: userFound.id })
+              .andWhere('pp.organization_id = :organizationId', {
+                organizationId,
+              })
+              .getQuery();
+            return 'project.id IN ' + subQuery;
+          });
+          break;
+
+        case 'all':
+        default:
+          // User's own whiteboards OR whiteboards in projects they have access to
+          TenantQueryHelper.addUserAccessFilter(
+            qb,
+            userFound.id,
+            organizationId,
+            {
+              entityAlias: 'whiteboard',
+              userIdColumn: 'user_id',
+              includeOrganizationFilter: false, // Already filtered above
+            },
+          );
+          break;
+      }
+
+      // Search
+      if (search) {
+        const lowered = `%${search.toLowerCase()}%`;
+        qb.andWhere(
+          `(LOWER(whiteboard.title) LIKE :search OR LOWER(project.title) LIKE :search OR LOWER(project.description) LIKE :search)`,
+          { search: lowered },
+        );
+      }
+
+      // Sorting
+      const sortFieldMap = {
+        updated_at: 'whiteboard.updated_at',
+        created_at: 'whiteboard.created_at',
+        alphabetical: 'whiteboard.title',
+      };
+
+      qb.orderBy(
+        sortFieldMap[sortBy] || 'whiteboard.updated_at',
+        orderBy.toUpperCase(),
+      );
+
+      // Pagination
+      qb.skip((page - 1) * limit).take(limit);
+
+      const [result, total] = await qb.getManyAndCount();
+      const lastPage = Math.ceil(total / limit);
+
+      return {
+        data: result,
+        meta: {
+          current_page: Number(page),
+          from: total > 0 ? (page - 1) * limit + 1 : 0,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + result.length,
+          total: total,
+        },
+        success: true,
+      };
+    } catch (error) {
+      this.logger.error('Error fetching user whiteboards:', error);
+      throw new HttpException(
+        error.message || 'Error fetching user whiteboards',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+
+  async getAllUserWhiteboards2(
     user,
     page: number = 1,
     limit: number = 10,

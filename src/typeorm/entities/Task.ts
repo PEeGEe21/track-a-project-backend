@@ -16,7 +16,8 @@ import { Tag } from './Tag';
 import { Status } from './Status';
 import { Category } from './Category';
 import { Note } from './Note';
-import { Resource } from './resource';
+import { Resource } from './Resource';
+import { Organization } from './Organization';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -79,4 +80,11 @@ export class Task {
 
   @OneToMany(() => Resource, (resource) => resource.project)
   resources: Resource[];
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 }

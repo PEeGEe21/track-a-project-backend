@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Document } from './Document';
+import { Organization } from './Organization';
 
 @Entity('document_files')
 export class DocumentFile {
@@ -41,6 +42,13 @@ export class DocumentFile {
 
   @Column()
   documentId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   uploadedAt: Date;

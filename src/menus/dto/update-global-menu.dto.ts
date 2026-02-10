@@ -25,4 +25,8 @@ export class UpdateGlobalMenuDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  is_main?: boolean;
 }

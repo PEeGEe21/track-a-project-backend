@@ -31,23 +31,6 @@ export const seedOrganizationsAndLinks = async (dataSource: DataSource) => {
     console.log('Default organization already exists');
   }
 
-  // 2. Link users 2, 3, 4, 5 to this organization
-  const userIds = [2, 3, 4, 5];
-
-  for (const userId of userIds) {
-    const existing = await userOrgRepo.findOne({
-      where: { organization: { id: org.id }, user: { id: Number(userId) } },
-    });
-
-    if (!existing) {
-      const userOrg = userOrgRepo.create({
-        organization_id: org.id,
-        user_id: Number(userId),
-      });
-      await userOrgRepo.save(userOrg);
-      console.log(`User ${userId} added to organization`);
-    }
-  }
 
   // 3. Enable all global menus for this organization
   const globalMenus = await globalMenuRepo.find();

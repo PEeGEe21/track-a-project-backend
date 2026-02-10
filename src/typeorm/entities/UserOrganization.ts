@@ -13,7 +13,7 @@ import {
 import { GlobalMenu } from './GlobalMenu';
 import { Organization } from './Organization';
 import { User } from './User';
-import { OrganizationRole } from 'src/utils/constants/org_roles';
+import { OrganizationRole } from '../../utils/constants/org_roles';
 
 @Entity('user_organizations')
 @Unique(['organization_id', 'user_id'])
@@ -45,6 +45,9 @@ export class UserOrganization {
     default: OrganizationRole.MEMBER,
   })
   role: OrganizationRole;
+
+  @Column({ default: true })
+  is_active: boolean;
 
   @CreateDateColumn()
   created_at: Date;

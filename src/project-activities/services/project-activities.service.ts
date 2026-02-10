@@ -14,6 +14,7 @@ export class ProjectActivitiesService {
   ) {}
 
   async createActivity(data: {
+    organization_id: string;
     projectId: number;
     userId: number;
     activityType: ActivityType;

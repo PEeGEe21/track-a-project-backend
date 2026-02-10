@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
+import { Organization } from './Organization';
 
 @Entity('project_peer_invites')
 export class ProjectPeerInvite {
@@ -51,6 +52,13 @@ export class ProjectPeerInvite {
   // Optionally, add a column to track when the invite was accepted
   @Column({ nullable: true, type: 'timestamp' })
   accepted_at: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

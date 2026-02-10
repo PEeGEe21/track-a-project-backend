@@ -13,13 +13,14 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Status } from 'src/typeorm/entities/Status';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { Note } from 'src/typeorm/entities/Note';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { Whiteboard } from 'src/typeorm/entities/Whiteboard';
 import { WhiteboardsGateway } from './whiteboards.gateway';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UsersModule } from 'src/users/users.module';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
       Note,
       Resource,
       Whiteboard,
+      UserOrganization
     ]),
   ],
   controllers: [WhiteboardsController],

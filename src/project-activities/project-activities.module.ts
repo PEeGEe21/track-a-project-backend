@@ -22,7 +22,7 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Status } from 'src/typeorm/entities/Status';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProjectActivitiesService } from './services/project-activities.service';
 import { ProjectActivitiesController } from './controllers/project-activities.controller';
@@ -46,7 +46,7 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
       UserNotificationPreference,
       Status,
       Resource,
-      ProjectActivity
+      ProjectActivity,
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),

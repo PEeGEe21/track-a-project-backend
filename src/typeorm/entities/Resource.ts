@@ -5,10 +5,12 @@ import {
   ManyToOne,
   CreateDateColumn,
   UpdateDateColumn,
+  JoinColumn,
 } from 'typeorm';
 import { Project } from './Project';
 import { Task } from './Task';
 import { User } from './User';
+import { Organization } from './Organization';
 
 @Entity('resources')
 export class Resource {
@@ -63,6 +65,13 @@ export class Resource {
     onDelete: 'SET NULL',
   })
   createdBy: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   createdAt: Date;

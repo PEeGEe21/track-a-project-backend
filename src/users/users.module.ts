@@ -26,7 +26,7 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
-import { Resource } from 'src/typeorm/entities/resource';
+import { Resource } from 'src/typeorm/entities/Resource';
 import { AuthModule } from 'src/auth/auth.module';
 
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
@@ -40,7 +40,6 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
-
 
 @Module({
   imports: [
@@ -70,7 +69,7 @@ import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
       Resource,
       ProjectActivity,
       UserOrganization,
-      Organization
+      Organization,
     ]),
   ],
   controllers: [UsersController],

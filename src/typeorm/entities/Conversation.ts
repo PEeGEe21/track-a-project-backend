@@ -12,12 +12,13 @@ import {
 import { User } from './User';
 import { Message } from './Message';
 import { ConversationParticipant } from './ConversationParticipant';
+import { Organization } from './Organization';
 
 @Entity({ name: 'conversations' })
 @Index(['type'])
 @Index(['lastMessageAt'])
 export class Conversation {
-  @PrimaryGeneratedColumn('uuid')   
+  @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'enum', enum: ['direct', 'group'], default: 'direct' })
@@ -53,6 +54,13 @@ export class Conversation {
 
   @Column({ type: 'timestamp', nullable: true })
   lastMessageAt: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;
