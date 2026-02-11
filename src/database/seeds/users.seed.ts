@@ -14,13 +14,13 @@ export async function seedUsers(dataSource: DataSource, count = 20) {
   const userOrgRepo = dataSource.getRepository(UserOrganization);
 
   const existingAdmin = await userRepo.findOneBy({
-    email: process.env.SUPER_EMAIL ?? 'admin@example.com',
+    email: process.env.SUPER_EMAIL ?? 'admin@gmail.com',
   });
   if (!existingAdmin) {
     let first_name = process.env.SUPER_FIRSTNAME ?? 'Admin';
     let last_name = process.env.SUPER_LASTNAME ?? 'User';
     let username = process.env.SUPER_USERNAME ?? 'admin';
-    let email = process.env.SUPER_EMAIL ?? 'admin@example.com';
+    let email = process.env.SUPER_EMAIL ?? 'admin@gmail.com';
     let password = process.env.SUPER_PASSWORD ?? 'password';
 
     const adminProfile = profileRepo.create({

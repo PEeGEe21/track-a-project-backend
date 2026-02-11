@@ -27,6 +27,7 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
@@ -54,7 +55,8 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       UserNotificationPreference,
       Note,
       ProjectActivity,
-      UserOrganization
+      UserOrganization,
+      Organization
     ]),
   ],
   controllers: [NotesController],

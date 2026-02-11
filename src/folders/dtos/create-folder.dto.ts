@@ -1,5 +1,5 @@
 // src/documents/dto/create-folder.dto.ts
-import { IsString, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsUUID, MaxLength, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateFolderDto {
@@ -28,4 +28,9 @@ export class CreateFolderDto {
   @IsOptional()
   @IsUUID()
   parentId?: string;
+
+  @ApiPropertyOptional({ description: 'Folder is Publicly available or Private' })
+  @IsOptional()
+  @IsBoolean()
+  is_public?: boolean;
 }

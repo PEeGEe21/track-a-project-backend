@@ -31,7 +31,8 @@ import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
 import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
 import { Folder } from 'src/typeorm/entities/Folder';
 import { Document } from 'src/typeorm/entities/Document';
-
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
@@ -63,7 +64,9 @@ import { Document } from 'src/typeorm/entities/Document';
       MessageReaction,
       MessageReadReceipt,
       Folder,
-      Document
+      Document,
+      UserOrganization,
+      Organization,
     ]),
   ],
   controllers: [FoldersController],

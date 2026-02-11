@@ -5,15 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateMessageDto } from '../dto/create-message.dto';
-import { UpdateMessageDto } from '../dto/update-message.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Message } from 'src/typeorm/entities/Message';
 import { In, Repository } from 'typeorm';
 import { Conversation } from 'src/typeorm/entities/Conversation';
-import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
-import { UserPeerStatus } from 'src/utils/constants/userPeerEnums';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { UsersService } from 'src/users/services/users.service';
 import { MessageResponseDto } from '../dto/message-response.dto';
 import { plainToInstance } from 'class-transformer';
@@ -34,47 +31,45 @@ export class MessagesService {
     private readonly conversationRepository: Repository<Conversation>,
     @InjectRepository(ConversationParticipant)
     private readonly participantRepository: Repository<ConversationParticipant>,
-    @InjectRepository(UserPeer)
-    private readonly peerRepository: Repository<UserPeer>,
+    @InjectRepository(UserOrganization)
+    private readonly userOrganizationRepository: Repository<UserOrganization>,
   ) {}
 
   /**
-   * Get all conversations for the current user
+   * Get all conversations for the current user within their organization
    */
-  async getUserConversations(user: any) {
+  async getUserConversations(user: any, organizationId: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const userId = Number(userFound.id);
-      console.log(
-        '🔍 Looking for conversations for userId:',
-        userId,
-        typeof userId,
-      );
-
-      // ✅ First, let's check if participants exist for this user
-      const userParticipants = await this.participantRepository.find({
-        where: { userId },
+      // Verify user is a member of the organization
+      const userOrg = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: userFound.id,
+          organization_id: organizationId,
+          is_active: true,
+        },
       });
 
-      console.log('🔍 Total participants for user:', userParticipants.length);
-      console.log('🔍 Participant details:', userParticipants);
+      if (!userOrg) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
 
-      // ✅ Now try the original query with debugging
-      // const conversations = await this.conversationRepository
-      //   .createQueryBuilder('conversation')
-      //   .innerJoin('conversation.participants', 'participant')
-      //   .where('participant.userId = :userId', { userId })
-      //   .andWhere('participant.isActive = :isActive', { isActive: true })
-      //   .orderBy('conversation.lastMessageAt', 'DESC')
-      //   .printSql() // This will print the SQL query
-      //   .getMany();
+      const userId = Number(userFound.id);
 
+      // Get active participants for this user in this organization
       const activeParticipants = await this.participantRepository.find({
-        where: { userId, isActive: true },
+        where: {
+          userId,
+          isActive: true,
+          organization_id: organizationId,
+        },
         select: ['conversationId'],
       });
 
@@ -84,103 +79,56 @@ export class MessagesService {
         return { data: [], success: true, message: 'No conversations found' };
       }
 
+      // Get conversations with organization filter
       const conversations = await this.conversationRepository.find({
-        where: { id: In(conversationIds) },
+        where: {
+          id: In(conversationIds),
+          organization_id: organizationId,
+        },
         order: { lastMessageAt: 'DESC' },
       });
 
-      console.log('✅ Conversations found:', conversations.length);
-
-      if (!conversations.length) {
-        // Let's try a different approach
-        console.log('🔍 Trying alternative query...');
-
-        const participantConvIds = userParticipants
-          .filter((p) => p.isActive)
-          .map((p) => p.conversationId);
-
-        console.log(
-          '🔍 Conversation IDs from participants:',
-          participantConvIds,
-        );
-
-        console.log(
-          'typeof',
-          typeof userParticipants[0].userId,
-          userParticipants[0].userId,
-        );
-
-        if (participantConvIds.length > 0) {
-          const conversationsAlt = await this.conversationRepository.find({
-            where: {
-              id: In(participantConvIds),
-            },
-            order: {
-              lastMessageAt: 'DESC',
-            },
-          });
-
-          console.log(
-            '✅ Conversations found (alternative):',
-            conversationsAlt.length,
-          );
-
-          if (conversationsAlt.length > 0) {
-            // Continue with the rest of the logic using conversationsAlt
-            return await this.buildConversationResponse(
-              conversationsAlt,
-              userId,
-            );
-          }
-        }
-
-        return {
-          data: [],
-          success: true,
-          message: 'No conversations found',
-        };
-      }
-
-      return await this.buildConversationResponse(conversations, userId);
+      return await this.buildConversationResponse(
+        conversations,
+        userId,
+        organizationId,
+      );
     } catch (err) {
       console.error('❌ Error in getUserConversations:', err);
       throw new HttpException(
-        'Failed to get conversations',
+        err?.message || 'Failed to get conversations',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
-  // Extract the response building logic
+  /**
+   * Build conversation response with organization context
+   */
   private async buildConversationResponse(
     conversations: Conversation[],
     userId: number,
+    organizationId: string,
   ) {
     const conversationIds = conversations.map((c) => c.id);
 
-    // Load participants
+    // Load participants with organization filter
     const participants = await this.participantRepository.find({
       where: {
         conversationId: In(conversationIds),
         isActive: true,
+        organization_id: organizationId,
       },
     });
 
-    console.log('✅ Participants loaded:', participants.length);
-
-    // Get unique user IDs and load users manually
+    // Get unique user IDs and load users
     const userIds = [...new Set(participants.map((p) => Number(p.userId)))];
-    console.log('✅ Unique user IDs:', userIds);
-
     const users = await this.usersService.getUsersByIds(userIds);
-    console.log('✅ Users loaded:', users.length);
 
     // Create a map for quick user lookup
     const userMap = new Map(users.map((u) => [Number(u.id), u]));
 
-    // ------------------------------------------------------------
     // Get last message for each conversation
-    // ------------------------------------------------------------
     const lastMessages = await this.messageRepository
       .createQueryBuilder('message')
       .select([
@@ -196,13 +144,13 @@ export class MessagesService {
           .select('MAX(m2.created_at)')
           .from(Message, 'm2')
           .where('m2.conversationId = message.conversationId')
+          .andWhere('m2.organization_id = :organizationId', { organizationId })
           .getQuery();
         return `message.created_at = (${subQuery})`;
       })
       .andWhere('message.conversationId IN (:...ids)', { ids: conversationIds })
+      .andWhere('message.organization_id = :organizationId', { organizationId })
       .getMany();
-
-    console.log('✅ Last messages loaded:', lastMessages.length);
 
     // Build enriched data
     const enrichedData = conversations.map((conv) => {
@@ -219,8 +167,6 @@ export class MessagesService {
       const lastMessage = lastMessages.find(
         (m) => m.conversationId === conv.id,
       );
-
-      console.log(lastMessage, conv.id, 'lastMessage');
 
       const displayName =
         conv.type === 'direct'
@@ -272,464 +218,71 @@ export class MessagesService {
     };
   }
 
-  async getUserConversations1(user: any) {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
-
-      const userId = Number(userFound.id);
-
-      // ✅ Step 1: Get all conversations for the user
-      const conversations = await this.conversationRepository
-        .createQueryBuilder('conversation')
-        .innerJoin('conversation.participants', 'participant')
-        .where('participant.userId = :userId', { userId })
-        .andWhere('participant.isActive = :isActive', { isActive: true })
-        .orderBy('conversation.lastMessageAt', 'DESC')
-        .getMany();
-
-      console.log('✅ Conversations found:', conversations.length);
-
-      if (!conversations.length) {
-        return {
-          data: [],
-          success: true,
-          message: 'No conversations found',
-        };
-      }
-
-      const conversationIds = conversations.map((c) => c.id);
-
-      // ✅ Step 2: Load participants (without relations first)
-      const participants = await this.participantRepository.find({
-        where: {
-          conversationId: In(conversationIds),
-          isActive: true,
-        },
-      });
-
-      console.log('✅ Participants loaded:', participants.length);
-
-      // ✅ Step 3: Get unique user IDs and load users manually
-      const userIds = [...new Set(participants.map((p) => p.userId))];
-      console.log('✅ Unique user IDs:', userIds);
-
-      const users = await this.usersService.getUsersByIds(userIds);
-      console.log('✅ Users loaded:', users.length);
-
-      // Create a map for quick user lookup
-      const userMap = new Map(users.map((u) => [Number(u.id), u]));
-
-      // ✅ Step 4: Get last message for each conversation
-      const lastMessages = await this.messageRepository
-        .createQueryBuilder('message')
-        .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-        .andWhere(
-          'message.id IN (SELECT MAX(id) FROM messages WHERE conversationId IN (:...ids) GROUP BY conversationId)',
-        )
-        .setParameter('ids', conversationIds)
-        .getMany();
-
-      console.log('✅ Last messages loaded:', lastMessages.length);
-
-      // ✅ Step 5: Build enriched data
-      const enrichedData = conversations.map((conv) => {
-        // Get participants for this conversation
-        const convParticipants = participants.filter(
-          (p) => p.conversationId === conv.id,
-        );
-
-        console.log(
-          `✅ Conv ${conv.id} has ${convParticipants.length} participants`,
-        );
-
-        // Find the peer user ID
-        const peerUserId = convParticipants
-          .map((p) => p.userId)
-          .find((id) => Number(id) !== userId);
-
-        // Get peer from userMap
-        const peer = peerUserId ? userMap.get(Number(peerUserId)) : null;
-
-        console.log('✅ Peer found:', peer?.id, peer?.first_name);
-
-        // Get last message
-        const lastMessage = lastMessages.find(
-          (m) => m.conversationId === conv.id,
-        );
-
-        // Display name based on conversation type
-        const displayName =
-          conv.type === 'direct'
-            ? peer?.fullName ||
-              `${peer?.first_name || ''} ${peer?.last_name || ''}`.trim() ||
-              peer?.username ||
-              'Unknown User'
-            : conv.name || 'Unnamed Group';
-
-        const displayAvatar =
-          conv.type === 'direct' ? peer?.avatar || '' : conv.avatar || '';
-
-        return {
-          id: conv.id,
-          type: conv.type,
-          name: displayName,
-          avatar: displayAvatar,
-          online: conv.type === 'direct' ? peer?.logged_in || false : undefined,
-          peer: peer
-            ? {
-                id: peer.id,
-                first_name: peer.first_name,
-                last_name: peer.last_name,
-                username: peer.username,
-                email: peer.email,
-                avatar: peer.avatar,
-                logged_in: peer.logged_in,
-              }
-            : null,
-          lastMessage: lastMessage
-            ? {
-                id: lastMessage.id,
-                content: lastMessage.content || '',
-                time: this.formatTime(lastMessage.created_at),
-                senderId: lastMessage.senderId,
-              }
-            : null,
-          unread: 0, // TODO: Calculate from lastReadAt
-          created_at: conv.created_at,
-          updated_at: conv.updated_at,
-        };
-      });
-
-      return {
-        data: enrichedData,
-        success: true,
-        message: 'success',
-      };
-    } catch (err) {
-      console.error('❌ Error in getUserConversations:', err);
-      throw new HttpException(
-        'Failed to get conversations',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  async getUserConversations2(user: any) {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
-
-      // ✅ Step 1: Get all conversations for the user
-      const conversations = await this.conversationRepository
-        .createQueryBuilder('conversation')
-        .innerJoin('conversation.participants', 'participant')
-        .where('participant.userId = :userId', { userId: userFound.id })
-        .andWhere('participant.isActive = :isActive', { isActive: true })
-        .orderBy('conversation.lastMessageAt', 'DESC')
-        .getMany();
-
-      if (!conversations.length) {
-        return {
-          data: [],
-          success: true,
-          message: 'No conversations found',
-        };
-      }
-
-      const conversationIds = conversations.map((c) => c.id);
-
-      // ✅ Step 2: Load participants with users for each conversation
-      const participantsWithUsers = await this.participantRepository.find({
-        where: {
-          conversationId: In(conversationIds),
-          isActive: true,
-        },
-        relations: ['user'],
-      });
-
-      console.log('✅ Participants loaded:', participantsWithUsers.length);
-
-      // ✅ Step 3: Get last message for each conversation
-      const lastMessages = await this.messageRepository
-        .createQueryBuilder('message')
-        .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-        .andWhere(
-          'message.id IN (SELECT MAX(id) FROM messages WHERE conversationId IN (:...ids) GROUP BY conversationId)',
-        )
-        .setParameter('ids', conversationIds)
-        .getMany();
-
-      console.log('✅ Last messages loaded:', lastMessages.length);
-
-      // ✅ Step 4: Build enriched data
-      const enrichedData = conversations.map((conv) => {
-        // Get participants for this conversation
-        const convParticipants = participantsWithUsers.filter(
-          (p) => p.conversationId === conv.id,
-        );
-
-        console.log(
-          `✅ Conv ${conv.id} has ${convParticipants.length} participants`,
-        );
-
-        // Find the peer (other user)
-        const peer = convParticipants
-          .map((p) => p.user)
-          .find((u) => u?.id !== userFound.id);
-
-        console.log('✅ Peer found:', peer?.id, peer?.first_name);
-
-        // Get last message
-        const lastMessage = lastMessages.find(
-          (m) => m.conversationId === conv.id,
-        );
-
-        // Display name based on conversation type
-        const displayName =
-          conv.type === 'direct'
-            ? peer?.fullName ||
-              `${peer?.first_name || ''} ${peer?.last_name || ''}`.trim() ||
-              peer?.username ||
-              'Unknown User'
-            : conv.name || 'Unnamed Group';
-
-        const displayAvatar =
-          conv.type === 'direct' ? peer?.avatar || '' : conv.avatar || '';
-
-        return {
-          id: conv.id,
-          type: conv.type,
-          name: displayName,
-          avatar: displayAvatar,
-          online: conv.type === 'direct' ? peer?.logged_in || false : undefined,
-          peer,
-          lastMessage: lastMessage
-            ? {
-                id: lastMessage.id,
-                content: lastMessage.content || '',
-                time: this.formatTime(lastMessage.created_at),
-                senderId: lastMessage.senderId,
-              }
-            : null,
-          unread: 0, // TODO: Calculate from lastReadAt
-          created_at: conv.created_at,
-          updated_at: conv.updated_at,
-        };
-      });
-
-      return {
-        data: enrichedData,
-        success: true,
-        message: 'success',
-      };
-    } catch (err) {
-      console.error('❌ Error in getUserConversations:', err);
-      throw new HttpException(
-        'Failed to get conversations',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  // Helper method
-  private formatTime2(date: Date): string {
-    if (!date) return '';
-
-    const now = new Date();
-    const messageDate = new Date(date);
-    const diff = now.getTime() - messageDate.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-
-    return messageDate.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    });
-  }
-
-  private formatTime(date: Date): string {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return `${Math.floor(diffMins / 1440)}d ago`;
-  }
-
-  // async getUserConversations(user: any) {
-  //   try {
-  //     const userFound = await this.usersService.getUserAccountById(user.userId);
-  //     if (!userFound) {
-  //       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-  //     }
-
-  //     const data = await this.conversationRepository
-  //       .createQueryBuilder('conversation')
-  //       .leftJoinAndSelect('conversation.participants', 'participant')
-  //       .leftJoinAndSelect('participant.user', 'user')
-  //       .leftJoin(
-  //         (qb) =>
-  //           qb
-  //             .select('m.id', 'id')
-  //             .addSelect('m.content', 'content')
-  //             .addSelect('m.created_at', 'created_at')
-  //             .addSelect('m.senderId', 'senderId')
-  //             .addSelect('m.conversationId', 'conversationId')
-  //             .from(Message, 'm')
-  //             .where(
-  //               'm.id IN (SELECT MAX(id) FROM messages GROUP BY conversationId)',
-  //             ),
-  //         'last_message',
-  //         'last_message.conversationId = conversation.id',
-  //       )
-  //       .addSelect('last_message.id', 'lastMessageId')
-  //       .addSelect('last_message.content', 'lastMessageContent')
-  //       .addSelect('last_message.created_at', 'lastMessageAt')
-  //       .addSelect('last_message.senderId', 'lastMessageSenderId')
-  //       .where((qb) => {
-  //         const subQuery = qb
-  //           .subQuery()
-  //           .select('cp.conversationId')
-  //           .from(ConversationParticipant, 'cp')
-  //           .where('cp.userId = :userId')
-  //           .andWhere('cp.isActive = :isActive', { isActive: true })
-  //           .getQuery();
-  //         return 'conversation.id IN ' + subQuery;
-  //       })
-  //       .setParameter('userId', userFound.id)
-  //       .orderBy('conversation.lastMessageAt', 'DESC')
-  //       .getRawAndEntities();
-
-  //     // 🔍 DEBUG: Check what's in entities and raw
-  //     console.log('🔍 Data entities:', JSON.stringify(data.entities, null, 2));
-  //     console.log('🔍 Data raw:', data.raw);
-
-  //     const enrichedData = data.entities.map((conv) => {
-  //       const raw = data.raw.find((r) => r.conversation_id === conv.id);
-
-  //       // 🔍 DEBUG: Log each conversation
-  //       console.log('🔍 Conversation ID:', conv.id);
-  //       console.log('🔍 Participants:', conv.participants);
-
-  //       // 🔍 DEBUG: Check each participant
-  //       if (conv.participants) {
-  //         conv.participants.forEach((p, idx) => {
-  //           console.log(`🔍 Participant ${idx}:`, {
-  //             id: p.id,
-  //             userId: p.userId,
-  //             hasUser: !!p.user,
-  //             userName: p.user?.first_name,
-  //           });
-  //         });
-  //       }
-
-  //       // Find peer user (the one that's not the logged-in user)
-  //       const peer = conv.participants
-  //         ?.map((p) => p.user)
-  //         ?.find((u) => {
-  //           console.log('🔍 Checking user:', u?.id, 'vs', userFound.id);
-  //           return u?.id !== userFound.id;
-  //         });
-
-  //       console.log('🔍 Found peer:', peer);
-
-  //       // ✅ For direct chats, use peer's name. For groups, use group name
-  //       const displayName = conv.type === 'direct'
-  //         ? peer?.fullName || `${peer?.first_name} ${peer?.last_name}`.trim() || peer?.username || 'Unknown User'
-  //         : conv.name || 'Unnamed Group';
-
-  //       const displayAvatar = conv.type === 'direct'
-  //         ? peer?.avatar || ''
-  //         : conv.avatar || '';
-
-  //       return {
-  //         id: conv.id,
-  //         type: conv.type,
-  //         name: displayName,
-  //         avatar: displayAvatar,
-  //         online: conv.type === 'direct' ? (peer?.logged_in || false) : undefined,
-  //         peer,
-  //         lastMessage: raw
-  //           ? {
-  //               id: raw.lastMessageId,
-  //               content: raw.lastMessageContent || '',
-  //               time: this.formatTime(raw.lastMessageAt),
-  //               senderId: raw.lastMessageSenderId,
-  //             }
-  //           : null,
-  //         unread: 0,
-  //         created_at: conv.created_at,
-  //         updated_at: conv.updated_at,
-  //       };
-  //     });
-
-  //     return {
-  //       data: enrichedData,
-  //       success: true,
-  //       message: 'success',
-  //     };
-  //   } catch (err) {
-  //     console.error(err);
-  //     throw new HttpException(
-  //       'Failed to get conversations',
-  //       HttpStatus.INTERNAL_SERVER_ERROR,
-  //     );
-  //   }
-  // }
-
   /**
-   * Start a new conversation with a peer
+   * Start a new conversation with an organization member
    */
-  async startConversationWithPeer(user: any, peerId: number) {
+  async startConversationWithMember(
+    user: any,
+    memberId: number,
+    organizationId: string,
+  ) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      // ✅ Convert to number explicitly
+      // Verify both users are members of the organization
+      const userOrg = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: userFound.id,
+          organization_id: organizationId,
+          is_active: true,
+        },
+      });
+
+      if (!userOrg) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
       const userId = Number(userFound.id);
-      const peerIdNum = Number(peerId);
+      const memberIdNum = Number(memberId);
 
-      console.log('🔍 User ID:', userId, typeof userId);
-      console.log('🔍 Peer ID:', peerIdNum, typeof peerIdNum);
-
-      if (userId === peerIdNum) {
+      if (userId === memberIdNum) {
         throw new BadRequestException(
           "You can't start a conversation with yourself.",
         );
       }
 
-      // ✅ Verify peer exists
-      const peerUser = await this.usersService.getUserAccountById(peerIdNum);
-      if (!peerUser) {
-        throw new NotFoundException('Peer user not found');
+      // Verify the other member exists and is in the organization
+      const memberOrg = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: memberIdNum,
+          organization_id: organizationId,
+          is_active: true,
+        },
+        relations: ['user'],
+      });
+
+      if (!memberOrg) {
+        throw new NotFoundException(
+          'Member not found in this organization',
+        );
       }
 
-      console.log('🔍 Peer user loaded:', peerUser.id, peerUser.first_name);
+      const memberUser = memberOrg.user;
 
-      // ✅ Check if a direct conversation exists
+      // Check if a direct conversation already exists
       const userConversations = await this.participantRepository
         .createQueryBuilder('cp1')
         .select('cp1.conversationId')
         .where('cp1.userId = :userId', { userId })
         .andWhere('cp1.isActive = true')
+        .andWhere('cp1.organization_id = :organizationId', { organizationId })
         .getMany();
-
-      console.log('🔍 User conversations:', userConversations.length);
 
       const userConvIds = userConversations.map((p) => p.conversationId);
 
@@ -738,8 +291,9 @@ export class MessagesService {
           .createQueryBuilder('cp2')
           .select('cp2.conversationId')
           .where('cp2.conversationId IN (:...ids)', { ids: userConvIds })
-          .andWhere('cp2.userId = :peerId', { peerId: peerIdNum })
+          .andWhere('cp2.userId = :memberId', { memberId: memberIdNum })
           .andWhere('cp2.isActive = true')
+          .andWhere('cp2.organization_id = :organizationId', { organizationId })
           .getOne();
 
         if (sharedConversation) {
@@ -747,12 +301,16 @@ export class MessagesService {
             where: {
               id: sharedConversation.conversationId,
               type: 'direct',
+              organization_id: organizationId,
             },
           });
 
           if (existing) {
             const participants = await this.participantRepository.find({
-              where: { conversationId: existing.id },
+              where: {
+                conversationId: existing.id,
+                organization_id: organizationId,
+              },
               relations: ['user'],
             });
 
@@ -771,7 +329,16 @@ export class MessagesService {
                   'Unknown User',
                 avatar: peer?.avatar || '',
                 online: peer?.logged_in || false,
-                peer,
+                peer: {
+                  id: peer.id,
+                  fullName: peer.fullName ?? '',
+                  first_name: peer.first_name,
+                  last_name: peer.last_name,
+                  username: peer.username,
+                  email: peer.email,
+                  avatar: peer.avatar,
+                  logged_in: peer.logged_in,
+                },
                 lastMessage: null,
                 unread: 0,
                 created_at: existing.created_at,
@@ -784,20 +351,17 @@ export class MessagesService {
         }
       }
 
-      console.log('🔍 Creating new conversation...');
-
-      // ✅ Create new conversation
+      // Create new conversation
       const conversation = this.conversationRepository.create({
         type: 'direct',
         created_by: userId,
         createdBy: userFound,
+        organization_id: organizationId,
       });
       const savedConversation =
         await this.conversationRepository.save(conversation);
 
-      console.log('✅ Conversation saved:', savedConversation.id);
-
-      // ✅ Add participants with explicit type conversion
+      // Add participants
       const participants = [
         {
           conversationId: savedConversation.id,
@@ -807,15 +371,17 @@ export class MessagesService {
           role: 'member' as const,
           isActive: true,
           joinedAt: new Date(),
+          organization_id: organizationId,
         },
         {
           conversationId: savedConversation.id,
           conversation: savedConversation,
-          userId: peerIdNum,
-          user: peerUser,
+          userId: memberIdNum,
+          user: memberUser,
           role: 'member' as const,
           isActive: true,
           joinedAt: new Date(),
+          organization_id: organizationId,
         },
       ];
 
@@ -826,30 +392,28 @@ export class MessagesService {
         .values(participants)
         .execute();
 
-      console.log('✅ Participants inserted');
-
-      // ✅ Manual approach - construct response with fetched users
       return {
         data: {
           id: savedConversation.id,
           type: savedConversation.type,
           name:
-            peerUser?.fullName ||
-            `${peerUser?.first_name || ''} ${
-              peerUser?.last_name || ''
+            memberUser?.fullName ||
+            `${memberUser?.first_name || ''} ${
+              memberUser?.last_name || ''
             }`.trim() ||
-            peerUser?.username ||
+            memberUser?.username ||
             'Unknown User',
-          avatar: peerUser?.avatar || '',
-          online: peerUser?.logged_in || false,
+          avatar: memberUser?.avatar || '',
+          online: memberUser?.logged_in || false,
           peer: {
-            id: peerUser.id,
-            first_name: peerUser.first_name,
-            last_name: peerUser.last_name,
-            username: peerUser.username,
-            email: peerUser.email,
-            avatar: peerUser.avatar,
-            logged_in: peerUser.logged_in,
+            id: memberUser.id,
+            fullName: memberUser.fullName ?? '',
+            first_name: memberUser.first_name,
+            last_name: memberUser.last_name,
+            username: memberUser.username,
+            email: memberUser.email,
+            avatar: memberUser.avatar,
+            logged_in: memberUser.logged_in,
           },
           lastMessage: null,
           unread: 0,
@@ -860,9 +424,9 @@ export class MessagesService {
         message: 'New conversation started successfully',
       };
     } catch (err) {
-      console.error('❌ Error in startConversationWithPeer:', err);
+      console.error('❌ Error in startConversationWithMember:', err);
       throw new HttpException(
-        'Failed to start conversation',
+        err?.message || 'Failed to start conversation',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -871,15 +435,40 @@ export class MessagesService {
   /**
    * Get conversation messages
    */
-  async getConversationMessages(user: any, conversationId: string) {
+  async getConversationMessages(
+    user: any,
+    conversationId: string,
+    organizationId: string,
+  ) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound)
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      const userId = userFound.id;
 
+      // Verify user is in the organization
+      const userOrg = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: userFound.id,
+          organization_id: organizationId,
+          is_active: true,
+        },
+      });
+
+      if (!userOrg) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Verify user is a participant in the conversation
       const participant = await this.participantRepository.findOne({
-        where: { conversationId, userId: userFound.id, isActive: true },
+        where: {
+          conversationId,
+          userId: userFound.id,
+          isActive: true,
+          organization_id: organizationId,
+        },
         relations: ['conversation'],
       });
 
@@ -889,8 +478,12 @@ export class MessagesService {
         );
       }
 
+      // Get messages with organization filter
       const rawMessages = await this.messageRepository.find({
-        where: { conversationId },
+        where: {
+          conversationId,
+          organization_id: organizationId,
+        },
         order: { created_at: 'ASC' },
         relations: ['sender'],
       });
@@ -904,9 +497,9 @@ export class MessagesService {
             isMine,
             time: this.formatTime(msg.created_at),
             createdAt: msg.created_at,
-            status: 'read', // or compute from read receipts
+            status: 'read',
           },
-          { excludeExtraneousValues: true }, // 👈 critical
+          { excludeExtraneousValues: true },
         );
       });
 
@@ -921,31 +514,54 @@ export class MessagesService {
   }
 
   /**
-   * Get peers who don't have a conversation with the user yet
+   * Get organization members who don't have a conversation with the user yet
    */
-  async getUnchattedPeers(user: any) {
+  async getUnchattedMembers(user: any, organizationId: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      // Get all peers the user is connected with
-      const peers = await this.peerRepository.find({
+      // Verify user is in the organization
+      const userOrg = await this.userOrganizationRepository.findOne({
         where: {
-          user: { id: userFound.id },
-          status: UserPeerStatus.CONNECTED,
+          user_id: userFound.id,
+          organization_id: organizationId,
+          is_active: true,
         },
-        relations: ['peer'],
       });
 
-      const peerIds = peers.map((p) => p.peer.id);
-
-      if (!peerIds.length) {
-        return { data: [], success: true, message: 'No connected peers' };
+      if (!userOrg) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
       }
 
-      // Get all peer IDs from conversations (FIXED)
+      // Get all active members in the organization
+      const orgMembers = await this.userOrganizationRepository.find({
+        where: {
+          organization_id: organizationId,
+          is_active: true,
+        },
+        relations: ['user'],
+      });
+
+      // Exclude self
+      const otherMembers = orgMembers.filter(
+        (m) => m.user_id !== userFound.id,
+      );
+
+      if (!otherMembers.length) {
+        return {
+          data: [],
+          success: true,
+          message: 'No other members in organization',
+        };
+      }
+
+      // Get all member IDs that user has conversations with
       const chattedParticipants = await this.participantRepository
         .createQueryBuilder('participant')
         .select('participant.userId')
@@ -955,37 +571,43 @@ export class MessagesService {
             .select('cp.conversationId')
             .from(ConversationParticipant, 'cp')
             .where('cp.userId = :userId', { userId: userFound.id })
+            .andWhere('cp.organization_id = :organizationId', {
+              organizationId,
+            })
             .getQuery();
           return 'participant.conversationId IN ' + subQuery;
         })
         .andWhere('participant.userId != :userId', { userId: userFound.id })
+        .andWhere('participant.organization_id = :organizationId', {
+          organizationId,
+        })
         .getRawMany();
 
       const chattedIds = new Set(
-        chattedParticipants.map((p) => p.participant_userId),
+        chattedParticipants.map((p) => Number(p.participant_userId)),
       );
 
-      // Filter peers who haven't been chatted with yet
-      const unchattedPeers = peers
-        .map((p) => ({
-          id: p.peer.id,
-          name: p.peer.fullName,
-          avatar: p.peer.avatar,
-          email: p.peer.email,
-          online: p.peer.logged_in,
-          role: 'Peer', // You can add role logic here
-        }))
-        .filter((peer) => !chattedIds.has(peer.id));
+      // Filter members who haven't been chatted with yet
+      const unchattedMembers = otherMembers
+        .filter((m) => !chattedIds.has(Number(m.user_id)))
+        .map((m) => ({
+          id: m.user.id,
+          name: m.user.fullName,
+          avatar: m.user.avatar,
+          email: m.user.email,
+          online: m.user.logged_in,
+          role: m.role,
+        }));
 
       return {
-        data: unchattedPeers,
+        data: unchattedMembers,
         success: true,
         message: 'success',
       };
     } catch (err) {
-      console.error(err);
+      console.error('Error in getUnchattedMembers:', err);
       throw new HttpException(
-        'Failed to get unchatted peers',
+        err?.message || 'Failed to get unchatted members',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -998,24 +620,37 @@ export class MessagesService {
     user: any,
     conversationId: string,
     content: string,
+    organizationId: string,
   ): Promise<{ data: MessageResponseDto; success: boolean; message: string }> {
     try {
-      // ------------------------------------------------------------
-      // 1. Resolve the sender
-      // ------------------------------------------------------------
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
-      const senderId = userFound.id.toString();
-      // ------------------------------------------------------------
-      // 2. Verify active membership (no extra relations needed)
-      // ------------------------------------------------------------
+
+      // Verify user is in the organization
+      const userOrg = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: userFound.id,
+          organization_id: organizationId,
+          is_active: true,
+        },
+      });
+
+      if (!userOrg) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Verify active membership in conversation
       const participant = await this.participantRepository.findOne({
         where: {
           conversationId,
           userId: Number(userFound.id),
           isActive: true,
+          organization_id: organizationId,
         },
         relations: [
           'conversation',
@@ -1030,9 +665,15 @@ export class MessagesService {
 
       const conversation = participant.conversation;
 
-      // ------------------------------------------------------------
-      // 3. Create & persist the message
-      // ------------------------------------------------------------
+      // Verify conversation belongs to organization
+      if (conversation.organization_id !== organizationId) {
+        throw new HttpException(
+          'Conversation does not belong to this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Create & persist the message
       const message = this.messageRepository.create({
         senderId: Number(userFound.id),
         sender: userFound,
@@ -1040,34 +681,31 @@ export class MessagesService {
         conversation: conversation,
         content,
         messageType: 'text',
+        organization_id: organizationId,
       });
 
       const savedMessage = await this.messageRepository.save(message);
 
-      // ------------------------------------------------------------
-      // 4. Update conversation timestamps
-      // ------------------------------------------------------------
+      // Update conversation timestamps
       await this.conversationRepository.update(conversationId, {
         lastMessageAt: new Date(),
-        // updated_at is handled automatically by @UpdateDateColumn
       });
 
-      // ------------------------------------------------------------
-      // 5. Transform to safe DTO (no password, email, etc.)
-      // ------------------------------------------------------------
+      // Transform to safe DTO
       const dto = plainToInstance(
         MessageResponseDto,
         {
           ...savedMessage,
-          sender: userFound, // safe fields only (UserChatDto will filter)
-          isMine: true, // the message we just sent
+          sender: userFound,
+          isMine: true,
           time: this.formatTime(savedMessage.created_at),
           createdAt: savedMessage.created_at,
-          status: 'sent' as const, // you can upgrade later with read‑receipts
+          status: 'sent' as const,
         },
-        { excludeExtraneousValues: true }, // <-- strips everything not @Expose()
+        { excludeExtraneousValues: true },
       );
 
+      // Emit via WebSocket
       this.messagesGateway.notifyNewMessage(conversationId, {
         id: savedMessage.id,
         content: savedMessage.content,
@@ -1078,27 +716,18 @@ export class MessagesService {
         conversationId: savedMessage.conversationId,
         created_at: savedMessage.created_at,
         status: 'sent' as const,
-        isMine: false, // the message we just sent
+        isMine: false,
       });
 
+      // Send notifications to other participants
       const otherParticipants = conversation.participants.filter(
-        (p) => p.isActive && Number(p.userId) !== Number(userFound.id),
+        (p) =>
+          p.isActive &&
+          Number(p.userId) !== Number(userFound.id) &&
+          p.organization_id === organizationId,
       );
 
-      console.log(otherParticipants, 'otherParticipants');
       for (const p of otherParticipants) {
-        const recipientId = p.userId.toString();
-
-        console.log(recipientId, p, 'recipientId');
-        // --- WebSocket: Real-time message ---
-        // this.messagesGateway.server
-        //   .to(`conversation:${conversationId}:user:${recipientId}`)
-        //   .emit('newMessage', {
-        //     ...dto,
-        //     isMine: false, // from recipient's POV
-        //   });
-
-        // --- DB + Push Notification ---
         const recipient = await this.usersService.getUserAccountById(p.userId);
         if (!recipient) continue;
 
@@ -1116,9 +745,6 @@ export class MessagesService {
         );
       }
 
-      // ------------------------------------------------------------
-      // 6. Return
-      // ------------------------------------------------------------
       return {
         data: dto,
         success: true,
@@ -1132,5 +758,16 @@ export class MessagesService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private formatTime(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
   }
 }

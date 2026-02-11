@@ -49,6 +49,9 @@ export class Folder {
   @Column({ nullable: true })
   parentId: string;
 
+  @Column({ default: true })
+  is_public: boolean;
+
   @TreeChildren()
   children: Folder[];
 

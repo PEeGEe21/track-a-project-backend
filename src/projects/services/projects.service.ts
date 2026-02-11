@@ -89,6 +89,8 @@ export class ProjectsService {
     private resourceRepository: Repository<Resource>,
     @InjectRepository(ProjectActivity)
     private projectActivityRepository: Repository<ProjectActivity>,
+    @InjectRepository(Organization)
+    private orgRepository: Repository<Organization>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -159,7 +161,7 @@ export class ProjectsService {
       );
 
       // 1. Select project fields (all fields by default)
-      // queryBuilder.select('project');
+      queryBuilder.select('project');
 
       // 2. Join owner (exclude sensitive fields)
       queryBuilder.leftJoin('project.user', 'owner').addSelect([
@@ -236,8 +238,11 @@ export class ProjectsService {
         default:
           queryBuilder.where(
             new Brackets((qb) => {
-              qb.where('owner.id = :userId', { userId: userFound.id }).orWhere(
-                (subQb) => {
+              qb.where('owner.id = :userId', { userId: userFound.id })
+                .orWhere('project.organization_id = :organizationId', {
+                  organizationId,
+                })
+                .orWhere((subQb) => {
                   const subQuery = subQb
                     .subQuery()
                     .select('pp.project_id')
@@ -245,8 +250,7 @@ export class ProjectsService {
                     .where('pp.user_id = :userId', { userId: userFound.id })
                     .getQuery();
                   return 'project.id IN ' + subQuery;
-                },
-              );
+                });
             }),
           );
           // queryBuilder.where(
@@ -640,6 +644,10 @@ export class ProjectsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
+
       // Parse category IDs
       const categoryIds = this.formatParseCategoryIds(
         createProjectDetails.category,
@@ -659,6 +667,7 @@ export class ProjectsService {
         user: userFound,
         categories: categories ?? [],
         organization_id: organizationId, // Add organization_id
+        organization, // Add organization_id
       };
 
       // const savedProject = null;

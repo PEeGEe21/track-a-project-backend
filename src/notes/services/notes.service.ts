@@ -9,6 +9,8 @@ import { CreateNoteDto } from '../dto/create-note.dto';
 import { UpdateNoteDto } from '../dto/update-note.dto';
 import { UsersService } from 'src/users/services/users.service';
 import { Note } from 'src/typeorm/entities/Note';
+import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Injectable()
 export class NotesService {
@@ -18,10 +20,12 @@ export class NotesService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Note) private noteRepository: Repository<Note>,
     @InjectRepository(Task) private taskRepository: Repository<Task>,
+    @InjectRepository(Organization) private orgRepository: Repository<Organization>,
   ) {}
 
   async findUserNotes(
     user: any,
+    organizationId: string,
     page: number = 1,
     limit: number = 10,
     search?: string,
@@ -35,7 +39,12 @@ export class NotesService {
       }
 
       // 2. Use the query builder
-      const queryBuilder = this.noteRepository.createQueryBuilder('note');
+      const queryBuilder = TenantQueryHelper.createOrganizationQuery(
+        this.noteRepository,
+        organizationId,
+        'note',
+      );
+      // const queryBuilder = this.noteRepository.createQueryBuilder('note');
 
       // 1. Select project fields (all fields by default)
       queryBuilder.select('note');
@@ -111,6 +120,7 @@ export class NotesService {
         throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
       }
 
+      console.log(updateNoteDto)
       const {
         note: noteText,
         color,
@@ -159,6 +169,8 @@ export class NotesService {
         where: { id },
         relations: ['task', 'user'],
       });
+
+      console.log(updatedNote, "updatedNote")
 
       return {
         success: 'success',
@@ -259,10 +271,10 @@ export class NotesService {
     }
   }
 
-  async findNote(id: number): Promise<any> {
+  async findNote(id: number, organizationId: string): Promise<any> {
     try {
       const note = await this.noteRepository.findOne({
-        where: { id: id },
+        where: { id: id, organization_id: organizationId },
       });
 
       if (!note) {
@@ -279,10 +291,10 @@ export class NotesService {
     }
   }
 
-  async deleteNote(id: number): Promise<any> {
+  async deleteNote(id: number, organizationId: string): Promise<any> {
     try {
       const note = await this.noteRepository.findOne({
-        where: { id: id },
+        where: { id: id, organization_id: organizationId },
       });
 
       if (!note) {
@@ -350,11 +362,14 @@ export class NotesService {
     }
   }
 
-  async createNote(payload: any, user): Promise<any> {
+  async createNote(payload: any, user, organizationId: string): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound)
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      const organization = await this.orgRepository.findOne({ where: { id: organizationId } });
+
 
       const { note, color, is_pinned = false, position, taskId } = payload;
 
@@ -385,6 +400,8 @@ export class NotesService {
         position: position ?? { x: 0, y: 0 },
         order: nextOrder, // NEW
         user: userFound,
+        organization_id: organizationId,
+        organization,
         ...(task && { task }),
       });
 

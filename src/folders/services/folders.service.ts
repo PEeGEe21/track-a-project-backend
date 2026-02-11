@@ -8,11 +8,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Folder } from 'src/typeorm/entities/Folder';
-import { IsNull, TreeRepository } from 'typeorm';
+import { IsNull, Repository, TreeRepository } from 'typeorm';
 import { CreateFolderDto } from '../dtos/create-folder.dto';
 import { UpdateFolderDto } from '../dtos/update-folder.dto';
 import { UsersService } from 'src/users/services/users.service';
 import { Document } from 'src/typeorm/entities/Document';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 
 @Injectable()
 export class FoldersService {
@@ -23,20 +25,31 @@ export class FoldersService {
     private foldersRepository: TreeRepository<Folder>,
     @InjectRepository(Document)
     private documentsRepository: TreeRepository<Document>,
+    @InjectRepository(Organization)
+    private orgRepository: Repository<Organization>,
   ) {}
 
-  async create(createFolderDto: CreateFolderDto, user: any): Promise<any> {
+  async create(
+    createFolderDto: CreateFolderDto,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
+
       // If parentId is provided, verify it exists and belongs to user
       if (createFolderDto.parentId) {
         const parentFolder = await this.findOne(
           createFolderDto.parentId,
           userFound.id,
+          organization.id,
         );
         if (!parentFolder) {
           throw new NotFoundException('Parent folder not found');
@@ -47,6 +60,8 @@ export class FoldersService {
         ...createFolderDto,
         owner: userFound,
         userId: userFound.id,
+        organization_id: organization.id,
+        organization,
       });
 
       const savedFolder = await this.foldersRepository.save(folder);
@@ -59,7 +74,11 @@ export class FoldersService {
     } catch (err) {}
   }
 
-  async findAll(user: any): Promise<Folder[]> {
+  async findAll(
+    user: any,
+    organizationId: string,
+    group: string,
+  ): Promise<Folder[]> {
     const userFound = await this.usersService.getUserAccountById(user.userId);
     console.log(userFound, 'www');
     if (!userFound) {
@@ -69,15 +88,27 @@ export class FoldersService {
     const userId = userFound.id;
 
     // Get all folders for the user
+    if (group == 'mine') {
+      return await this.foldersRepository.find({
+        where: { userId: userId, organization_id: organizationId },
+        relations: ['documents'],
+        order: { createdAt: 'DESC' },
+      });
+    }
+
     return await this.foldersRepository.find({
-      where: { userId },
+      where: { organization_id: organizationId },
       relations: ['documents'],
       order: { createdAt: 'DESC' },
     });
   }
 
   // folders.service.ts - Updated to include documents
-  async findAllWithTree(user: any): Promise<any> {
+  async findAllWithTree(
+    user: any,
+    organizationId: string,
+    group: string,
+  ): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
 
@@ -101,14 +132,42 @@ export class FoldersService {
           'folder.createdAt',
           'folder.updatedAt',
         ])
-        .addSelect('COUNT(documents.id)', 'documentCount')
-        .where('folder.userId = :userId', { userId })
-        .groupBy('folder.id')
-        .orderBy('folder.name', 'ASC')
-        .getRawAndEntities();
+        .addSelect('COUNT(documents.id)', 'documentCount');
+      // .where('folder.userId = :userId', { userId })
 
+      // .andWhere('folder.organization_id = :organizationId', {
+      //   organizationId,
+      // })
+      // .groupBy('folder.id')
+      // .orderBy('folder.name', 'ASC')
+      // .getRawAndEntities();
+
+      let folderResult: { raw: any[]; entities: Folder[] };
+
+      if (group === 'mine') {
+        folderResult = await folders
+          .where('folder.userId = :userId', { userId })
+          .andWhere('folder.organization_id = :organizationId', {
+            organizationId,
+          })
+          .andWhere('folder.is_public = :is_public', { is_public: false })
+          .groupBy('folder.id')
+          .orderBy('folder.name', 'ASC')
+          .getRawAndEntities();
+      } else {
+        folderResult = await folders
+          .where('folder.organization_id = :organizationId', { organizationId })
+          .andWhere('folder.is_public = :is_public', { is_public: true })
+          .groupBy('folder.id')
+          .orderBy('folder.name', 'ASC')
+          .getRawAndEntities();
+      }
+
+      const foldersEntities = folderResult.entities;
+      const foldersRaw = folderResult.raw;
       // Get all documents for these folders
-      const documents = await this.documentsRepository
+
+      const documentsList = await this.documentsRepository
         .createQueryBuilder('document')
         .leftJoinAndSelect('document.files', 'files')
         .select([
@@ -122,18 +181,50 @@ export class FoldersService {
           'document.createdAt',
           'document.updatedAt',
           'document.metadata',
+          'files.id',
+          'files.filename',
+          'files.size',
+          'files.mimeType',
         ])
-        .addSelect('files.id')
-        .addSelect('files.filename')
-        .addSelect('files.size')
-        .addSelect('files.mimeType')
-        .where('document.userId = :userId', { userId })
+        // .where('document.userId = :userId', {
+        //   userId,
+        // })
+        .where('document.organization_id = :organizationId', {
+          organizationId,
+        })
         .andWhere('document.folderId IS NOT NULL')
         .orderBy('document.title', 'ASC')
         .getMany();
 
+      // const documents = await this.documentsRepository
+      //   .createQueryBuilder('document')
+      //   .leftJoinAndSelect('document.files', 'files')
+      //   .select([
+      //     'document.id',
+      //     'document.title',
+      //     'document.folderId',
+      //     'document.content',
+      //     'document.plainText',
+      //     'document.isPublished',
+      //     'document.isFavorite',
+      //     'document.createdAt',
+      //     'document.updatedAt',
+      //     'document.metadata',
+      //   ])
+      //   .addSelect('files.id')
+      //   .addSelect('files.filename')
+      //   .addSelect('files.size')
+      //   .addSelect('files.mimeType')
+      //   .where('document.userId = :userId', { userId })
+      //   .andWhere('document.organization_id = :organizationId', {
+      //     organizationId,
+      //   })
+      //   .andWhere('document.folderId IS NOT NULL')
+      //   .orderBy('document.title', 'ASC')
+      //   .getMany();
+
       // Early return if no folders
-      if (folders.entities.length === 0) {
+      if (foldersEntities.length === 0) {
         return {
           data: [],
           success: true,
@@ -144,7 +235,7 @@ export class FoldersService {
 
       // Group documents by folderId
       const documentsByFolder = new Map<string, any[]>();
-      documents.forEach((doc) => {
+      documentsList.forEach((doc) => {
         if (doc.folderId) {
           if (!documentsByFolder.has(doc.folderId)) {
             documentsByFolder.set(doc.folderId, []);
@@ -158,9 +249,9 @@ export class FoldersService {
       const rootFolders = [];
 
       // Single pass to create map with documents
-      for (let i = 0; i < folders.entities.length; i++) {
-        const folder = folders.entities[i];
-        const documentCount = parseInt(folders.raw[i].documentCount) || 0;
+      for (let i = 0; i < foldersEntities.length; i++) {
+        const folder = foldersEntities[i];
+        const documentCount = parseInt(foldersRaw[i].documentCount) || 0;
 
         folderMap.set(folder.id, {
           ...folder,
@@ -175,7 +266,7 @@ export class FoldersService {
       }
 
       // Single pass to build relationships
-      for (const folder of folders.entities) {
+      for (const folder of foldersEntities) {
         const current = folderMap.get(folder.id);
 
         if (folder.parentId) {
@@ -221,7 +312,11 @@ export class FoldersService {
   }
 
   // Get single folder with full details
-  async findFolderById(user: any, folderId: string): Promise<any> {
+  async findFolderById(
+    user: any,
+    folderId: string,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
 
@@ -247,12 +342,15 @@ export class FoldersService {
         .leftJoinAndSelect('document.category', 'category')
         .where('document.folderId = :folderId', { folderId })
         .andWhere('document.userId = :userId', { userId })
+        .andWhere('document.organization_id = :organizationId', {
+          organizationId,
+        })
         .orderBy('document.updatedAt', 'DESC')
         .getMany();
 
       // Get subfolders
       const subfolders = await this.foldersRepository.find({
-        where: { parentId: folderId, userId },
+        where: { parentId: folderId, userId, organization_id: organizationId },
         order: { name: 'ASC' },
       });
 
@@ -394,9 +492,13 @@ export class FoldersService {
     } catch (err) {}
   }
 
-  async findOne(id: string, userId: number): Promise<Folder> {
+  async findOne(
+    id: string,
+    userId: number,
+    organizationId: string,
+  ): Promise<Folder> {
     const folder = await this.foldersRepository.findOne({
-      where: { id },
+      where: { id, organization_id: organizationId },
       relations: ['documents', 'children', 'parent'],
     });
 
@@ -411,12 +513,16 @@ export class FoldersService {
     return folder;
   }
 
-  async findOneWithContents(id: string, userId: number): Promise<Folder> {
-    const folder = await this.findOne(id, userId);
+  async findOneWithContents(
+    id: string,
+    userId: number,
+    organizationId: string,
+  ): Promise<Folder> {
+    const folder = await this.findOne(id, userId, organizationId);
 
     // Get immediate children folders
     const children = await this.foldersRepository.find({
-      where: { parentId: id, userId },
+      where: { parentId: id, userId, organization_id: organizationId },
       relations: ['documents'],
     });
 
@@ -460,6 +566,7 @@ export class FoldersService {
     id: string,
     updateFolderDto: UpdateFolderDto,
     user: any,
+    organizationId: string,
   ): Promise<any> {
     try {
       console.log(updateFolderDto, 'entered');
@@ -468,7 +575,7 @@ export class FoldersService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const folder = await this.findOne(id, userFound.id);
+      const folder = await this.findOne(id, userFound.id, organizationId);
 
       console.log(updateFolderDto, 'entered');
       // If moving to a new parent, validate it
@@ -480,6 +587,7 @@ export class FoldersService {
         const newParent = await this.findOne(
           updateFolderDto.parentId,
           userFound.id,
+          organizationId,
         );
 
         // Prevent circular reference (folder cannot be its own ancestor)
@@ -570,14 +678,14 @@ export class FoldersService {
     }
   }
 
-  async remove(id: string, user: any): Promise<any> {
+  async remove(id: string, user: any, organizationId: string): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const folder = await this.findOne(id, userFound.id);
+      const folder = await this.findOne(id, userFound.id, organizationId);
       if (!folder) {
         throw new BadRequestException('Folder not found');
       }
@@ -617,22 +725,34 @@ export class FoldersService {
     }
   }
 
-  async getAncestors(id: string, userId: number): Promise<Folder[]> {
-    const folder = await this.findOne(id, userId);
+  async getAncestors(
+    id: string,
+    userId: number,
+    organizationId: string,
+  ): Promise<Folder[]> {
+    const folder = await this.findOne(id, userId, organizationId);
     return await this.foldersRepository.findAncestors(folder);
   }
 
-  async getDescendants(id: string, userId: number): Promise<Folder[]> {
-    const folder = await this.findOne(id, userId);
+  async getDescendants(
+    id: string,
+    userId: number,
+    organizationId: string,
+  ): Promise<Folder[]> {
+    const folder = await this.findOne(id, userId, organizationId);
     return await this.foldersRepository.findDescendants(folder);
   }
 
-  async getBreadcrumbs(id: string, userId: number): Promise<Folder[]> {
-    const ancestors = await this.getAncestors(id, userId);
+  async getBreadcrumbs(
+    id: string,
+    userId: number,
+    organizationId: string,
+  ): Promise<Folder[]> {
+    const ancestors = await this.getAncestors(id, userId, organizationId);
     return ancestors.reverse(); // Root -> Current
   }
 
-  async findRecentFolders(user: any): Promise<any> {
+  async findRecentFolders(user: any, organizationId: string): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
