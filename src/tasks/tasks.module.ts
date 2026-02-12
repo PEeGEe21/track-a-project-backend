@@ -17,6 +17,8 @@ import { UsersModule } from 'src/users/users.module';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -30,7 +32,9 @@ import { ProjectActivitiesModule } from 'src/project-activities/project-activiti
       Note,
       Notification,
       UserNotificationPreference,
-      ProjectActivity
+      ProjectActivity,
+      Organization,
+      UserOrganization
     ]),
     forwardRef(() => UsersModule),
     NotificationsModule,

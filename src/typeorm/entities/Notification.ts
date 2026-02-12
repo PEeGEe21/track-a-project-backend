@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from './User';
+import { Organization } from './Organization';
 
 @Entity('notifications')
 export class Notification {
@@ -37,6 +38,13 @@ export class Notification {
 
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, any>; // optional extra data (e.g., projectId, inviteId)
+
+  @Column({ type: 'uuid', nullable: true })
+  organization_id: string | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'organization_id' })
+  organization: Organization | null;
 
   @CreateDateColumn()
   created_at: Date;

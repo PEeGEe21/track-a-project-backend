@@ -26,6 +26,7 @@ import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Injectable()
 export class TasksService {
@@ -40,6 +41,8 @@ export class TasksService {
     @InjectRepository(Project) private projectRepository: Repository<Project>,
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(Status) private statusRepository: Repository<Status>,
+    @InjectRepository(Organization)
+    private organizationRepository: Repository<Organization>,
   ) {}
 
   async findOne(id: number): Promise<Task> {
@@ -152,11 +155,21 @@ export class TasksService {
               if (Array.isArray(parsed) && parsed.length === 0) {
                 await clearAssignees();
               } else {
-                await this.addAssigneeToTask(userFound, raw, updatedTask);
+                await this.addAssigneeToTask(
+                  userFound,
+                  raw,
+                  updatedTask,
+                  organizationId,
+                );
               }
             } catch {
               // Not JSON, treat as non-empty string list
-              await this.addAssigneeToTask(userFound, raw, updatedTask);
+              await this.addAssigneeToTask(
+                userFound,
+                raw,
+                updatedTask,
+                organizationId,
+              );
             }
           }
         } else if (Array.isArray(raw)) {
@@ -167,6 +180,7 @@ export class TasksService {
               userFound,
               JSON.stringify(raw),
               updatedTask,
+              organizationId
             );
           }
         } else {
@@ -402,7 +416,7 @@ export class TasksService {
     id: number,
     priorityStatus: any,
     user: any,
-    organizationId: string
+    organizationId: string,
   ): Promise<any> {
     try {
       const userFound = await this.userRepository.findOneBy({
@@ -573,6 +587,10 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
+      const organization = await this.organizationRepository.findOne({
+        where: { id: organizationId },
+      });
+
       const { title, description, status, priority, due_date, assignees } =
         payload; // Destructure
 
@@ -613,6 +631,8 @@ export class TasksService {
         project,
         priority,
         due_date,
+        organization,
+        organization_id: organization.id,
       });
 
       // console.log(newTask, 'project')
@@ -621,7 +641,7 @@ export class TasksService {
 
       // Attach assignees by emails if provided
       if (assignees && typeof assignees === 'string' && assignees.length > 0) {
-        await this.addAssigneeToTask(userFound, assignees, newTask);
+        await this.addAssigneeToTask(userFound, assignees, newTask, organizationId);
       }
 
       await this.projectActivitiesService.createActivity({
@@ -658,7 +678,12 @@ export class TasksService {
     }
   }
 
-  async addAssigneeToTask(user: any, emails: string, task: Task): Promise<any> {
+  async addAssigneeToTask(
+    user: any,
+    emails: string,
+    task: Task,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const emailList: string[] = Array.isArray(emails)
         ? (emails as unknown as string[])
@@ -685,13 +710,17 @@ export class TasksService {
       await this.taskRepository.save(task);
 
       for (const add of toAdd) {
-        await this.notificationService.createNotification(user, {
-          recipient: add,
-          sender: user,
-          title: 'Task Assignment',
-          message: `${user?.fullName} assigned the task ${task?.title} to you.`,
-          type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
-        });
+        await this.notificationService.createNotification(
+          user,
+          {
+            recipient: add,
+            sender: user,
+            title: 'Task Assignment',
+            message: `${user?.fullName} assigned the task ${task?.title} to you.`,
+            type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
+          },
+          organizationId,
+        );
       }
       return {
         success: true,

@@ -9,11 +9,15 @@ import {
   Query,
   Req,
   UseGuards,
+  Headers,
 } from '@nestjs/common';
 import { UserpeersService } from '../services/userpeers.service';
 import { CreateUserpeerDto } from '../dto/create-userpeer.dto';
 import { UpdateUserpeerDto } from '../dto/update-userpeer.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('userpeers')
@@ -40,10 +44,28 @@ export class UserpeersController {
     return this.userpeersService.findUserPeers(req.user, page, limit, search);
   }
 
-  @Get('/my-peers-list')
-  findUserPeersList(
-    @Req() req: any
+  @Get('/team-members')
+  findUserOrganizationPeers(
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Query('search') search: string,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
+    return this.userpeersService.findUserOrganizationPeers(req.user, organizationId, page, limit, search);
+  }
+
+  @Get('/my-peers-list')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  findTeamPeersList(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userpeersService.findTeamPeersList(req.user, organizationId);
+  }
+
+  @Get('/my-peers-list2')
+  findUserPeersList(@Req() req: any) {
     return this.userpeersService.findUserPeersList(req.user);
   }
 
@@ -87,13 +109,21 @@ export class UserpeersController {
   }
 
   @Post('/invite/accept/:id')
-  acceptInvite(@Param('id') id: string, @Req() req: any) {
-    return this.userpeersService.acceptInvite(req.user, +id);
+  acceptInvite(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userpeersService.acceptInvite(req.user, +id, organizationId);
   }
 
   @Post('/invite/reject/:id')
-  rejectInvite(@Param('id') id: string, @Req() req: any) {
-    return this.userpeersService.rejectInvite(req.user, +id);
+  rejectInvite(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userpeersService.rejectInvite(req.user, +id, organizationId);
   }
 
   @Get(':id')

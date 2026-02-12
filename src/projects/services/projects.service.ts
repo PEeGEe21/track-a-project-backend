@@ -216,7 +216,11 @@ export class ProjectsService {
       // 4. Apply group conditions cleanly
       switch (group) {
         case 'my':
-          queryBuilder.where('owner.id = :userId', { userId: userFound.id });
+          queryBuilder
+            .where('owner.id = :userId', { userId: userFound.id })
+            .andWhere('project.organization_id = :organizationId', {
+              organizationId,
+            });
           break;
 
         case 'peer':
@@ -226,6 +230,9 @@ export class ProjectsService {
               .select('pp.project_id')
               .from('project_peers', 'pp')
               .where('pp.user_id = :userId', { userId: userFound.id })
+              .andWhere('pp.organization_id = :organizationId', {
+                organizationId,
+              })
               .getQuery();
             return 'project.id IN ' + subQuery;
           });
@@ -239,7 +246,7 @@ export class ProjectsService {
           queryBuilder.where(
             new Brackets((qb) => {
               qb.where('owner.id = :userId', { userId: userFound.id })
-                .orWhere('project.organization_id = :organizationId', {
+                .andWhere('project.organization_id = :organizationId', {
                   organizationId,
                 })
                 .orWhere((subQb) => {
@@ -248,6 +255,9 @@ export class ProjectsService {
                     .select('pp.project_id')
                     .from('project_peers', 'pp')
                     .where('pp.user_id = :userId', { userId: userFound.id })
+                    .andWhere('pp.organization_id = :organizationId', {
+                      organizationId,
+                    })
                     .getQuery();
                   return 'project.id IN ' + subQuery;
                 });
@@ -684,6 +694,7 @@ export class ProjectsService {
           userFound,
           createProjectDetails.peers,
           savedProject,
+          organizationId,
         );
         // return;
       }
@@ -758,6 +769,137 @@ export class ProjectsService {
     user: any,
     emails: string,
     project: Project,
+    organizationId: string,
+  ): Promise<any> {
+    try {
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
+      // Validate and clean email addresses
+      const peerEmailsArray = JSON.parse(emails);
+      // const peerEmailsArray =
+      //   await this.usersService.validatePeerInviteEmails(emails);
+
+      // Email validation regex
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      // Check for invalid emails
+      const invalidEmails = peerEmailsArray.filter(
+        (email: string) => !emailRegex.test(email),
+      );
+
+      if (invalidEmails.length > 0) {
+        throw new HttpException(
+          `Invalid email address(es) provided: ${invalidEmails.join(', ')}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      // console.log(peerEmailsArray, 'peerEmailsArray')
+      // return
+
+      // Process each peer email
+      // console.log(peerEmailsArray)
+      // return
+      for (const email of peerEmailsArray) {
+        // Skip if it's the current user's email
+        if (user?.email === email) continue;
+
+        // Find if the peer already exists as a user
+        const foundPeer = await this.usersService.getUserAccountByEmail(email);
+        const inviteCode = this.usersService.generateInviteCode();
+        const inviteExpiry = addDays(new Date(), 7);
+
+        // return
+        // If peer exists as a user
+        if (foundPeer && foundPeer.is_active) {
+          // Check if user peer relationship already exists
+          // const existingPeer = await this.userPeerRepository.findOne({
+          //   where: { user: { id: user?.id }, peer: { id: foundPeer?.id } },
+          // });
+
+          // Check if project peer relationship already exists
+          const existingProjectPeer = await this.projectPeerRepository.findOne({
+            where: {
+              user: { id: foundPeer?.id },
+              addedBy: { id: user?.id },
+              project: { id: project?.id }, // Important: Link to the specific project
+            },
+          });
+
+          console.log(existingProjectPeer, 'existingProjectPeer');
+          // If no existing project peer relationship, create project peer invite
+          if (!existingProjectPeer) {
+            // Create project peer invite
+            await this.projectPeerInviteRepository.save({
+              inviter_user_id: user,
+              email,
+              project: project, // Important: Link to the specific project
+              invite_code: inviteCode,
+              status: 'pending',
+              due_date: inviteExpiry,
+              organization,
+              organization_id: organization.id,
+            });
+
+            try {
+              const payload = {
+                recipient: foundPeer,
+                sender: user,
+                title: 'You received an invite',
+                message: `${user?.fullName} sent you an invite to be a Peer on his Project ${project?.title}`,
+                type: NOTIFICATION_TYPES.PROJECT_PEER_REQUEST,
+              };
+
+              // build payload
+              await this.notificationService.createNotification(
+                foundPeer,
+                payload,
+                organizationId,
+              );
+              console.log(
+                existingProjectPeer,
+                payload,
+                foundPeer,
+                project,
+                'feefef',
+              );
+
+              // return;
+
+              // Send project peer invite email
+              await this.sendProjectPeerInviteMail(
+                email,
+                foundPeer,
+                user,
+                inviteCode,
+                foundPeer,
+                project, // Pass the project to the email function
+              );
+            } catch (err) {
+              console.log(err, 'err in notification');
+            }
+          }
+        } else {
+          // Handle invites for non-existing users
+          continue;
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Peer invites sent successfully',
+      };
+    } catch (err) {
+      console.error('Error in sending peer invite:', err);
+      throw new UnauthorizedException('Could not send peer invites');
+    }
+  }
+
+  async sendProjectPeerInvite2(
+    user: any,
+    emails: string,
+    project: Project,
+    organizationId: string,
   ): Promise<any> {
     try {
       // Validate and clean email addresses
@@ -866,6 +1008,7 @@ export class ProjectsService {
               await this.notificationService.createNotification(
                 foundPeer,
                 payload,
+                organizationId,
               );
               console.log(
                 existingProjectPeer,
@@ -934,7 +1077,7 @@ export class ProjectsService {
   ): Promise<any> {
     let peerEmail;
     let eventLink;
-    let peerAccount = false;
+    // let peerAccount = false;
 
     if (foundPeer || existingPeer) {
       eventLink = ` ${process.env.FRONTEND_URL}/auth/login?${inviteCode}`;
@@ -965,6 +1108,10 @@ export class ProjectsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
+
       // const project = await this.projectRepository.findOneBy({ id: projectId });
       const project = await this.projectRepository.findOne({
         where: { id: projectId },
@@ -984,6 +1131,8 @@ export class ProjectsService {
         authorId: userFound.id,
         content,
         mentions: taggedUserIds,
+        organization_id: organizationId,
+        organization,
         is_me: true,
       });
       const newSavedMessage = await this.projectCommentRepository.save(message);
@@ -1029,6 +1178,7 @@ export class ProjectsService {
           await this.notificationService.createNotification(
             userFound,
             notification,
+            organizationId,
           );
 
         this.projectGateway.server
@@ -1056,7 +1206,11 @@ export class ProjectsService {
 
       await this.projectActivitiesService.createActivity(payload);
 
-      await this.sendNewCommentPeerNotification(userFound, project);
+      await this.sendNewCommentPeerNotification(
+        userFound,
+        project,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1068,7 +1222,11 @@ export class ProjectsService {
     }
   }
 
-  async sendNewCommentPeerNotification(userFound: User, project: Project) {
+  async sendNewCommentPeerNotification(
+    userFound: User,
+    project: Project,
+    organizationId: string,
+  ) {
     try {
       // console.log(project, project?.user, 'here')
       const projectOwnerId = project?.user?.id;
@@ -1104,6 +1262,7 @@ export class ProjectsService {
         await this.notificationService.createNotification(
           userFound,
           notification,
+          organizationId,
         );
         // console.log('222')
 
@@ -1135,6 +1294,7 @@ export class ProjectsService {
         await this.notificationService.createNotification(
           userFound,
           ownerNotification,
+          organizationId,
         );
       }
     } catch (err) {
@@ -1754,7 +1914,11 @@ export class ProjectsService {
         message: `You accepted the invitation to be a Peer on the project: ${project?.title}`,
         type: 'project_peer_request',
       };
-      await this.notificationService.createNotification(newUser, payload);
+      await this.notificationService.createNotification(
+        newUser,
+        payload,
+        organizationId,
+      );
 
       const payload2 = {
         recipient: invitedBy,
@@ -1763,7 +1927,11 @@ export class ProjectsService {
         message: `${newUser?.fullName} has accepted your invitation to be a Project Peer on ${project?.title}`,
         type: 'project_peer_request',
       };
-      await this.notificationService.createNotification(invitedBy, payload2);
+      await this.notificationService.createNotification(
+        invitedBy,
+        payload2,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1780,6 +1948,7 @@ export class ProjectsService {
     inviteCode: string,
     newUser: User,
     project: Project,
+    organizationId: string,
   ) {
     try {
       const invite = await this.projectPeerInviteRepository.findOne({
@@ -1863,7 +2032,11 @@ export class ProjectsService {
         type: 'project_peer_request',
       };
       // build payload
-      await this.notificationService.createNotification(newUser, payload);
+      await this.notificationService.createNotification(
+        newUser,
+        payload,
+        organizationId,
+      );
 
       const payload2 = {
         recipient: invitedBy,
@@ -1873,7 +2046,11 @@ export class ProjectsService {
         type: 'project_peer_request',
       };
       // build payload
-      await this.notificationService.createNotification(invitedBy, payload2);
+      await this.notificationService.createNotification(
+        invitedBy,
+        payload2,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1912,8 +2089,8 @@ export class ProjectsService {
         return null;
       }
 
-      await this.notifyReceiver(invitedBy, newUser, project);
-      await this.notifyInviter(invitedBy, newUser, project);
+      await this.notifyReceiver(invitedBy, newUser, project, organizationId);
+      await this.notifyInviter(invitedBy, newUser, project, organizationId);
 
       return { success: true };
     } catch (err) {
@@ -1922,7 +2099,12 @@ export class ProjectsService {
     }
   }
 
-  async rejectUserPeer2(inviteCode: string, newUser: User, project) {
+  async rejectUserPeer2(
+    inviteCode: string,
+    newUser: User,
+    project,
+    organizationId,
+  ) {
     try {
       const invite = await this.projectPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1958,9 +2140,9 @@ export class ProjectsService {
         `Users ${invitedBy.id} and ${newUser.id} are already connected. Skipping peer creation.`,
       );
 
-      await this.notifyReceiver(invitedBy, newUser, project);
+      await this.notifyReceiver(invitedBy, newUser, project, organizationId);
 
-      await this.notifyInviter(invitedBy, newUser, project);
+      await this.notifyInviter(invitedBy, newUser, project, organizationId);
 
       return { success: true };
     } catch (err) {
@@ -1969,7 +2151,7 @@ export class ProjectsService {
     }
   }
 
-  async notifyInviter(invitedBy, newUser, project) {
+  async notifyInviter(invitedBy, newUser, project, organizationId) {
     const payloadForInviter = {
       recipient: invitedBy,
       sender: newUser,
@@ -1981,10 +2163,11 @@ export class ProjectsService {
     await this.notificationService.createNotification(
       invitedBy,
       payloadForInviter,
+      organizationId,
     );
   }
 
-  async notifyReceiver(invitedBy, newUser, project) {
+  async notifyReceiver(invitedBy, newUser, project, organizationId) {
     const payloadForRejecter = {
       recipient: newUser,
       sender: invitedBy,
@@ -1996,6 +2179,7 @@ export class ProjectsService {
     await this.notificationService.createNotification(
       newUser,
       payloadForRejecter,
+      organizationId,
     );
   }
 
@@ -2307,6 +2491,7 @@ export class ProjectsService {
             await this.notificationService.createNotification(
               user,
               notification,
+              organizationId,
             );
           } else {
             // User doesn't exist - invite them to both platform and project

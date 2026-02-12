@@ -17,6 +17,7 @@ import { plainToInstance } from 'class-transformer';
 import { MessagesGateway } from '../messages.gateway';
 import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Injectable()
 export class MessagesService {
@@ -33,6 +34,8 @@ export class MessagesService {
     private readonly participantRepository: Repository<ConversationParticipant>,
     @InjectRepository(UserOrganization)
     private readonly userOrganizationRepository: Repository<UserOrganization>,
+    @InjectRepository(Organization)
+    private readonly organizationRepository: Repository<Organization>,
   ) {}
 
   /**
@@ -268,9 +271,7 @@ export class MessagesService {
       });
 
       if (!memberOrg) {
-        throw new NotFoundException(
-          'Member not found in this organization',
-        );
+        throw new NotFoundException('Member not found in this organization');
       }
 
       const memberUser = memberOrg.user;
@@ -549,9 +550,7 @@ export class MessagesService {
       });
 
       // Exclude self
-      const otherMembers = orgMembers.filter(
-        (m) => m.user_id !== userFound.id,
-      );
+      const otherMembers = orgMembers.filter((m) => m.user_id !== userFound.id);
 
       if (!otherMembers.length) {
         return {
@@ -628,6 +627,10 @@ export class MessagesService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      const organization = await this.organizationRepository.findOne({
+        where: { id: organizationId },
+      });
+
       // Verify user is in the organization
       const userOrg = await this.userOrganizationRepository.findOne({
         where: {
@@ -682,6 +685,7 @@ export class MessagesService {
         content,
         messageType: 'text',
         organization_id: organizationId,
+        organization,
       });
 
       const savedMessage = await this.messageRepository.save(message);
@@ -742,6 +746,7 @@ export class MessagesService {
         await this.notificationService.createNotification(
           userFound,
           notificationPayload,
+          organizationId
         );
       }
 

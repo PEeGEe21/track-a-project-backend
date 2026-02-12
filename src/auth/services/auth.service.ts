@@ -508,9 +508,9 @@ export class AuthService {
       // await this.verifyOtp(userdetails.otp, userdetails.phoneNumber);
       const user: any = await this.createUser(userdetails);
 
-      if (userdetails?.inviteCode) {
-        await this.usersService.createUserPeer(userdetails?.inviteCode, user);
-      }
+      // if (userdetails?.inviteCode) {
+      //   await this.usersService.createUserPeer(userdetails?.inviteCode, user);
+      // }
 
       const userprofilepayload = {
         user: user,
@@ -1003,6 +1003,49 @@ export class AuthService {
 
   // new sign up
 
+  // auth.service.ts
+  async switchOrganization(user: any, organizationId: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    // Verify user is actually a member of the target organization
+    const membership = await this.userOrganizationRepository.findOne({
+      where: {
+        user_id: userFound.id,
+        organization_id: organizationId,
+        is_active: true,
+      },
+      relations: ['organization'],
+    });
+
+    if (!membership) {
+      throw new HttpException(
+        'You are not a member of this organization',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // Issue new JWT scoped to the new organization
+    const token = await this.generateToken(
+      userFound,
+      membership.organization,
+      membership.role,
+    );
+
+    return {
+      success: true,
+      token,
+      organization: {
+        id: membership.organization.id,
+        name: membership.organization.name,
+        slug: membership.organization.slug,
+        role: membership.role,
+      },
+    };
+  }
+
   /**
    * SCENARIO A: Sign up with new organization (becomes ORG_ADMIN)
    */
@@ -1362,7 +1405,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       portal: user.role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
-      // currentOrganizationId: organization.id,
+      currentOrganizationId: organization.id,
       organizationRole: organizationRole, // Role within current org
       userOrganizations: userOrganizations.map((uo) => ({
         organization_id: uo.organization_id,

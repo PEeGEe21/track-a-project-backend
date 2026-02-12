@@ -34,6 +34,7 @@ import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
 import { MessagesGateway } from './messages.gateway';
 import { ProjectsGateway } from 'src/projects/projects.gateway';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
@@ -64,7 +65,8 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       ConversationParticipant,
       MessageReaction,
       MessageReadReceipt,
-      UserOrganization
+      UserOrganization,
+      Organization
     ]),
   ],
   controllers: [MessagesController],

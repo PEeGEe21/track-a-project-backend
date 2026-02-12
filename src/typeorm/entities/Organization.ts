@@ -30,6 +30,7 @@ import { Tag } from './Tag';
 import { UserNotificationPreference } from './UserNotificationPreference';
 import { UserPeer } from './UserPeer';
 import { UserPeerInvite } from './UserPeerInvite';
+import { Notification } from './Notification';
 
 @Entity('organizations')
 export class Organization {
@@ -137,4 +138,7 @@ export class Organization {
 
   @OneToMany(() => UserPeerInvite, (userPeerInvite) => userPeerInvite.organization)
   user_peer_invites: UserPeerInvite[];
+
+  @OneToMany(() => Notification, (notification) => notification.organization)
+  organization: Notification[];
 }

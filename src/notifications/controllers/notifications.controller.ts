@@ -11,6 +11,7 @@ import {
   UseGuards,
   Req,
   Patch,
+  Headers,
 } from '@nestjs/common';
 import { NotificationsService } from '../services/notifications.service';
 import { CreateNotificationDto } from '../dto/create-notification.dto';
@@ -29,9 +30,11 @@ export class NotificationsController {
     @Query('type') type: string,
     @Query('status') status: string,
     @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
     return this.notificationsService.findAllUserNotifications(
       req.user,
+      organizationId,
       page,
       limit,
       search,
@@ -41,18 +44,23 @@ export class NotificationsController {
   }
 
   @Get('/notify-bar')
-  findAll(@Req() req: any) {
-    return this.notificationsService.findAll(req.user);
+  findAll(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notificationsService.findAll(req.user, organizationId);
   }
 
   @Post()
   create(
     @Body() createNotificationDto: CreateNotificationDto,
     @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
     return this.notificationsService.createNotification(
       req.user,
       createNotificationDto,
+      organizationId,
     );
   }
 
@@ -62,12 +70,19 @@ export class NotificationsController {
   }
 
   @Patch('read-all')
-  markAllAsRead(@Req() req: any) {
-    return this.notificationsService.markAllAsRead(req.user);
+  markAllAsRead(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notificationsService.markAllAsRead(req.user, organizationId);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Req() req: any) {
+  remove(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
     return this.notificationsService.remove(req.user, +id);
   }
 

@@ -67,9 +67,18 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   @Post('/send-peer-invite')
-  sendPeerInvite(@Body() inviteData: any, @Req() req: any) {
-    return this.userService.sendPeerInvite(req.user, inviteData);
+  sendPeerInvite(
+    @Body() inviteData: any,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userService.sendPeerInvite(
+      req.user,
+      inviteData,
+      organizationId,
+    );
   }
 
   @Post('/check-invite-code-status/:inviteCode')

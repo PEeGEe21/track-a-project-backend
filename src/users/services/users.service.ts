@@ -406,7 +406,11 @@ export class UsersService {
   }
 
   // send peer invite
-  async sendPeerInvite(user: any, inviteData): Promise<any> {
+  async sendPeerInvite(
+    user: any,
+    inviteData,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const { emails, selectedRole: invite_as } = inviteData;
       const foundUser = await this.getUserAccountById(user.userId);
@@ -512,6 +516,7 @@ export class UsersService {
             await this.notificationService.createNotification(
               foundPeer,
               payload,
+              organizationId,
             );
           }
 
@@ -546,7 +551,11 @@ export class UsersService {
     }
   }
 
-  async sendPeerInvite2(user: any, inviteData): Promise<any> {
+  async sendPeerInvite2(
+    user: any,
+    inviteData,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const { emails, selectedRole: invite_as } = inviteData;
       const foundUser = await this.getUserAccountById(user.userId);
@@ -618,7 +627,11 @@ export class UsersService {
             type: 'peer_request',
           };
           // build payload
-          await this.notificationService.createNotification(foundPeer, payload);
+          await this.notificationService.createNotification(
+            foundPeer,
+            payload,
+            organizationId,
+          );
 
           await this.sendInviteMail(
             email,
@@ -891,7 +904,11 @@ export class UsersService {
     };
   }
 
-  async createUserPeer(inviteCode: string, newUser: User) {
+  async createUserPeer(
+    inviteCode: string,
+    newUser: User,
+    organizationId: string,
+  ) {
     try {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -990,6 +1007,7 @@ export class UsersService {
       await this.notificationService.createNotification(
         invitedBy,
         payloadToInviter,
+        organizationId,
       );
 
       // Send notification to the new user
@@ -1004,6 +1022,7 @@ export class UsersService {
       await this.notificationService.createNotification(
         newUser,
         payloadToNewUser,
+        organizationId,
       );
 
       console.log('Peer connection created successfully');
@@ -1022,7 +1041,11 @@ export class UsersService {
     }
   }
 
-  async createUserPeer2(inviteCode: string, newUser: User) {
+  async createUserPeer2(
+    inviteCode: string,
+    newUser: User,
+    organizationId: string,
+  ) {
     try {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1104,7 +1127,11 @@ export class UsersService {
       console.log(payload);
 
       // build payload
-      await this.notificationService.createNotification(newUser, payload);
+      await this.notificationService.createNotification(
+        newUser,
+        payload,
+        organizationId,
+      );
 
       const payload2 = {
         recipient: newUser,
@@ -1114,7 +1141,11 @@ export class UsersService {
         type: 'peer_request',
       };
 
-      await this.notificationService.createNotification(newUser, payload2);
+      await this.notificationService.createNotification(
+        newUser,
+        payload2,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1184,7 +1215,7 @@ export class UsersService {
   //   }
   // }
 
-  async rejectUserPeer(inviteCode: string, newUser: User) {
+  async rejectUserPeer(inviteCode: string, newUser: User, organizationId: string) {
     try {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1216,9 +1247,9 @@ export class UsersService {
           `Users ${invitedBy.id} and ${newUser.id} are already connected. Skipping peer creation.`,
         );
 
-        await this.notifyInviter(invitedBy, newUser);
+        await this.notifyInviter(invitedBy, newUser, organizationId);
 
-        await this.notifyReceiver(invitedBy, newUser);
+        await this.notifyReceiver(invitedBy, newUser, organizationId);
 
         return { success: true };
       }
@@ -1229,7 +1260,7 @@ export class UsersService {
     }
   }
 
-  async notifyInviter(invitedBy, newUser) {
+  async notifyInviter(invitedBy, newUser, organizationId) {
     const payloadForInviter = {
       recipient: invitedBy,
       sender: newUser,
@@ -1241,10 +1272,11 @@ export class UsersService {
     await this.notificationService.createNotification(
       invitedBy,
       payloadForInviter,
+      organizationId
     );
   }
 
-  async notifyReceiver(invitedBy, newUser) {
+  async notifyReceiver(invitedBy, newUser, organizationId) {
     const payloadForRejecter = {
       recipient: newUser,
       sender: invitedBy,
@@ -1256,6 +1288,7 @@ export class UsersService {
     await this.notificationService.createNotification(
       newUser,
       payloadForRejecter,
+      organizationId
     );
   }
 
@@ -1270,7 +1303,9 @@ export class UsersService {
 
       // delete foundUser.password;
 
-      const userOrganizations = await this.getUserOrganizationsById(foundUser.id);
+      const userOrganizations = await this.getUserOrganizationsById(
+        foundUser.id,
+      );
 
       return {
         success: true,

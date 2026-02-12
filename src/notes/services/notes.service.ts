@@ -20,7 +20,8 @@ export class NotesService {
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Note) private noteRepository: Repository<Note>,
     @InjectRepository(Task) private taskRepository: Repository<Task>,
-    @InjectRepository(Organization) private orgRepository: Repository<Organization>,
+    @InjectRepository(Organization)
+    private orgRepository: Repository<Organization>,
   ) {}
 
   async findUserNotes(
@@ -65,6 +66,9 @@ export class NotesService {
 
       // 4. Apply group conditions cleanly
       queryBuilder.where('owner.id = :userId', { userId: userFound.id });
+      queryBuilder.andWhere('note.organization_id = :organizationId', {
+        organizationId,
+      });
 
       if (task_id) {
         queryBuilder.andWhere('tasks.id = :taskId', { taskId: task_id });
@@ -120,7 +124,7 @@ export class NotesService {
         throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log(updateNoteDto)
+      console.log(updateNoteDto);
       const {
         note: noteText,
         color,
@@ -170,7 +174,7 @@ export class NotesService {
         relations: ['task', 'user'],
       });
 
-      console.log(updatedNote, "updatedNote")
+      console.log(updatedNote, 'updatedNote');
 
       return {
         success: 'success',
@@ -368,8 +372,9 @@ export class NotesService {
       if (!userFound)
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
 
-      const organization = await this.orgRepository.findOne({ where: { id: organizationId } });
-
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
 
       const { note, color, is_pinned = false, position, taskId } = payload;
 
@@ -379,6 +384,9 @@ export class NotesService {
         .leftJoin('note.user', 'owner')
         .select('MAX(note.`order`)', 'max')
         .where('owner.id = :userId', { userId: userFound.id })
+        .andWhere('note.organization_id = :organizationId', {
+          organizationId: organization.id,
+        })
         .getRawOne();
 
       const nextOrder = (maxOrderResult?.max ?? 0) + 1;

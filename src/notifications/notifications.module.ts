@@ -23,6 +23,8 @@ import { MailingModule } from 'src/utils/mailing/mailing.module';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { Note } from 'src/typeorm/entities/Note';
       ProjectComment,
       Notification,
       UserNotificationPreference,
+      Organization,
+      UserOrganization,
       Note
     ]),
   ],

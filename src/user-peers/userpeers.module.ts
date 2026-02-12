@@ -17,6 +17,8 @@ import { AuthModule } from 'src/auth/auth.module';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { Organization } from 'src/typeorm/entities/Organization';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
       Status,
       UserPeer,
       UserPeerInvite,
+      Organization,
+      UserOrganization
     ]),
   ],
   controllers: [UserpeersController],

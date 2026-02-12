@@ -61,6 +61,16 @@ export class AuthController {
     return this.authService.signUpWithInvitation(dto);
   }
 
+  // auth.controller.ts
+  @Post('/switch-organization')
+  @UseGuards(JwtAuthGuard)
+  async switchOrganization(
+    @Req() req: any,
+    @Body('organizationId') organizationId: string,
+  ) {
+    return this.authService.switchOrganization(req.user, organizationId);
+  }
+
   /**
    * POST /auth/login
    * Login endpoint

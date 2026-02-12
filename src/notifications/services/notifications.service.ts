@@ -14,6 +14,8 @@ import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificatio
 import { NOTIFICATION_DEFAULT_PREFERENCES } from 'src/utils/constants/notifications';
 import { NotificationsGateway } from '../notifications.gateway';
 import { UsersService } from 'src/users/services/users.service';
+import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Injectable()
 export class NotificationsService {
@@ -25,9 +27,11 @@ export class NotificationsService {
     private notificationsRepository: Repository<Notification>,
     @InjectRepository(UserNotificationPreference)
     private notificationPrefRepo: Repository<UserNotificationPreference>,
+    @InjectRepository(Organization)
+    private orgRepository: Repository<Organization>,
   ) {}
 
-  async findAll(user: any) {
+  async findAll(user: any, organizationId: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -35,7 +39,10 @@ export class NotificationsService {
       }
 
       const notifications = await this.notificationsRepository.find({
-        where: { recipient: { id: userFound.id } },
+        where: {
+          recipient: { id: userFound.id },
+          organization_id: organizationId,
+        },
         order: { created_at: 'DESC' },
         // take: 20,
       });
@@ -56,6 +63,7 @@ export class NotificationsService {
 
   async findAllUserNotifications(
     user: any,
+    organizationId: string,
     page = 1,
     limit = 10,
     search?: string,
@@ -68,11 +76,20 @@ export class NotificationsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const queryBuilder = this.notificationsRepository
-        .createQueryBuilder('notifications')
+      const queryBuilder = TenantQueryHelper.createOrganizationQuery(
+        this.notificationsRepository,
+        organizationId,
+        'notifications',
+      )
+
+        // const queryBuilder = this.notificationsRepository
+        //   .createQueryBuilder('notifications')
         .leftJoinAndSelect('notifications.recipient', 'recipient')
         .leftJoinAndSelect('notifications.sender', 'sender')
-        .where('recipient.id = :id', { id: userFound.id });
+        .where('recipient.id = :id', { id: userFound.id })
+        .andWhere('notifications.organization_id = :organizationId', {
+          organizationId,
+        });
 
       if (search) {
         const lowered = `%${search.toLowerCase()}%`;
@@ -161,9 +178,13 @@ export class NotificationsService {
   async createNotification(
     user: any,
     createNotificationDto: CreateNotificationDto,
+    organizationId: string,
   ) {
     try {
-      console.log(createNotificationDto, 'ccreate notifcation')
+      console.log(createNotificationDto, 'ccreate notifcation');
+      const organization = await this.orgRepository.findOne({
+        where: { id: organizationId },
+      });
       // return
       //   const userFound = await this.usersService.getUserAccountById(user.userId);
       //   if (!userFound) {
@@ -174,12 +195,18 @@ export class NotificationsService {
         ...createNotificationDto,
         is_read: false,
         created_at: new Date(),
+        organization_id: organizationId,
+        organization,
       });
 
       const savedNotification =
         await this.notificationsRepository.save(notification);
 
-        console.log(createNotificationDto.recipient.id, savedNotification, 'createNotificationDto.recipient.id')
+      console.log(
+        createNotificationDto.recipient.id,
+        savedNotification,
+        'createNotificationDto.recipient.id',
+      );
       // Send via WebSocket if user is connected
       this.notificationsGateway.sendNotificationToUser(
         String(createNotificationDto.recipient.id),
@@ -231,7 +258,7 @@ export class NotificationsService {
     }
   }
 
-  async markAllAsRead(user: any) {
+  async markAllAsRead(user: any, organizationId: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
@@ -239,7 +266,11 @@ export class NotificationsService {
       }
 
       await this.notificationsRepository.update(
-        { recipient: { id: userFound.id }, is_read: false },
+        {
+          recipient: { id: userFound.id },
+          organization_id: organizationId,
+          is_read: false,
+        },
         { is_read: true },
       );
 

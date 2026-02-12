@@ -2,11 +2,15 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { CreateUserpeerDto } from '../dto/create-userpeer.dto';
 import { UpdateUserpeerDto } from '../dto/update-userpeer.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { UsersService } from 'src/users/services/users.service';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserPeerStatusInviteType } from '../../utils/constants/userPeerEnums';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
+import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { Project } from 'src/typeorm/entities/Project';
 
 @Injectable()
 export class UserpeersService {
@@ -18,6 +22,8 @@ export class UserpeersService {
     private userPeerRepository: Repository<UserPeer>,
     @InjectRepository(UserPeerInvite)
     private userPeerInvitesRepository: Repository<UserPeerInvite>,
+    @InjectRepository(UserOrganization)
+    private userOrganizationRepository: Repository<UserOrganization>,
     // @InjectRepository(ProjectPeer)
     // private projectPeerRepository: Repository<ProjectPeer>,
     private userService: UsersService,
@@ -69,6 +75,318 @@ export class UserpeersService {
           total: total,
         },
         success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching user peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching user peers',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findUserOrganizationPeers(
+    user: any,
+    organizationId: string,
+    page = 1,
+    limit = 10,
+    search?: string,
+  ): Promise<any> {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const currentUserId = foundUser.id;
+
+      // Main query for peers + shared count
+      const queryBuilder = this.userOrganizationRepository
+        .createQueryBuilder('uo')
+        .leftJoinAndSelect('uo.user', 'user')
+        // .leftJoinAndSelect('uo.organization', 'organization') // remove if not used
+        .where('uo.organization_id = :organizationId', { organizationId })
+        .andWhere('uo.user_id != :currentUserId', { currentUserId })
+        .andWhere('uo.is_active = :active', { active: true })
+        .andWhere('user.is_active = :active', { active: true })
+
+        // Add shared projects count
+        .addSelect((qb) => {
+          return (
+            qb
+              .select('COUNT(DISTINCT pp.project_id)', 'shared_projects_count')
+              .from(ProjectPeer, 'pp') // peer's membership
+              .innerJoin(Project, 'p', 'p.id = pp.project_id')
+              .where('pp.user_id = user.id') // peer is in the project
+              .andWhere('p.organization_id = :organizationId', {
+                organizationId,
+              })
+              .andWhere('pp.organization_id = :organizationId', {
+                organizationId,
+              })
+              .andWhere(
+                // Current user is either the OWNER or also a peer in the same project
+                new Brackets((b) => {
+                  b.where('p.user_id = :currentUserId', { currentUserId }) // you are owner
+                    .orWhere(
+                      'EXISTS ' +
+                        qb
+                          .subQuery()
+                          .select('1')
+                          .from(ProjectPeer, 'pp2')
+                          .where('pp2.project_id = pp.project_id')
+                          .andWhere('pp2.user_id = :currentUserId', {
+                            currentUserId,
+                          })
+                          .getQuery(),
+                    );
+                }),
+              )
+              // Optional but recommended: only count active/confirmed connections
+              .andWhere('pp.status = :status', {
+                status: ProjectPeerStatus.CONNECTED,
+              })
+              .andWhere('pp.is_confirmed = :confirmed', { confirmed: true })
+          );
+        }, 'shared_projects_count');
+      // Optional search
+      if (search) {
+        const searchTerm = `%${search.toLowerCase().trim()}%`;
+        queryBuilder.andWhere(
+          `(
+          LOWER(user.first_name) LIKE :search OR
+          LOWER(user.last_name) LIKE :search OR
+          LOWER(user.email) LIKE :search OR
+          LOWER(CONCAT(user.first_name, ' ', user.last_name)) LIKE :search
+        )`,
+          { search: searchTerm },
+        );
+      }
+
+      // Ordering & pagination
+      queryBuilder
+        .orderBy('user.first_name', 'ASC')
+        .addOrderBy('user.last_name', 'ASC')
+        .skip((page - 1) * limit)
+        .take(limit);
+
+      // Get paginated data + raw values
+      const { entities, raw } = await queryBuilder.getRawAndEntities();
+
+      // Calculate TOTAL count (without pagination)
+      const totalQuery = this.userOrganizationRepository
+        .createQueryBuilder('uo')
+        .leftJoin('uo.user', 'user')
+        .where('uo.organization_id = :organizationId', { organizationId })
+        .andWhere('uo.user_id != :currentUserId', { currentUserId })
+        .andWhere('uo.is_active = :active', { active: true })
+        .andWhere('user.is_active = :active', { active: true });
+
+      if (search) {
+        const searchTerm = `%${search.toLowerCase().trim()}%`;
+        totalQuery.andWhere(
+          `(
+          LOWER(user.first_name) LIKE :search OR
+          LOWER(user.last_name) LIKE :search OR
+          LOWER(user.email) LIKE :search OR
+          LOWER(CONCAT(user.first_name, ' ', user.last_name)) LIKE :search
+        )`,
+          { search: searchTerm },
+        );
+      }
+
+      const total = await totalQuery.getCount();
+
+      const lastPage = Math.ceil(total / limit);
+
+      // Map results
+      const peers = entities.map((uo, index) => {
+        const row = raw[index];
+        return {
+          id: uo.user.id,
+          first_name: uo.user.first_name,
+          last_name: uo.user.last_name,
+          full_name: uo.user.fullName,
+          email: uo.user.email,
+          role: uo.role,
+          membership_active: uo.is_active,
+          account_active: uo.user.is_active,
+          joined_at: uo.created_at,
+          avatar: uo.user.avatar,
+          shared_projects_count: Number(row.shared_projects_count) || 0,
+        };
+      });
+
+      return {
+        data: peers,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + peers.length,
+          total, // ← now included!
+        },
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching organization peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching organization members',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findUserOrganizationPeers2(
+    user: any,
+    organizationId: string,
+    page = 1,
+    limit = 10,
+    search?: string,
+  ): Promise<any> {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const queryBuilder = this.userOrganizationRepository
+        .createQueryBuilder('uo') // alias: user_organization
+        .leftJoinAndSelect('uo.user', 'user')
+        .leftJoinAndSelect('uo.organization', 'organization')
+        .where('uo.organization_id = :organizationId', { organizationId })
+        .andWhere('uo.user_id != :currentUserId', {
+          currentUserId: foundUser.id,
+        })
+        .andWhere('uo.is_active = :uoActive', { uoActive: true })
+        .andWhere('user.is_active = :userActive', { userActive: true })
+        .select([
+          'uo.id',
+          'uo.role',
+          'uo.is_active',
+          'uo.created_at',
+          'user.id',
+          'user.first_name',
+          'user.is_active',
+          'user.last_name',
+          'user.email',
+          'user.avatar',
+        ]);
+
+      // Optional search
+      if (search) {
+        const searchTerm = `%${search.toLowerCase().trim()}%`;
+        queryBuilder.andWhere(
+          `(
+          LOWER(user.first_name) LIKE :search OR
+          LOWER(user.last_name) LIKE :search OR
+          LOWER(user.email) LIKE :search OR
+          LOWER(CONCAT(user.first_name, ' ', user.last_name)) LIKE :search
+        )`,
+          { search: searchTerm },
+        );
+      }
+
+      // Ordering: alphabetical by full name
+      queryBuilder
+        .orderBy('user.first_name', 'ASC')
+        .addOrderBy('user.last_name', 'ASC');
+
+      // Pagination
+      queryBuilder.skip((page - 1) * limit).take(limit);
+
+      // Execute
+      const [userOrganizations, total] = await queryBuilder.getManyAndCount();
+
+      const lastPage = Math.ceil(total / limit);
+
+      // Map the result to return cleaner data (optional but recommended)
+      const peers = userOrganizations.map((uo) => ({
+        id: uo.user.id,
+        first_name: uo.user.first_name,
+        last_name: uo.user.last_name,
+        full_name: uo.user.fullName,
+        // full_name: `${uo.user.first_name || ''} ${
+        //   uo.user.last_name || ''
+        // }`.trim(),
+        email: uo.user.email,
+        role: uo.role,
+        is_active: uo.is_active,
+        joined_at: uo.created_at,
+        avatar: uo.user.avatar, // if you want
+      }));
+
+      return {
+        data: peers,
+        meta: {
+          current_page: Number(page),
+          from: (page - 1) * limit + 1,
+          last_page: lastPage,
+          per_page: Number(limit),
+          to: (page - 1) * limit + peers.length,
+          total,
+        },
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching organization peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching organization members',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async findTeamPeersList(user: any, organizationId: string) {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const orgMembers = await this.userOrganizationRepository.find({
+        where: {
+          organization_id: organizationId,
+          is_active: true,
+        },
+        relations: ['user'],
+      });
+
+      console.log(orgMembers, 'orgMembers');
+
+      // Exclude self
+      const otherMembers = orgMembers.filter((m) => m.user_id !== foundUser.id);
+
+      if (!otherMembers.length) {
+        return {
+          data: [],
+          success: true,
+          message: 'No other members in organization',
+          total: otherMembers.length,
+        };
+      }
+
+      // Using QueryBuilder to select specific fields
+      const result = otherMembers.map((m) => ({
+        id: m.user.id,
+        peer_first_name: m.user.first_name,
+        peer_last_name: m.user.last_name,
+        peer_full_name: m.user.fullName,
+        full_name: m.user.fullName,
+        avatar: m.user.avatar,
+        peer_avatar: m.user.avatar,
+        email: m.user.email,
+        peer_email: m.user.email,
+        role: m.role,
+      }));
+
+      const total = otherMembers.length;
+
+      return {
+        data: result,
+        success: true,
+        total,
       };
     } catch (error) {
       console.error('Error fetching user peers:', error);
@@ -260,7 +578,7 @@ export class UserpeersService {
     }
   }
 
-  async acceptInvite(user: any, id: any) {
+  async acceptInvite(user: any, id: any, organizationId: string) {
     try {
       const foundUser = await this.userService.getUserAccountById(user.userId);
       if (!foundUser) {
@@ -307,6 +625,7 @@ export class UserpeersService {
       const createSuccess = await this.userService.createUserPeer(
         invite.invite_code,
         foundUser,
+        organizationId,
       );
 
       console.log(createSuccess, 'peer creation result');
@@ -341,7 +660,7 @@ export class UserpeersService {
     }
   }
 
-  async acceptInvite2(user: any, id) {
+  async acceptInvite2(user: any, id, organizationId: string) {
     try {
       const foundUser = await this.userService.getUserAccountById(user.userId);
       if (!foundUser) {
@@ -368,6 +687,7 @@ export class UserpeersService {
         const createSuccess = await this.userService.createUserPeer(
           invite?.invite_code,
           foundUser,
+          organizationId,
         );
 
         console.log(createSuccess, invite, response, 'invitee');
@@ -389,7 +709,7 @@ export class UserpeersService {
     } catch (err) {}
   }
 
-  async rejectInvite(user: any, id) {
+  async rejectInvite(user: any, id, organizationId: string) {
     try {
       console.log(user, id);
       const foundUser = await this.userService.getUserAccountById(user.userId);
@@ -417,6 +737,7 @@ export class UserpeersService {
         const createSuccess = await this.userService.rejectUserPeer(
           invite?.invite_code,
           foundUser,
+          organizationId,
         );
 
         console.log(createSuccess, invite, response, 'invitee');
