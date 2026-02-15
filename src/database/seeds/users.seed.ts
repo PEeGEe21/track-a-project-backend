@@ -17,11 +17,11 @@ export async function seedUsers(dataSource: DataSource, count = 20) {
     email: process.env.SUPER_EMAIL ?? 'admin@gmail.com',
   });
   if (!existingAdmin) {
-    let first_name = process.env.SUPER_FIRSTNAME ?? 'Admin';
-    let last_name = process.env.SUPER_LASTNAME ?? 'User';
-    let username = process.env.SUPER_USERNAME ?? 'admin';
-    let email = process.env.SUPER_EMAIL ?? 'admin@gmail.com';
-    let password = process.env.SUPER_PASSWORD ?? 'password';
+    const first_name = process.env.SUPER_FIRSTNAME ?? 'Admin';
+    const last_name = process.env.SUPER_LASTNAME ?? 'User';
+    const username = process.env.SUPER_USERNAME ?? 'admin';
+    const email = process.env.SUPER_EMAIL ?? 'admin@gmail.com';
+    const password = process.env.SUPER_PASSWORD ?? 'password';
 
     const adminProfile = profileRepo.create({
       firstname: first_name,

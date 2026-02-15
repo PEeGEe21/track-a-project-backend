@@ -7,6 +7,7 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as csurf from 'csurf';
+import { SeederService } from './seeder/seeder.service';
 
 process.env.TZ = 'UTC';
 async function bootstrap() {
@@ -34,12 +35,14 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // const seederService = app.get(SeederService);
+  const seederService = app.get(SeederService);
+  // await seederService.seedOrganizationsAndLinks();
+  // await seederService.seedAdmin();
   // await seederService.seedUserPeers();
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Group Orders')
-    .setDescription('The Group Orders API description')
+    .setTitle('Project Tracking Panel')
+    .setDescription('TTrack Your Prokect API description')
     .setVersion('1.0')
     .addBearerAuth()
     .setExternalDoc('Trackr Postman Collection', '/api/docs-json')
