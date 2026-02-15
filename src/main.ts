@@ -37,7 +37,7 @@ async function bootstrap() {
 
   const seederService = app.get(SeederService);
   await seederService.seedOrganizationsAndLinks();
-  await seederService.seedAdmin();
+  // await seederService.seedAdmin();
   // await seederService.seedUserPeers();
 
   const swaggerConfig = new DocumentBuilder()

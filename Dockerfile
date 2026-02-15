@@ -14,4 +14,4 @@ RUN npm prune --omit=dev
 
 EXPOSE 5000
 
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "npm run migration:run && node dist/main"]
