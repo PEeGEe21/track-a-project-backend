@@ -36,8 +36,8 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   const seederService = app.get(SeederService);
-  // await seederService.seedOrganizationsAndLinks();
-  // await seederService.seedAdmin();
+  await seederService.seedOrganizationsAndLinks();
+  await seederService.seedAdmin();
   // await seederService.seedUserPeers();
 
   const swaggerConfig = new DocumentBuilder()
