@@ -7,7 +7,6 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as csurf from 'csurf';
-import { SeederService } from './seeder/seeder.service';
 
 process.env.TZ = 'UTC';
 async function bootstrap() {
@@ -49,7 +48,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT || config.port;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   console.log(`listening on: http://localhost:${port}`);
 }

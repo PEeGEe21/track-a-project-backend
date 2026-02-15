@@ -59,8 +59,6 @@ const envVarsSchema = joi
     // ACCOUNT_VERIFICATION_EMAIL_TEMPLATE: joi.string().required(),
     // ACCOUNT_VERIFICATION_URL: joi.string().required(),
     // EXISTING_USER_CREATE_EVENT_EMAIL_TEMPLATE: joi.string().required(),
-    
-    
     // GOOGLE_CLIENT_ID: joi.string().required(),
     // GOOGLE_CLIENT_SECRET: joi.string().required(),
   })

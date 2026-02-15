@@ -11,8 +11,6 @@ import { Task } from './typeorm/entities/Task';
 import { Tag } from './typeorm/entities/Tag';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-import configuration from './config/configuration';
-import { config } from './config';
 import { ProjectsModule } from './projects/projects.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ProjectPeersModule } from './project-peers/project-peers.module';
@@ -23,7 +21,6 @@ import { MailingModule } from './utils/mailing/mailing.module';
 import { UserPeer } from './typeorm/entities/UserPeer';
 import { UserPeersModule } from './user-peers/userpeers.module';
 import { SeederService } from './seeder/seeder.service';
-import { UserpeersService } from './user-peers/services/userpeers.service';
 import { Category } from './typeorm/entities/Category';
 import { CategoriesModule } from './categories/categories.module';
 import { UserPeerInvite } from './typeorm/entities/UserPeerInvite';
@@ -41,7 +38,6 @@ import { Resource } from './typeorm/entities/Resource';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
 import { ProjectActivitiesModule } from './project-activities/project-activities.module';
-import { ProjectActivity } from './typeorm/entities/ProjectActivity';
 import { Conversation } from './typeorm/entities/Conversation';
 import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
 import { Message } from './typeorm/entities/Message';
@@ -57,6 +53,7 @@ import { Organization } from './typeorm/entities/Organization';
 import { GlobalMenu } from './typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from './typeorm/entities/OrganizationMenu';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { ProjectActivity } from './typeorm/entities/ProjectActivity';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -72,9 +69,9 @@ import { OrganizationsModule } from './organizations/organizations.module';
       password: process.env.DATABASE_PASSWORD,
       database: process.env.DATABASE_NAME,
       timezone: 'Z', // More explicit than 'Z'
-      ssl: false,
       // ssl: false,
-      // ssl: { rejectUnauthorized: false },
+      // ssl: false,
+      ssl: { rejectUnauthorized: false },
 
       entities: [
         User,
@@ -96,13 +93,20 @@ import { OrganizationsModule } from './organizations/organizations.module';
         Document,
         Resource,
         Whiteboard,
-        ProjectActivity,
+        Conversation,
+        ConversationParticipant,
+        Message,
+        MessageReaction,
+        MessageReadReceipt,
+        DocumentFile,
+        Folder,
         UserOrganization,
         OrganizationMenu,
         GlobalMenu,
         Organization,
+        ProjectActivity,
       ],
-      synchronize: true,
+      synchronize: process.env.NODE_ENV == 'development',
       // migrationsRun: true, // Auto-run migrations on startup
       migrations: ['dist/migrations/**/*{.ts,.js}'],
       autoLoadEntities: true,
@@ -145,6 +149,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
       OrganizationMenu,
       GlobalMenu,
       Organization,
+      ProjectActivity,
     ]),
     UsersModule,
     ProjectsModule,
