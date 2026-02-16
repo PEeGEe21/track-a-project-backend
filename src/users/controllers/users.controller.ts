@@ -6,6 +6,7 @@ import {
   Headers,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -64,6 +65,12 @@ export class UsersController {
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.userService.getUserDashboardData(req.user, organizationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('id/onboarding')
+  markUserOnboardingComplete(@Param('id') id: number, @Req() req: any) {
+    return this.userService.markUserOnboardingComplete(req.user, +id);
   }
 
   @UseGuards(JwtAuthGuard)

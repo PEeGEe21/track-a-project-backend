@@ -78,6 +78,10 @@ export class User {
   @Column({ default: false })
   logged_in: boolean;
 
+
+  @Column({ default: false })
+  onboarding_complete: boolean;
+
   @OneToOne(() => Profile, (profile) => profile.user)
   @JoinColumn({ name: 'profile_id' })
   profile: Profile;

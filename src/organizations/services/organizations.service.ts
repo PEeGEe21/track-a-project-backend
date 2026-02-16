@@ -349,6 +349,12 @@ export class OrganizationsService {
     }
   }
 
+  async markOrgOnboardingComplete(user, orgId: number): Promise<void> {
+    await this.organizationRepository.update(orgId, {
+      onboarding_complete: true,
+    });
+  }
+
   /**
    * Get all pending invitations for an organization
    */

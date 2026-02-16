@@ -1120,6 +1120,7 @@ export class AuthService {
           slug: organization.slug,
           subscription_tier: organization.subscription_tier,
           role: userOrganization.role,
+          onboarding_complete: organization.onboarding_complete,
         },
         token,
         message: 'Organization created successfully',
@@ -1227,6 +1228,7 @@ export class AuthService {
           slug: invitation.organization.slug,
           subscription_tier: invitation.organization.subscription_tier,
           role: userOrganization.role,
+          onboarding_complete: invitation.organization.onboarding_complete,
         },
         token,
         message: 'Successfully joined organization',
@@ -1291,6 +1293,7 @@ export class AuthService {
             slug: uo.organization.slug,
             subscription_tier: uo.organization.subscription_tier,
             role: uo.role,
+            onboarding_complete: uo.organization.onboarding_complete,
           })),
         };
       }
@@ -1326,6 +1329,7 @@ export class AuthService {
         slug: selectedUserOrg.organization.slug,
         subscription_tier: selectedUserOrg.organization.subscription_tier,
         role: selectedUserOrg.role,
+        onboarding_complete: selectedUserOrg.organization.onboarding_complete,
       },
       organizationRole: selectedUserOrg.role,
       allOrganizations: userOrganizations.map((uo) => ({
@@ -1334,6 +1338,7 @@ export class AuthService {
         slug: uo.organization.slug,
         subscription_tier: uo.organization.subscription_tier,
         role: uo.role,
+        onboarding_complete: uo.organization.onboarding_complete,
       })),
       token,
     };
@@ -1371,7 +1376,7 @@ export class AuthService {
    * Helper: Generate unique slug from organization name
    */
   private async generateUniqueSlug(name: string): Promise<string> {
-    let slug = name
+    const slug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');

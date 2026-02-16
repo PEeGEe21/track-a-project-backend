@@ -64,6 +64,10 @@ export class Organization {
   @Column({ default: true })
   is_active: boolean;
 
+
+  @Column({ default: false })
+  onboarding_complete: boolean;
+
   @CreateDateColumn()
   created_at: Date;
 

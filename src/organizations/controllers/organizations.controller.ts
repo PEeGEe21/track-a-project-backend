@@ -82,6 +82,12 @@ export class OrganizationsController {
     });
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('id/onboarding')
+  markUserOnboardingComplete(@Param('id') id: number, @Req() req: any) {
+    return this.organizationsService.markOrgOnboardingComplete(req.user, +id);
+  }
+
   @Get('organization/:organizationId/invites')
   async getOrganizationInvitations(
     @Param('organizationId') organizationId: string,

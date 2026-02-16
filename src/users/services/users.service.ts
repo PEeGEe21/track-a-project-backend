@@ -266,6 +266,10 @@ export class UsersService {
     } catch (err) {}
   }
 
+  async markUserOnboardingComplete(user, userId: number): Promise<void> {
+    await this.userRepository.update(userId, { onboarding_complete: true });
+  }
+
   async getUserAccountPassword(email: string): Promise<string | undefined> {
     const user = await this.userRepository.findOneBy({ email });
     return user?.password;
@@ -1215,7 +1219,11 @@ export class UsersService {
   //   }
   // }
 
-  async rejectUserPeer(inviteCode: string, newUser: User, organizationId: string) {
+  async rejectUserPeer(
+    inviteCode: string,
+    newUser: User,
+    organizationId: string,
+  ) {
     try {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
@@ -1272,7 +1280,7 @@ export class UsersService {
     await this.notificationService.createNotification(
       invitedBy,
       payloadForInviter,
-      organizationId
+      organizationId,
     );
   }
 
@@ -1288,7 +1296,7 @@ export class UsersService {
     await this.notificationService.createNotification(
       newUser,
       payloadForRejecter,
-      organizationId
+      organizationId,
     );
   }
 
