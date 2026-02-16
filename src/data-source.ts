@@ -42,7 +42,11 @@ export const AppDataSource = new DataSource({
   database: process.env.DATABASE_NAME,
   ssl: { rejectUnauthorized: false },
   synchronize: false, // or true for local dev
-  migrations: ['src/migrations/*.ts'],
+  migrations: [
+    process.env.NODE_ENV === 'production'
+      ? 'dist/migrations/*.js'
+      : 'src/migrations/*.ts',
+  ],
   entities: [
     User,
     Profile,
