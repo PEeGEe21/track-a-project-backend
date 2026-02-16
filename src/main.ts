@@ -26,7 +26,7 @@ async function bootstrap() {
   );
 
   const corsOptions = {
-    origin: config.env === 'development' ? '*' : [],
+    origin: config.env === 'development' ? '*' : '*',
     optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204
   };
   app.enableCors(corsOptions); // TODO: Setup cors config based on FE's server IPs
@@ -35,8 +35,8 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  const seederService = app.get(SeederService);
-  await seederService.seedOrganizationsAndLinks();
+  // const seederService = app.get(SeederService);
+  // await seederService.seedOrganizationsAndLinks();
   // await seederService.seedAdmin();
   // await seederService.seedUserPeers();
 

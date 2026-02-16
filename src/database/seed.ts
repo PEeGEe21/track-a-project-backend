@@ -14,6 +14,7 @@ import { AppDataSource } from '../data-source';
 // import { seedGlobalMenus } from './seeds/global-menu.seed';
 // import { seedOrganizationsAndLinks } from './seeds/organization.seed';
 import { seedUsers } from './seeds/users.seed';
+import { seedOrganizationsAndLinks } from './seeds/organization.seed';
 
 const runSeed = async () => {
   try {
@@ -25,7 +26,7 @@ const runSeed = async () => {
     // await seedTags(AppDataSource);
     // await seedProjects(AppDataSource);
     // await seedGlobalMenus(AppDataSource);
-    // await seedOrganizationsAndLinks(AppDataSource);
+    await seedOrganizationsAndLinks(AppDataSource);
     await seedUsers(AppDataSource, 10);
     // await seedNotes(AppDataSource);
     // await seedUserPeers(AppDataSource);

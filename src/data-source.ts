@@ -40,7 +40,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DATABASE_USERNAME,
   password: process.env.DATABASE_PASSWORD,
   database: process.env.DATABASE_NAME,
-  ssl: false,
+  ssl: { rejectUnauthorized: false },
   synchronize: false, // or true for local dev
   migrations: ['src/migrations/*.ts'],
   entities: [
