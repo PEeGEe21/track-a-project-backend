@@ -66,13 +66,13 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
     }),
     TypeOrmModule.forRootAsync({
       useFactory: () => {
-        console.log('=== DB CONFIG ===', {
-          host: process.env.DATABASE_HOST,
-          port: process.env.DATABASE_PORT,
-          user: process.env.DATABASE_USERNAME,
-          password: process.env.DATABASE_PASSWORD,
-          db: process.env.DATABASE_NAME,
-        });
+        // console.log('=== DB CONFIG ===', {
+        //   host: process.env.DATABASE_HOST,
+        //   port: process.env.DATABASE_PORT,
+        //   user: process.env.DATABASE_USERNAME,
+        //   password: process.env.DATABASE_PASSWORD,
+        //   db: process.env.DATABASE_NAME,
+        // });
         return {
           type: 'mysql',
           host: process.env.DATABASE_HOST,
