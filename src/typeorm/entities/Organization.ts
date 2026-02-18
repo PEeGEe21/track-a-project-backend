@@ -6,6 +6,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { OrganizationMenu } from './OrganizationMenu';
 import { UserOrganization } from './UserOrganization';
@@ -31,6 +32,7 @@ import { UserNotificationPreference } from './UserNotificationPreference';
 import { UserPeer } from './UserPeer';
 import { UserPeerInvite } from './UserPeerInvite';
 import { Notification } from './Notification';
+import { Subscription } from './Subscription';
 
 @Entity('organizations')
 export class Organization {
@@ -40,13 +42,17 @@ export class Organization {
   @Column({ length: 255 })
   name: string;
 
+  @Column({ type: 'longtext' })
+  description: string;
+
   @Column({ length: 100, unique: true })
   slug: string;
 
   @Column({
     default: '',
+    nullable: true,
   })
-  image?: string;
+  logo?: string;
 
   @Column({
     type: 'enum',
@@ -64,7 +70,6 @@ export class Organization {
   @Column({ default: true })
   is_active: boolean;
 
-
   @Column({ default: false })
   onboarding_complete: boolean;
 
@@ -73,6 +78,15 @@ export class Organization {
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @OneToMany(() => Subscription, (sub) => sub.organization, {
+    cascade: true,
+  })
+  subscriptions: Subscription[];
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  active_subscription_id: string | null;
 
   @OneToMany(() => UserOrganization, (uo) => uo.organization)
   user_organizations: UserOrganization[];
@@ -92,7 +106,10 @@ export class Organization {
   @OneToMany(() => Conversation, (conversation) => conversation.organization)
   conversations: Conversation[];
 
-  @OneToMany(() => ConversationParticipant, (conversation_participant) => conversation_participant.organization)
+  @OneToMany(
+    () => ConversationParticipant,
+    (conversation_participant) => conversation_participant.organization,
+  )
   conversation_participants: ConversationParticipant[];
 
   @OneToMany(() => Document, (document) => document.organization)
@@ -110,16 +127,25 @@ export class Organization {
   @OneToMany(() => Note, (note) => note.organization)
   notes: Note[];
 
-  @OneToMany(() => ProjectActivity, (project_activity) => project_activity.organization)
+  @OneToMany(
+    () => ProjectActivity,
+    (project_activity) => project_activity.organization,
+  )
   project_activities: ProjectActivity[];
 
-  @OneToMany(() => ProjectComment, (project_comment) => project_comment.organization)
+  @OneToMany(
+    () => ProjectComment,
+    (project_comment) => project_comment.organization,
+  )
   project_comments: ProjectComment[];
 
   @OneToMany(() => ProjectPeer, (project_peer) => project_peer.organization)
   project_peers: ProjectPeer[];
 
-  @OneToMany(() => ProjectPeerInvite, (project_peer_invite) => project_peer_invite.organization)
+  @OneToMany(
+    () => ProjectPeerInvite,
+    (project_peer_invite) => project_peer_invite.organization,
+  )
   project_peer_invites: ProjectPeerInvite[];
 
   @OneToMany(() => Resource, (resource) => resource.organization)
@@ -134,13 +160,19 @@ export class Organization {
   @OneToMany(() => Task, (task) => task.organization)
   tasks: Task[];
 
-  @OneToMany(() => UserNotificationPreference, (userNotificationPreference) => userNotificationPreference.organization)
+  @OneToMany(
+    () => UserNotificationPreference,
+    (userNotificationPreference) => userNotificationPreference.organization,
+  )
   user_notification_preferences: UserNotificationPreference[];
 
   @OneToMany(() => UserPeer, (userPeer) => userPeer.organization)
   user_peers: UserPeer[];
 
-  @OneToMany(() => UserPeerInvite, (userPeerInvite) => userPeerInvite.organization)
+  @OneToMany(
+    () => UserPeerInvite,
+    (userPeerInvite) => userPeerInvite.organization,
+  )
   user_peer_invites: UserPeerInvite[];
 
   @OneToMany(() => Notification, (notification) => notification.organization)

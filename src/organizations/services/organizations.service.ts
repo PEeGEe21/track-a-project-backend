@@ -6,8 +6,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateOrganizationDto } from '../dto/create-organization.dto';
-import { UpdateOrganizationDto } from '../dto/update-organization.dto';
 import { AuthUser } from 'src/types/users';
 import { FindOrganizationsQueryDto } from '../dto/FindOrganizationsQuery.dto';
 import { PaginatedResponse } from 'src/types/pagination';
@@ -24,6 +22,8 @@ import { CreateInvitationDto } from '../dto/create-invitation.dto';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { FindOrganizationsInvitesQuery } from '../dto/FindOrganizationsInvitesQuery.dto';
 import { InviteStatusEnums } from 'src/utils/constants/InviteStatusEnums';
+import { BillingService } from 'src/billing/services/billing.service';
+import { SubscriptionService } from 'src/billing/services/subscription.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -36,11 +36,9 @@ export class OrganizationsService {
     @InjectRepository(OrganizationInvitation)
     private invitationRepository: Repository<OrganizationInvitation>,
     private userService: UsersService,
+    private billingService: BillingService,
+    private subscriptionService: SubscriptionService,
   ) {}
-
-  create(createOrganizationDto: CreateOrganizationDto) {
-    return 'This action adds a new organization';
-  }
 
   async findAll(
     authUser: AuthUser,
@@ -215,10 +213,6 @@ export class OrganizationsService {
     }
   }
 
-  update(id: number, updateOrganizationDto: UpdateOrganizationDto) {
-    return `This action updates a #${id} organization`;
-  }
-
   remove(id: number) {
     return `This action removes a #${id} organization`;
   }
@@ -349,10 +343,55 @@ export class OrganizationsService {
     }
   }
 
-  async markOrgOnboardingComplete(user, orgId: number): Promise<void> {
-    await this.organizationRepository.update(orgId, {
-      onboarding_complete: true,
-    });
+  async update(id: string, updateOrgDetails: any, file?: Express.Multer.File) {
+    try {
+      const organization = await this.organizationRepository.findOne({
+        where: { id },
+      });
+
+      // console.log(updateOrgDetails, 'updateOrgDetails')
+      // return
+      if (!organization) {
+        throw new NotFoundException('Organization not found');
+      }
+
+      if (file) {
+      }
+
+      await this.organizationRepository.update({ id }, { ...updateOrgDetails });
+
+      const updatedOrg = await this.organizationRepository.findOne({
+        where: { id },
+      });
+
+      return {
+        success: true,
+        message: 'Updated Successfully',
+        user: updatedOrg,
+      };
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  async markOrgOnboardingComplete(orgId: string): Promise<void> {
+    try {
+      console.log(orgId);
+      const organization = await this.organizationRepository.findOne({
+        where: { id: orgId },
+      });
+
+      // console.log(updateOrgDetails, 'updateOrgDetails')
+      // return
+      if (!organization) {
+        throw new NotFoundException('Organization not found');
+      }
+      await this.organizationRepository.update(orgId, {
+        onboarding_complete: true,
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   /**
@@ -500,6 +539,31 @@ export class OrganizationsService {
     return {
       message: 'Invitation revoked successfully',
       success: true,
+    };
+  }
+
+  async getCurrentPlanAndLimits(orgId: string) {
+    const subscription =
+      await this.billingService.getCurrentSubscription(orgId);
+    const limits = await this.subscriptionService.getCurrentLimits(orgId);
+
+    return {
+      success: true,
+      data: {
+        plan: {
+          code: subscription.price?.plan?.code,
+          name: subscription.price?.plan?.name,
+          status: subscription.status,
+          currentPeriodStart: subscription.current_period_start,
+          currentPeriodEnd: subscription.current_period_end,
+          trialEnd: subscription.trial_end,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        },
+        limits: {
+          maxUsers: limits.maxUsers,
+          maxProjects: limits.maxProjects,
+        },
+      },
     };
   }
 }

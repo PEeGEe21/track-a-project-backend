@@ -10,8 +10,11 @@ export type CreateUserParams = {
 };
 
 export type UpdateUserParams = {
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  first_name?: string;
+  last_name?: string;
+  avatar?: string;
 };
 
 export type CreateUserProfileParams = {

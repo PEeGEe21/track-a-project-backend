@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
@@ -18,12 +23,14 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
     const orgId = request.headers['x-organization-id'];
 
-    console.log(user, "user")
+    console.log(user, 'user');
     if (!user) return false;
 
     if (user?.role === 'super_admin') return true;
 
-    const orgData = user.userOrganizations.find(uo => uo.organization_id === orgId);
+    const orgData = user.userOrganizations.find(
+      (uo) => uo.organization_id === orgId,
+    );
     if (!orgData) {
       throw new ForbiddenException('User does not belong to this organization');
     }

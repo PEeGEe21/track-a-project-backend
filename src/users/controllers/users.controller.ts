@@ -12,7 +12,9 @@ import {
   Query,
   Req,
   SerializeOptions,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
@@ -29,21 +31,11 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('users')
 export class UsersController {
   constructor(private userService: UsersService) {}
-
-  // ============================================
-  // Super Admin Routes
-  // ============================================
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('super_admin')
-  @Get('/')
-  findAllUsers(@Query() query: FindUsersQueryDto, @Req() req: any) {
-    return this.userService.findAllUsers(req.user, query);
-  }
 
   // @UseGuards(JwtAuthGuard)
   // @Get('/')
@@ -118,12 +110,16 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put(':id')
-  async updateUserById(
+  @UseInterceptors(FileInterceptor('avatar'))
+  @Patch(':id/account-update')
+  updateUserById(
     @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
     @Body() updateUserDto: UpdateUserDto,
   ) {
-    await this.userService.updateUser(id, updateUserDto);
+    console.log('File:', file);
+    console.log('Body:', updateUserDto);
+    return this.userService.updateUser(id, updateUserDto, file);
   }
 
   @UseGuards(JwtAuthGuard)

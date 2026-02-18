@@ -11,9 +11,10 @@ import {
   Req,
   Request,
   ValidationPipe,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { OrganizationsService } from '../services/organizations.service';
-import { CreateOrganizationDto } from '../dto/create-organization.dto';
 import { UpdateOrganizationDto } from '../dto/update-organization.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -21,6 +22,8 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { FindOrganizationsQueryDto } from '../dto/FindOrganizationsQuery.dto';
 import { InviteUserDto } from '../dto/invite-users.dto';
 import { FindOrganizationsInvitesQuery } from '../dto/FindOrganizationsInvitesQuery.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
@@ -53,17 +56,20 @@ export class OrganizationsController {
     return this.organizationsService.findOneTeam(req.user, id);
   }
 
-  @Post()
-  create(@Body() createOrganizationDto: CreateOrganizationDto) {
-    return this.organizationsService.create(createOrganizationDto);
-  }
+  // @Post()
+  // create(@Body() createOrganizationDto: CreateOrganizationDto) {
+  //   return this.organizationsService.create(createOrganizationDto);
+  // }
 
-  @Patch(':id')
+  @UseGuards(JwtAuthGuard, OrganizationAccessGuard, RolesGuard)
+  @UseInterceptors(FileInterceptor('logo'))
+  @Patch(':id/account-update')
   update(
     @Param('id') id: string,
-    @Body() updateOrganizationDto: UpdateOrganizationDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() updateOrgDto: UpdateOrganizationDto,
   ) {
-    return this.organizationsService.update(+id, updateOrganizationDto);
+    return this.organizationsService.update(id, updateOrgDto, file);
   }
 
   @Delete(':id')
@@ -84,8 +90,9 @@ export class OrganizationsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch('id/onboarding')
-  markUserOnboardingComplete(@Param('id') id: number, @Req() req: any) {
-    return this.organizationsService.markOrgOnboardingComplete(req.user, +id);
+  markOrgOnboardingComplete(@Param('id') id: string) {
+    console.log(id, 'idddd');
+    return this.organizationsService.markOrgOnboardingComplete(id);
   }
 
   @Get('organization/:organizationId/invites')
@@ -121,5 +128,10 @@ export class OrganizationsController {
       invitationId,
       req.user.userId,
     );
+  }
+
+  @Get(':id/current-plan')
+  async getCurrentPlanAndLimits(@Param('id') orgId: string) {
+    return this.organizationsService.getCurrentPlanAndLimits(orgId);
   }
 }

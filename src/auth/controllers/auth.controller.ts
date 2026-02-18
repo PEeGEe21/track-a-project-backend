@@ -26,6 +26,7 @@ import { SignUpResponseDto } from '../dtos/signup-response.dto';
 import { CreateOrganizationDto } from 'src/organizations/dto/create-organization.dto';
 import { JoinOrganizationDto } from 'src/organizations/dto/join-organization.dto';
 import { LoginRequestDto } from '../dtos/login-request.dto';
+import { SuperAdminGuard } from 'src/common/guards/super-admin.guard';
 
 const testt = [];
 
@@ -88,6 +89,12 @@ export class AuthController {
   @Get('validate-invitation')
   async validateInvitation(@Query('token') token: string) {
     return this.authService.validateInvitation(token);
+  }
+
+  @UseGuards(SuperAdminGuard)
+  @Post('users/:id/impersonate')
+  async impersonateUser(@Param('id') userId: number, @Req() req: any) {
+    return this.authService.impersonateUser(userId, req.user.userId);
   }
 
   @Post('/login-email')

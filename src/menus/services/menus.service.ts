@@ -144,10 +144,10 @@ export class MenusService {
 
     const subscriptionTier = currentOrg?.subscription_tier;
 
-    console.log(subscriptionTier, 'subscriptionTier');
+    // console.log(subscriptionTier, 'subscriptionTier');
     const userTierLevel = tierOrder[subscriptionTier];
 
-    console.log('here');
+    // console.log('here');
     // Get all tiers user has access to
     const allowedTiers = Object.entries(tierOrder)
       .filter(([_, level]) => level <= userTierLevel)
@@ -175,11 +175,11 @@ export class MenusService {
       where: { organization_id: organizationId },
     });
 
-    console.log(orgMenus, organizationId, 'vv');
+    // console.log(orgMenus, organizationId, 'vv');
 
     const orgMenuMap = new Map(orgMenus.map((om) => [om.global_menu_id, om]));
 
-    console.log(orgMenuMap, "orgMenuMap")
+    // console.log(orgMenuMap, "orgMenuMap")
     // Filter and customize menus
     const filteredMenus = globalMenus
       .map((menu) => {
@@ -212,7 +212,7 @@ export class MenusService {
       })
       .filter(Boolean);
 
-    console.log(filteredMenus, 'filteredMenus');
+    // console.log(filteredMenus, 'filteredMenus');
 
     return this.buildMenuTree(filteredMenus);
   }

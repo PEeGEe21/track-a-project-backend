@@ -238,6 +238,58 @@ export class UserpeersService {
     }
   }
 
+  async findOrganizationMembersListWithoutCurrentUser(
+    user: any,
+    organizationId: string,
+  ) {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const currentUserId = foundUser.id;
+      const query = this.userOrganizationRepository
+        .createQueryBuilder('uo')
+        .leftJoinAndSelect('uo.user', 'user')
+        .where('uo.organization_id = :organizationId', { organizationId })
+        .andWhere('uo.user_id != :currentUserId', { currentUserId })
+        .andWhere('uo.is_active = :active', { active: true })
+        .andWhere('user.is_active = :active', { active: true });
+
+      const members = await query.getMany();
+
+      console.log(members, "members")
+      const peers = members.map((uo) => {
+        return {
+          id: uo.user.id,
+          first_name: uo.user.first_name,
+          last_name: uo.user.last_name,
+          full_name: uo.user.fullName,
+          email: uo.user.email,
+          role: uo.role,
+          membership_active: uo.is_active,
+          account_active: uo.user.is_active,
+          joined_at: uo.created_at,
+          avatar: uo.user.avatar,
+        };
+      });
+
+      console.log(peers);
+
+      return {
+        peers,
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error fetching organization peers:', error);
+      throw new HttpException(
+        'An error occurred while fetching organization members',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async findUserOrganizationPeers2(
     user: any,
     organizationId: string,

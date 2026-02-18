@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -275,56 +276,7 @@ export class UsersService {
     return user?.password;
   }
 
-  async findAllUsers(
-    authUser: AuthUser,
-    query: FindUsersQueryDto,
-  ): Promise<PaginatedResponse<User>> {
-    const { page = 1, limit = 10, search, orderBy, status } = query;
 
-    const foundUser = await this.getUserAccountById(authUser.userId);
-    if (!foundUser) {
-      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-    }
-
-    const qb = this.userRepository
-      .createQueryBuilder('user')
-      .leftJoinAndSelect('user.user_organizations', 'userOrganizations')
-      .leftJoinAndSelect('userOrganizations.organization', 'organization');
-
-    if (search) {
-      qb.andWhere(
-        `(LOWER(user.first_name) LIKE :search
-        OR LOWER(user.last_name) LIKE :search
-        OR LOWER(user.email) LIKE :search
-        OR LOWER(user.username) LIKE :search)`,
-        { search: `%${search.toLowerCase()}%` },
-      );
-    }
-
-    if (status) {
-      qb.andWhere('user.is_active = :active', {
-        active: status === UserStatus.ACTIVE,
-      });
-    }
-
-    qb.orderBy('user.created_at', orderBy);
-    qb.skip((page - 1) * limit).take(limit);
-
-    const [result, total] = await qb.getManyAndCount();
-
-    return {
-      data: result,
-      meta: {
-        current_page: page,
-        from: (page - 1) * limit + 1,
-        last_page: Math.ceil(total / limit),
-        per_page: limit,
-        to: (page - 1) * limit + result.length,
-        total,
-      },
-      success: true,
-    };
-  }
 
   async findUsers() {
     const users = await this.userRepository.find({
@@ -347,8 +299,53 @@ export class UsersService {
     return this.userRepository.save(newUser);
   }
 
-  updateUser(id: number, updateUserDetails: UpdateUserParams) {
-    return this.userRepository.update({ id }, { ...updateUserDetails });
+  async updateUser(
+    id: number,
+    updateUserDetails: UpdateUserParams,
+    file?: Express.Multer.File, // ← Add file parameter
+  ) {
+    try {
+      const user = await this.userRepository.findOne({ where: { id } });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (file) {
+      }
+
+      await this.userRepository.update({ id }, { ...updateUserDetails });
+
+      const updatedUser = await this.userRepository.findOne({ where: { id } });
+
+      return {
+        success: true,
+        message: 'Updated Successfully',
+        user: updatedUser,
+      };
+    } catch (err) {
+      console.log(err);
+    }
+  }
+
+  async updateUser2(id: number, updateUserDetails: UpdateUserParams) {
+    try {
+      const user = await this.userRepository.findOne({ where: { id } });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      Object.assign(user, updateUserDetails);
+
+      console.log(updateUserDetails);
+      const updatedUser = await this.userRepository.save(user);
+      console.log(updatedUser, 'updatedUser');
+      return updatedUser;
+    } catch (err) {
+      console.log(err);
+      throw err;
+    }
   }
 
   deleteUser(id: number) {

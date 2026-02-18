@@ -7,18 +7,13 @@ import { Status } from 'src/typeorm/entities/Status';
 import { Tag } from 'src/typeorm/entities/Tag';
 import { Task } from 'src/typeorm/entities/Task';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
-import { MailingService } from 'src/utils/mailing/mailing.service';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
-import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { NotificationsModule } from 'src/notifications/notifications.module';
-import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
-import { Resource } from 'src/typeorm/entities/Resource';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
@@ -36,6 +31,8 @@ import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { Post } from 'src/typeorm/entities/Post';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
+import { BillingModule } from 'src/billing/billing.module';
+import { Subscription } from 'src/typeorm/entities/Subscription';
 
 @Module({
   imports: [
@@ -44,6 +41,7 @@ import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitat
     MailingModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => BillingModule),
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -68,6 +66,7 @@ import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitat
       GlobalMenu,
       Organization,
       OrganizationInvitation,
+      Subscription,
     ]),
   ],
   controllers: [OrganizationsController],

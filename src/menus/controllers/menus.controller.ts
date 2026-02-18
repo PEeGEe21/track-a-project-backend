@@ -29,56 +29,6 @@ import { ReorderMenusDto } from '../dto/reorder-menu.dto';
 export class MenusController {
   constructor(private readonly menusService: MenusService) {}
   // ============================================
-  // Super Admin Routes
-  // ============================================
-
-  @UseGuards(RolesGuard)
-  @Roles('super_admin')
-  @Post('global')
-  async createGlobalMenu(@Body() dto: CreateGlobalMenuDto) {
-    return this.menusService.createGlobalMenu(dto);
-  }
-
-  @Get('global')
-  @UseGuards(RolesGuard)
-  @Roles('super_admin')
-  async getAllGlobalMenus() {
-    return this.menusService.findAllGlobalMenus();
-  }
-
-  @Get('global/:id')
-  @UseGuards(RolesGuard)
-  @Roles('super_admin')
-  async getGlobalMenuById(@Param('id') id: string) {
-    return this.menusService.findGlobalMenuById(id);
-  }
-
-  @Put('global/:id')
-  @UseGuards(RolesGuard)
-  @Roles('super_admin')
-  async updateGlobalMenu(
-    @Param('id') id: string,
-    @Body() dto: UpdateGlobalMenuDto,
-  ) {
-    return this.menusService.updateGlobalMenu(id, dto);
-  }
-
-  @Delete('global/:id')
-  @UseGuards(RolesGuard)
-  @Roles('super_admin')
-  async deleteGlobalMenu(@Param('id') id: string) {
-    await this.menusService.deleteGlobalMenu(id);
-    return { message: 'Menu deleted successfully' };
-  }
-
-  @Roles('super_admin')
-  @Post('global/reorder')
-  async reorderMenus(@Body() dto: ReorderMenusDto) {
-    await this.menusService.reorderMenus(dto);
-    return { message: 'Menus reordered successfully' };
-  }
-
-  // ============================================
   // Organization Routes
   // ============================================
 

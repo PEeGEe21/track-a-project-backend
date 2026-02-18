@@ -6,7 +6,6 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   JoinColumn,
-  Index,
 } from 'typeorm';
 import { User } from './User';
 import { Organization } from './Organization';

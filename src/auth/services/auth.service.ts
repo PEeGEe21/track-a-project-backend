@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -59,6 +60,7 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { JoinOrganizationSignUpDto } from '../dtos/join-organization-signup.dto';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { LoginDto } from '../dtos/login.dto';
+import { AuditLog } from 'src/typeorm/entities/AuditLog';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -97,6 +99,8 @@ export class AuthService {
     private userOrganizationRepository: Repository<UserOrganization>,
     @InjectRepository(OrganizationInvitation)
     private orgInvitationRepository: Repository<OrganizationInvitation>,
+    @InjectRepository(AuditLog)
+    private auditLogRepository: Repository<AuditLog>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -1121,6 +1125,8 @@ export class AuthService {
           subscription_tier: organization.subscription_tier,
           role: userOrganization.role,
           onboarding_complete: organization.onboarding_complete,
+          description: organization.description,
+          logo: organization.logo,
         },
         token,
         message: 'Organization created successfully',
@@ -1229,6 +1235,8 @@ export class AuthService {
           subscription_tier: invitation.organization.subscription_tier,
           role: userOrganization.role,
           onboarding_complete: invitation.organization.onboarding_complete,
+          description: invitation.organization.description,
+          logo: invitation.organization.logo,
         },
         token,
         message: 'Successfully joined organization',
@@ -1294,6 +1302,8 @@ export class AuthService {
             subscription_tier: uo.organization.subscription_tier,
             role: uo.role,
             onboarding_complete: uo.organization.onboarding_complete,
+            description: uo.organization.description,
+            logo: uo.organization.logo,
           })),
         };
       }
@@ -1330,6 +1340,8 @@ export class AuthService {
         subscription_tier: selectedUserOrg.organization.subscription_tier,
         role: selectedUserOrg.role,
         onboarding_complete: selectedUserOrg.organization.onboarding_complete,
+        description: selectedUserOrg.organization.description,
+        logo: selectedUserOrg.organization.logo,
       },
       organizationRole: selectedUserOrg.role,
       allOrganizations: userOrganizations.map((uo) => ({
@@ -1339,6 +1351,8 @@ export class AuthService {
         subscription_tier: uo.organization.subscription_tier,
         role: uo.role,
         onboarding_complete: uo.organization.onboarding_complete,
+        description: uo.organization.description,
+        logo: uo.organization.logo,
       })),
       token,
     };
@@ -1442,5 +1456,39 @@ export class AuthService {
   private sanitizeUser(user: User) {
     const { password, authStrategy, ...sanitized } = user;
     return sanitized;
+  }
+
+  // ── User Impersonation ────────────────────────────────────────────────────
+  async impersonateUser(targetUserId: number, adminUserId: number) {
+    const user = await this.userRepository.findOne({
+      where: { id: targetUserId },
+      relations: ['user_organizations', 'user_organizations.organization'],
+    });
+
+    const admin = await this.userRepository.findOne({
+      where: { id: adminUserId },
+    });
+
+    if (!user) throw new ForbiddenException('User not found');
+
+    // Log the impersonation
+    await this.auditLogRepository.save({
+      action: 'IMPERSONATE_USER',
+      admin_id: adminUserId,
+      admin: admin,
+      target_user_id: targetUserId,
+      target_user: user,
+      metadata: { user_email: user.email },
+    });
+
+    // Generate token for impersonated user
+    const firstOrg = user.user_organizations[0];
+    const token = await this.generateToken(
+      user,
+      firstOrg.organization,
+      firstOrg.role,
+    );
+
+    return { user, token };
   }
 }

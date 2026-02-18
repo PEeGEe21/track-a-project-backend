@@ -52,7 +52,24 @@ export class UserpeersController {
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.userpeersService.findUserOrganizationPeers(req.user, organizationId, page, limit, search);
+    return this.userpeersService.findUserOrganizationPeers(
+      req.user,
+      organizationId,
+      page,
+      limit,
+      search,
+    );
+  }
+
+  @Get('/organization-members-list')
+  findOrganizationMembersListWithoutCurrentUser(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userpeersService.findOrganizationMembersListWithoutCurrentUser(
+      req.user,
+      organizationId,
+    );
   }
 
   @Get('/my-peers-list')

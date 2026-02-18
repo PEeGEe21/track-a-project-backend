@@ -54,6 +54,14 @@ import { GlobalMenu } from './typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from './typeorm/entities/OrganizationMenu';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { ProjectActivity } from './typeorm/entities/ProjectActivity';
+import { BillingModule } from './billing/billing.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { Subscription } from './typeorm/entities/Subscription';
+import { Price } from './typeorm/entities/Price';
+import { Invoice } from './typeorm/entities/Invoice';
+import { Plan } from './typeorm/entities/Plan';
+import { AuditLog } from './typeorm/entities/AuditLog';
+import { AdminModule } from './admin/admin.module';
 @Module({
   imports: [
     // ConfigModule.forRoot({
@@ -64,6 +72,7 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       useFactory: () => {
         // console.log('=== DB CONFIG ===', {
@@ -114,6 +123,11 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
             GlobalMenu,
             Organization,
             ProjectActivity,
+            Subscription,
+            Price,
+            Invoice,
+            Plan,
+            AuditLog,
           ],
           synchronize: process.env.NODE_ENV === 'development',
           migrations: ['dist/migrations/**/*{.ts,.js}'],
@@ -209,6 +223,11 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
       GlobalMenu,
       Organization,
       ProjectActivity,
+      Subscription,
+      Price,
+      Invoice,
+      Plan,
+      AuditLog,
     ]),
     UsersModule,
     ProjectsModule,
@@ -229,6 +248,8 @@ import { ProjectActivity } from './typeorm/entities/ProjectActivity';
     FoldersModule,
     MenusModule,
     OrganizationsModule,
+    BillingModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeederService],

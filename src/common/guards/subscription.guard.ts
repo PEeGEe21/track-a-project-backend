@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 
@@ -14,10 +19,10 @@ export class SubscriptionGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredTier = this.reflector.getAllAndOverride<SubscriptionTier>('tier', [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredTier = this.reflector.getAllAndOverride<SubscriptionTier>(
+      'tier',
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!requiredTier) return true;
 
@@ -28,7 +33,9 @@ export class SubscriptionGuard implements CanActivate {
     // Super admins bypass subscription checks
     if (user?.role === 'super_admin') return true;
 
-    const orgData = user.userOrganizations.find(uo => uo.organization_id === orgId);
+    const orgData = user.userOrganizations.find(
+      (uo) => uo.organization_id === orgId,
+    );
     if (!orgData) {
       throw new ForbiddenException('User does not belong to this organization');
     }

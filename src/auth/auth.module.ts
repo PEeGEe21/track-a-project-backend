@@ -43,6 +43,7 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
+import { AuditLog } from 'src/typeorm/entities/AuditLog';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitat
       UserOrganization,
       Organization,
       OrganizationInvitation,
+      AuditLog
     ]),
   ],
   controllers: [AuthController],
