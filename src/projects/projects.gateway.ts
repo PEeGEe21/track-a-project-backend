@@ -10,6 +10,8 @@ import {
 import { type Server, Socket } from 'socket.io';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProjectsService } from './services/projects.service';
+import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rate-limiter.service';
+import { config } from 'src/config';
 
 @WebSocketGateway({
   cors: {
@@ -33,6 +35,7 @@ export class ProjectsGateway
   constructor(
     @Inject(forwardRef(() => ProjectsService))
     private projectService: ProjectsService,
+    private readonly websocketRateLimiter: WebsocketRateLimiterService,
   ) {}
 
   afterInit(server: Server) {
@@ -76,6 +79,10 @@ export class ProjectsGateway
 
   @SubscribeMessage('register')
   async handleRegister(client: Socket, userId: string) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'register', {
+      limit: config.rateLimit.authMax,
+      ttlMs: config.rateLimit.authWindowMs,
+    });
     if (!userId) {
       throw new WsException('User ID is required');
     }
@@ -106,7 +113,8 @@ export class ProjectsGateway
   }
 
   @SubscribeMessage('join_project')
-  handleJoinProject(client: Socket, projectId: string | number) {
+  async handleJoinProject(client: Socket, projectId: string | number) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'join_project');
     const userId = this.socketToUser.get(client.id);
     if (!userId) {
       this.logger.warn(
@@ -120,7 +128,8 @@ export class ProjectsGateway
   }
 
   @SubscribeMessage('leave_project')
-  handleLeaveProject(client: Socket, projectId: string | number) {
+  async handleLeaveProject(client: Socket, projectId: string | number) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'leave_project');
     const userId = this.socketToUser.get(client.id);
     if (!userId) {
       return { status: 'error', message: 'User not registered' };
@@ -159,6 +168,10 @@ export class ProjectsGateway
 
   @SubscribeMessage('new_comment')
   async handleNewComment(client: Socket, payload) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'new_comment', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     // Extract projectId from payload
     const projectId = payload.projectId;
     if (!projectId) {
@@ -195,6 +208,10 @@ export class ProjectsGateway
       emoji: string;
     },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'add_reaction', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     const { projectId, messageId, userId, emoji } = payload;
     if (!projectId || !messageId || !userId || !emoji) return;
 
@@ -215,6 +232,10 @@ export class ProjectsGateway
     client: Socket,
     payload: { projectId: string; userId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'typing', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     const { projectId, userId } = payload;
     if (!projectId || !userId) return;
 
@@ -228,10 +249,14 @@ export class ProjectsGateway
   }
 
   @SubscribeMessage('stop_typing')
-  handleStopTyping(
+  async handleStopTyping(
     client: Socket,
     payload: { projectId: string; userId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'stop_typing', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     const { projectId, userId } = payload;
     if (!projectId || !userId) return;
 
@@ -246,6 +271,10 @@ export class ProjectsGateway
     client: Socket,
     payload: { projectId: string; userId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'get_project_messages',
+    );
     const { projectId, userId } = payload;
     if (!projectId || !userId) {
       throw new WsException('projectId and userId required');

@@ -12,6 +12,8 @@ import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
 import { WhiteboardsService } from './services/whiteboards.service';
 import { v4 as uuidv4 } from 'uuid';
+import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rate-limiter.service';
+import { config } from 'src/config';
 
 interface WhiteboardState {
   elements: any[];
@@ -60,7 +62,10 @@ export class WhiteboardsGateway
   private readonly logger = new Logger(WhiteboardsGateway.name);
   private activeUsers = new Map<string, Set<string>>(); // projectId -> Set of userIds
 
-  constructor(private readonly whiteboardsService: WhiteboardsService) {}
+  constructor(
+    private readonly whiteboardsService: WhiteboardsService,
+    private readonly websocketRateLimiter: WebsocketRateLimiterService,
+  ) {}
 
   async handleConnection(client: Socket) {
     const userId = client.handshake.auth?.userId;
@@ -115,6 +120,7 @@ export class WhiteboardsGateway
       organizationId: string
     },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'whiteboard:join');
     const { projectId, userId, userName, whiteboardId, organizationId } = data;
 
     // Create room ID
@@ -157,8 +163,6 @@ export class WhiteboardsGateway
       };
     }
 
-    // console.log(initialState, 'initial state');
-
     // Send initial state to the joining client
     client.emit('whiteboard:initial-state', initialState);
 
@@ -177,6 +181,7 @@ export class WhiteboardsGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { projectId: string; userId: string; organizationId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'whiteboard:leave');
     const { projectId, userId, organizationId } = data;
 
     await client.leave(`project-${projectId}`);
@@ -200,6 +205,14 @@ export class WhiteboardsGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: WhiteboardUpdatePayload,
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'whiteboard:update',
+      {
+        limit: config.rateLimit.websocketBurstMax,
+        ttlMs: config.rateLimit.websocketBurstWindowMs,
+      },
+    );
     const { projectId, userId, state, whiteboardId, title, organizationId } = payload;
 
     const roomId = projectId ? `project-${projectId}` : `user-${userId}`;
@@ -214,26 +227,6 @@ export class WhiteboardsGateway
       whiteboardId,
       title,
     );
-    console.log(payload, 'payloadpayload2');
-    // Only persist if tied to a project
-    // if (projectId) {
-    //   await this.whiteboardsService.saveWhiteboardState(
-    //     Number(projectId),
-    //     state,
-    //     userId,
-    //     whiteboardId,
-    //   );
-    //   client.to(`project-${projectId}`).emit('whiteboard:update', state);
-    // } else {
-    //   await this.whiteboardsService.saveWhiteboardState(
-    //     null,
-    //     state,
-    //     userId,
-    //     whiteboardId,
-    //   );
-    //   // Broadcast to user’s own room (if standalone board)
-    //   client.to(`user-${userId}`).emit('whiteboard:update', state);
-    // }
   }
 
   @SubscribeMessage('whiteboard:thumbnail')
@@ -246,6 +239,10 @@ export class WhiteboardsGateway
       projectId?: number;
     },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'whiteboard:thumbnail',
+    );
     const { whiteboardId, thumbnail, projectId } = payload;
 
     try {
@@ -267,6 +264,10 @@ export class WhiteboardsGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: TitleUpdatePayload,
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'whiteboard:title-update',
+    );
     const { projectId, whiteboardId, userId, title } = payload;
 
     const roomId = projectId
@@ -287,10 +288,18 @@ export class WhiteboardsGateway
   }
 
   @SubscribeMessage('whiteboard:cursor-update')
-  handleCursorUpdate(
+  async handleCursorUpdate(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: CursorUpdatePayload,
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'whiteboard:cursor-update',
+      {
+        limit: config.rateLimit.websocketBurstMax,
+        ttlMs: config.rateLimit.websocketBurstWindowMs,
+      },
+    );
     const { projectId, userId, userName, pointer } = payload;
 
     // Broadcast cursor position to other users (excluding sender)

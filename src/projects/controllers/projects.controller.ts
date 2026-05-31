@@ -33,7 +33,6 @@ export class ProjectsController {
     @Query('projectId') projectId: any,
     @Query('userId') userId?: any,
   ) {
-    console.log('entereedd');
     return this.projectService.findProjectActivitiesChart(
       req.user,
       organizationId,

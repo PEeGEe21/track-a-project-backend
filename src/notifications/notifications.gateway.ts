@@ -10,6 +10,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
+import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rate-limiter.service';
+import { config } from 'src/config';
 
 // IMPORTANT: No namespace is specified in the decorator
 @WebSocketGateway({
@@ -30,6 +32,10 @@ export class NotificationsGateway
 
   private users: Map<string, string> = new Map(); // userId -> socketId
   private readonly logger = new Logger(NotificationsGateway.name);
+
+  constructor(
+    private readonly websocketRateLimiter: WebsocketRateLimiterService,
+  ) {}
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway initialized');
@@ -62,7 +68,11 @@ export class NotificationsGateway
   }
 
   @SubscribeMessage('register')
-  handleRegister(client: Socket, userId: string) {
+  async handleRegister(client: Socket, userId: string) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'register', {
+      limit: config.rateLimit.authMax,
+      ttlMs: config.rateLimit.authWindowMs,
+    });
     if (!userId) {
       this.logger.error('Registration attempt with null/undefined userId');
       throw new WsException('User ID is required for registration');
@@ -88,7 +98,11 @@ export class NotificationsGateway
   }
 
   @SubscribeMessage('heartbeat')
-  handleHeartbeat(client: Socket, data: any) {
+  async handleHeartbeat(client: Socket, data: any) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'heartbeat', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketWindowMs,
+    });
     // Find which user this socket belongs to
     let foundUserId = null;
     for (const [userId, socketId] of this.users.entries()) {
@@ -120,25 +134,20 @@ export class NotificationsGateway
       return false;
     }
 
-    console.log('in sending notifications');
     this.logger.log(`Sending notification to user ${userId}`);
 
     // Method 1: Using the Map
     const socketId = this.users.get(userId);
-    console.log(socketId, 'socketId');
     if (socketId) {
       this.logger.log(`Found socket ${socketId} for user ${userId}`);
       this.server.to(socketId).emit('notification', notification);
       return true;
     }
 
-    console.log(socketId, 'socketId2');
-
     // Method 2: Using rooms (as backup and for multiple connections)
     this.logger.log(
       `No direct socket found for user ${userId}, trying room broadcast`,
     );
-    console.log(socketId, 'socketId3');
 
     this.server.to(`user_${userId}`).emit('notification', notification);
 

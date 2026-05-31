@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
 import { MulterFile } from '../types/multer.types';
 import { StorageService } from 'src/types/storage.interface';
+import { AppLogger } from 'src/common/logging/app-logger';
 
 @Injectable()
 export class SupabaseStorageService implements StorageService {
@@ -58,7 +59,7 @@ export class SupabaseStorageService implements StorageService {
         // console.log(`Bucket '${this.bucketName}' created successfully`);
       }
     } catch (error) {
-      console.error('Error initializing bucket:', error.message);
+      AppLogger.error('SupabaseStorageService', 'Error initializing bucket');
     }
   }
 
@@ -111,7 +112,6 @@ export class SupabaseStorageService implements StorageService {
         );
       }
 
-      console.log(`File deleted successfully: ${filePath}`);
     } catch (error) {
       throw new HttpException(
         `Failed to delete file: ${error.message}`,
@@ -158,14 +158,11 @@ export class SupabaseStorageService implements StorageService {
         .download(filePath);
 
       if (error) {
-        console.log(error, 'error');
         throw new HttpException(
           `Failed to download file: ${error.message}`,
           HttpStatus.NOT_FOUND,
         );
       }
-
-      console.log(data, 'data');
 
       const arrayBuffer = await data.arrayBuffer();
       return Buffer.from(arrayBuffer);
@@ -220,7 +217,6 @@ export class SupabaseStorageService implements StorageService {
         );
       }
 
-      console.log(`File moved from ${fromPath} to ${toPath}`);
     } catch (error) {
       throw new HttpException(
         `Failed to move file: ${error.message}`,

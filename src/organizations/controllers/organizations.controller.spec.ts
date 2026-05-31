@@ -1,20 +1,42 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { OrganizationsController } from './organizations.controller';
-import { OrganizationsService } from '../services/organizations.service';
 
 describe('OrganizationsController', () => {
   let controller: OrganizationsController;
+  const organizationsService = {
+    createInvitation: jest.fn(),
+    getCurrentPlanAndLimits: jest.fn(),
+    findAll: jest.fn(),
+  };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [OrganizationsController],
-      providers: [OrganizationsService],
-    }).compile();
-
-    controller = module.get<OrganizationsController>(OrganizationsController);
+  beforeEach(() => {
+    controller = new OrganizationsController(organizationsService as any);
+    jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  it('adds the authenticated inviter when creating an invitation', async () => {
+    organizationsService.createInvitation.mockResolvedValue({ success: true });
+    const dto = { organization_id: 'org_1', emails: ['user@example.com'] };
+    const req = { user: { userId: 21 } };
+
+    await expect(controller.createInvitation(dto as any, req as any)).resolves.toEqual({
+      success: true,
+    });
+    expect(organizationsService.createInvitation).toHaveBeenCalledWith({
+      ...dto,
+      invited_by: 21,
+    });
+  });
+
+  it('returns current plan and limits for an organization', async () => {
+    organizationsService.getCurrentPlanAndLimits.mockResolvedValue({
+      plan: 'free',
+    });
+
+    await expect(controller.getCurrentPlanAndLimits('org_99')).resolves.toEqual({
+      plan: 'free',
+    });
+    expect(organizationsService.getCurrentPlanAndLimits).toHaveBeenCalledWith(
+      'org_99',
+    );
   });
 });

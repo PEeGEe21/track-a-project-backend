@@ -43,6 +43,8 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { AuthUser } from 'src/types/users';
 import { PaginatedResponse } from 'src/types/pagination';
 import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
+import { AppLogger } from 'src/common/logging/app-logger';
+import { InviteLinks } from 'src/common/services/invite-links';
 
 @Injectable()
 export class UsersService {
@@ -77,11 +79,6 @@ export class UsersService {
 
   async getUserAccountByEmail(email: string) {
     const user = await this.userRepository.findOneBy({ email });
-    // console.log(user, email, 'userr');
-
-    // if (!user) {
-    //   throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
-    // }
     return user;
   }
 
@@ -98,18 +95,6 @@ export class UsersService {
 
     return organizations;
   }
-
-  // async getUserAccountByPhoneNumber(
-  //   phoneNumber: string,
-  // ): Promise<UserAccountDocument> {
-  //   return this.UserAccountModel.findOne({ phoneNumber }).lean();
-  // }
-
-  // async getUserAccountPassword(email: string): Promise<string> {
-  //   return (
-  //     await this.userRepository.findBy({ email }, { password: 1 }).exec()
-  //   ).password;
-  // }
 
   async updateUserPassword(
     id: number,
@@ -130,8 +115,6 @@ export class UsersService {
 
       const userPassword = await this.getUserAccountPassword(user.email);
 
-      console.log(user, userPassword);
-
       const isCorrectPassword = await bcrypt.compare(
         updateUserPasswordDto.current_password,
         userPassword,
@@ -143,8 +126,6 @@ export class UsersService {
           message: 'Your Password is Incorrect',
         };
       }
-
-      console.log(isCorrectPassword, updateUserPasswordDto.new_password);
 
       if (updateUserPasswordDto.new_password) {
         const saltOrRounds = 10;
@@ -248,8 +229,6 @@ export class UsersService {
         { ...createUserProfileDetails },
       );
 
-      console.log(updatedResult, 'rererr');
-
       if (updatedResult.affected < 1) {
         return {
           error: 'error',
@@ -323,9 +302,7 @@ export class UsersService {
         message: 'Updated Successfully',
         user: updatedUser,
       };
-    } catch (err) {
-      console.log(err);
-    }
+    } catch (err) {}
   }
 
   async updateUser2(id: number, updateUserDetails: UpdateUserParams) {
@@ -338,12 +315,9 @@ export class UsersService {
 
       Object.assign(user, updateUserDetails);
 
-      console.log(updateUserDetails);
       const updatedUser = await this.userRepository.save(user);
-      console.log(updatedUser, 'updatedUser');
       return updatedUser;
     } catch (err) {
-      console.log(err);
       throw err;
     }
   }
@@ -397,8 +371,6 @@ export class UsersService {
       },
       relations: ['addedBy', 'projects'],
     });
-    console.log(project_peers, 'project_peer');
-
     let data = {
       success: 'success',
       data: project_peers,
@@ -443,7 +415,6 @@ export class UsersService {
         try {
           // Skip if trying to invite yourself
           if (foundUser?.email === email) {
-            console.log(`Skipping self-invite for ${email}`);
             continue;
           }
 
@@ -474,7 +445,6 @@ export class UsersService {
 
           // Skip if peer relationship already exists
           if (existingPeer) {
-            console.log(`Peer relationship already exists with ${email}`);
             continue;
           }
 
@@ -488,7 +458,6 @@ export class UsersService {
           });
 
           if (existingInvite) {
-            console.log(`Pending invite already exists for ${email}`);
             continue;
           }
 
@@ -533,13 +502,11 @@ export class UsersService {
 
           results.push({ email, status: 'sent' });
         } catch (err) {
-          console.error(`Error sending invite to ${email}:`, err);
+          AppLogger.error('UsersService', 'Error sending invite', { email });
           results.push({ email, status: 'failed', error: err.message });
           // Continue with next email instead of failing everything
         }
       }
-
-      console.log('Peer invite results:', results);
 
       return {
         success: true,
@@ -547,7 +514,7 @@ export class UsersService {
         details: results,
       };
     } catch (err) {
-      console.error('Error in sending peer invite:', err);
+      AppLogger.error('UsersService', 'Error in sending peer invite');
       throw new UnauthorizedException('Could Not Send Peer Invite');
     }
   }
@@ -644,14 +611,12 @@ export class UsersService {
           );
         }
       } catch (err) {}
-      console.log(peerEmailsArray, 'peerEmailsArray');
-
       return {
         success: true,
         message: 'Peer Invite Sent Successfully',
       };
     } catch (err) {
-      console.error('Error in sending peer invite:', err);
+      AppLogger.error('UsersService', 'Error in sending peer invite');
       throw new UnauthorizedException('Could Not Send Peer Invite');
     }
   }
@@ -678,27 +643,13 @@ export class UsersService {
   ): Promise<any> {
     let peerEmail;
     let eventLink;
-    let peerAccount = false;
-    // const inviteCode = this.generateInviteCode(); // Assuming you have this function
-
-    // console.log(existingPeer, 'fkknd')
     // user already exists just not a peer
     if (foundPeer || existingPeer) {
-      //   peerEmail = `You just received an invite to become a peer(${invite_as}) by ${user.email}.
-      //   Accept invite and onboard to the project tracking platform to view the project.
-      //  `;
-      eventLink = ` ${process.env.FRONTEND_URL}/auth/login?${inviteCode}`;
+      eventLink = InviteLinks.peerLogin(inviteCode);
     } else {
-      // peerEmail = `You just received an invite to become a peer(${invite_as}) by ${user.email}.
-      // Accept invite and onboard to the project tracking platform to view the project.
-      // `;
-      eventLink = `${process.env.FRONTEND_URL}/auth/peer-invite?refCode=${inviteCode}&refEmail=${email}`;
-      // eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${user.id}`;
+      eventLink = InviteLinks.peerOnboarding(inviteCode, email);
     }
 
-    console.log(email, user, eventLink, peerAccount, peerEmail);
-
-    // return;
     await this.MailingService.sendPeerInvite(
       email,
       user,
@@ -721,8 +672,6 @@ export class UsersService {
       const invite = await this.userPeerInviteRepository.findOne({
         where: { invite_code: inviteCode },
       });
-
-      console.log(invite, 'invite lookup');
 
       if (!invite) {
         return {
@@ -798,7 +747,7 @@ export class UsersService {
         message: 'Invite is no longer valid.',
       };
     } catch (err) {
-      console.error('Error checking invite status:', err);
+      AppLogger.error('UsersService', 'Error checking invite status');
       return {
         success: false,
         status: 'error',
@@ -821,8 +770,6 @@ export class UsersService {
       where: { invite_code: inviteCode },
     });
 
-    console.log(invite, 'invite');
-    // return
     if (!invite) {
       return {
         success: false,
@@ -831,8 +778,6 @@ export class UsersService {
         message: 'Invite not found.',
       };
     }
-
-    console.log(invite, 'invite');
 
     if (markExpire) {
       // Adjust now by +1 hour to account for timezone difference
@@ -916,10 +861,7 @@ export class UsersService {
         relations: ['inviter_user_id'],
       });
 
-      console.log(invite, 'invite in create user peer');
-
       if (!invite) {
-        console.log('Invalid invite code');
         return {
           success: false,
           message: 'Invalid invite code',
@@ -927,7 +869,6 @@ export class UsersService {
       }
 
       if (!invite.inviter_user_id) {
-        console.log('Inviter not found');
         return {
           success: false,
           message: 'Inviter not found',
@@ -939,17 +880,13 @@ export class UsersService {
       );
 
       if (!invitedBy) {
-        console.log('Inviter account not found');
         return {
           success: false,
           message: 'Inviter account not found',
         };
       }
 
-      console.log(invite.status, 'invite status');
-
       if (invite.status !== 'accepted') {
-        console.log('Invite not in accepted status');
         return {
           success: false,
           message: 'Invite must be accepted first',
@@ -965,12 +902,7 @@ export class UsersService {
         )
         .getOne();
 
-      console.log(existingConnection, 'existing connection check');
-
       if (existingConnection) {
-        console.log(
-          `Users ${invitedBy.id} and ${newUser.id} are already connected`,
-        );
         return {
           success: false,
           message: 'Users are already connected as peers',
@@ -1025,15 +957,12 @@ export class UsersService {
         payloadToNewUser,
         organizationId,
       );
-
-      console.log('Peer connection created successfully');
-
       return {
         success: true,
         message: 'Peer connection created successfully',
       };
     } catch (err) {
-      console.error('Error creating user peer:', err);
+      AppLogger.error('UsersService', 'Error creating user peer');
       return {
         success: false,
         message: 'Failed to create peer connection',
@@ -1053,7 +982,6 @@ export class UsersService {
         relations: ['inviter_user_id'],
       });
 
-      console.log(invite, 'invite in create user peer');
       if (!invite) {
         // Invalid invite code — silently skip peer creation (optional: log if needed)
         return null;
@@ -1063,7 +991,6 @@ export class UsersService {
         invite.inviter_user_id.id,
       );
 
-      console.log(invite.status, 'invite.status');
       if (invite.status !== 'accepted') {
         // Invite not accepted — skip peer creation
         return null;
@@ -1084,16 +1011,9 @@ export class UsersService {
         )
         .getOne();
 
-      console.log(existingConnection, 'existingConnection');
-
       if (existingConnection) {
-        console.log(
-          `Users ${invitedBy.id} and ${newUser.id} are already connected. Skipping peer creation.`,
-        );
         return null;
       }
-
-      console.log(existingConnection, 'existingConnection');
       // if (existingConnection) {
       //   // Already connected — skip peer creation silently
       //   return null;
@@ -1124,8 +1044,6 @@ export class UsersService {
         message: `${newUser?.email} has accepted your invitation to be a Peer`,
         type: 'peer_request',
       };
-
-      console.log(payload);
 
       // build payload
       await this.notificationService.createNotification(
@@ -1248,10 +1166,6 @@ export class UsersService {
         .getOne();
 
       if (!existingConnection) {
-        console.log(
-          `Users ${invitedBy.id} and ${newUser.id} are already connected. Skipping peer creation.`,
-        );
-
         await this.notifyInviter(invitedBy, newUser, organizationId);
 
         await this.notifyReceiver(invitedBy, newUser, organizationId);
@@ -1260,7 +1174,7 @@ export class UsersService {
       }
       return { success: true };
     } catch (err) {
-      console.error('Error rejecting peer invite:', err);
+      AppLogger.error('UsersService', 'Error rejecting peer invite');
       return { success: false, message: 'Failed to reject peer invite.' };
     }
   }
@@ -1320,7 +1234,7 @@ export class UsersService {
         },
       };
     } catch (err) {
-      console.error('Error in getUserProfile:', err);
+      AppLogger.error('UsersService', 'Error in getUserProfile');
       throw new UnauthorizedException('Could not fetch user profile');
     }
   }
@@ -1582,7 +1496,7 @@ export class UsersService {
         },
       };
     } catch (err) {
-      console.error('Error in getUserDashboardData:', err);
+      AppLogger.error('UsersService', 'Error in getUserDashboardData');
       throw new UnauthorizedException('Could not fetch user dashboard data');
     }
   }

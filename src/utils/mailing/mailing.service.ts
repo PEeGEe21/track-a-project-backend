@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import * as sendGrid from '@sendgrid/mail';
 import * as fs from 'fs';
 import { User } from 'src/typeorm/entities/User';
@@ -10,12 +15,55 @@ import * as handlebars from 'handlebars';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
 import { MailTemplateParams } from '../types';
+import { Queue, Worker } from 'bullmq';
+import { RedisService } from 'src/redis/redis.service';
+import { config } from 'src/config';
+import { AppLogger } from 'src/common/logging/app-logger';
 // import * as mustache from 'mustache';
 
 @Injectable()
-export class MailingService {
-  constructor(private readonly configService: ConfigService) {
+export class MailingService implements OnModuleInit, OnModuleDestroy {
+  private queue: Queue | null = null;
+  private worker: Worker | null = null;
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
+  ) {
     // sendGrid.setApiKey(config.sendGrid.apiKey);
+  }
+
+  async onModuleInit() {
+    if (config.queue.driver !== 'redis') {
+      return;
+    }
+
+    const connection = this.redisService.getBullConnection();
+    if (!connection) {
+      AppLogger.warn(
+        'MailingService',
+        'QUEUE_DRIVER=redis is configured but Redis is unavailable. Falling back to inline email delivery.',
+      );
+      return;
+    }
+
+    this.queue = new Queue('mail', {
+      connection,
+      prefix: config.redis.prefix,
+    });
+    this.worker = new Worker(
+      'mail',
+      async (job) => this.sendEmailDirect(job.data),
+      {
+        connection,
+        prefix: config.redis.prefix,
+      },
+    );
+  }
+
+  async onModuleDestroy() {
+    await this.worker?.close();
+    await this.queue?.close();
   }
 
   mailTransport() {
@@ -33,6 +81,19 @@ export class MailingService {
   }
 
   async sendEmail(message): Promise<string> {
+    if (config.queue.driver === 'redis' && this.queue) {
+      await this.queue.add('send', message, {
+        attempts: 3,
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      });
+      return 'success';
+    }
+
+    return this.sendEmailDirect(message);
+  }
+
+  private async sendEmailDirect(message): Promise<string> {
     const transport = this.mailTransport();
     const options: Mail.Options = {
       from: message.from ?? {
@@ -46,13 +107,10 @@ export class MailingService {
     };
 
     try {
-      const sendMail = await transport.sendMail(options);
-      // const sendMail = await sendGrid.sendMail(message);
-      console.log(sendMail, 'Message Sent');
+      await transport.sendMail(options);
       return 'success';
     } catch (error) {
-      console.log('Message Not Sent');
-      console.log(error);
+      AppLogger.error('MailingService', 'Message not sent');
       return 'error';
     }
   }
@@ -185,14 +243,11 @@ export class MailingService {
   // end peer project
 
   async sendMessage(message): Promise<string> {
-    console.log(message);
     try {
-      const sendMail = await sendGrid.send(message);
-      console.log('Message Sent');
+      await sendGrid.send(message);
       return 'Successful';
     } catch (error) {
-      console.log('Message Not Sent');
-      console.log(error.response.body.errors);
+      AppLogger.error('MailingService', 'SendGrid message not sent');
       return 'Unsuccessful';
     }
   }
@@ -233,8 +288,6 @@ export class MailingService {
       //   loginUrl: `${process.env.PEER_LINK}/signin`,
       // },
     };
-
-    console.log(msg, 'message');
 
     return this.sendEmail(msg);
   }

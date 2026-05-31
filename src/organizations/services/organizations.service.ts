@@ -24,6 +24,8 @@ import { FindOrganizationsInvitesQuery } from '../dto/FindOrganizationsInvitesQu
 import { InviteStatusEnums } from 'src/utils/constants/InviteStatusEnums';
 import { BillingService } from 'src/billing/services/billing.service';
 import { SubscriptionService } from 'src/billing/services/subscription.service';
+import { AppLogger } from 'src/common/logging/app-logger';
+import { InviteLinks } from 'src/common/services/invite-links';
 
 @Injectable()
 export class OrganizationsService {
@@ -317,12 +319,10 @@ export class OrganizationsService {
 
       await this.invitationRepository.save(invitation);
 
-      const inviteLink = `${process.env.FRONTEND_URL}/signup/join-org?invite=${invitation.token}`;
+      const inviteLink = InviteLinks.orgJoin(invitation.token);
       invitation.invite_link = inviteLink;
 
       await this.invitationRepository.save(invitation);
-
-      // In production, you'd send an email here with the invitation link
 
       return {
         invitation: {
@@ -349,8 +349,6 @@ export class OrganizationsService {
         where: { id },
       });
 
-      // console.log(updateOrgDetails, 'updateOrgDetails')
-      // return
       if (!organization) {
         throw new NotFoundException('Organization not found');
       }
@@ -370,19 +368,19 @@ export class OrganizationsService {
         user: updatedOrg,
       };
     } catch (err) {
-      console.log(err);
+      AppLogger.error('OrganizationsService', 'Failed to update organization', {
+        organizationId: id,
+      });
+      throw err;
     }
   }
 
   async markOrgOnboardingComplete(orgId: string): Promise<void> {
     try {
-      console.log(orgId);
       const organization = await this.organizationRepository.findOne({
         where: { id: orgId },
       });
 
-      // console.log(updateOrgDetails, 'updateOrgDetails')
-      // return
       if (!organization) {
         throw new NotFoundException('Organization not found');
       }
@@ -390,7 +388,12 @@ export class OrganizationsService {
         onboarding_complete: true,
       });
     } catch (err) {
-      console.log(err);
+      AppLogger.error(
+        'OrganizationsService',
+        'Failed to mark organization onboarding complete',
+        { organizationId: orgId },
+      );
+      throw err;
     }
   }
 
@@ -496,7 +499,7 @@ export class OrganizationsService {
     newExpiryDate.setDate(newExpiryDate.getDate() + 7);
     invitation.expires_at = newExpiryDate;
 
-    const inviteLink = `${process.env.FRONTEND_URL}/signup?invite=${invitation.token}`;
+    const inviteLink = InviteLinks.orgSignup(invitation.token);
 
     invitation.invite_link = inviteLink;
     await this.invitationRepository.save(invitation);

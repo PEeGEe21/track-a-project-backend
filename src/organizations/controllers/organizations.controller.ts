@@ -24,6 +24,8 @@ import { InviteUserDto } from '../dto/invite-users.dto';
 import { FindOrganizationsInvitesQuery } from '../dto/FindOrganizationsInvitesQuery.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { Throttle } from '@nestjs/throttler';
+import { config } from 'src/config';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
@@ -78,6 +80,12 @@ export class OrganizationsController {
   }
 
   @Post('invitations')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   async createInvitation(
     @Body(ValidationPipe) dto: InviteUserDto,
     @Request() req,
@@ -91,7 +99,6 @@ export class OrganizationsController {
   @UseGuards(JwtAuthGuard)
   @Patch('id/onboarding')
   markOrgOnboardingComplete(@Param('id') id: string) {
-    console.log(id, 'idddd');
     return this.organizationsService.markOrgOnboardingComplete(id);
   }
 
@@ -109,6 +116,12 @@ export class OrganizationsController {
   }
 
   @Post('invitations/:invitationId/resend')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   async resendInvitation(
     @Param('invitationId') invitationId: string,
     @Request() req,

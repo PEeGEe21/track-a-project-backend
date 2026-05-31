@@ -61,6 +61,7 @@ import { JoinOrganizationSignUpDto } from '../dtos/join-organization-signup.dto'
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { LoginDto } from '../dtos/login.dto';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
+import { AppLogger } from 'src/common/logging/app-logger';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -313,7 +314,6 @@ export class AuthService {
   async loginWithEmail(loginDto: EmailLoginDto): Promise<LoginResponseDto> {
     const { email, password } = loginDto;
     const user = await this.usersService.getUserAccountByEmail(email);
-    console.log(loginDto, 'loginDto');
     if (user) return this.loginUser(user, password, false, null);
     return this.loginUser(user, password, false);
   }
@@ -351,8 +351,6 @@ export class AuthService {
       user.email,
     );
 
-    console.log(userPassword, password);
-
     const isCorrectPassword = await bcrypt.compare(password, userPassword);
 
     if (!isCorrectPassword) {
@@ -363,12 +361,6 @@ export class AuthService {
     // }
     let profileImage: any;
 
-    console.log(
-      user.id,
-      user.email,
-      user.role,
-      'user.id, user.email, user.role',
-    );
     await this.setUserLoggedIn(user.id, true);
     const tokens = await this.getTokens(user.id, user.email, user.role);
 
@@ -488,7 +480,6 @@ export class AuthService {
     for (let i = 0; i < length; i++) {
       result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
-    console.log(result);
     return result;
   }
 
@@ -536,11 +527,8 @@ export class AuthService {
       user.profile = userProfileDetails;
       const profile = userProfileDetails;
 
-      console.log(profile, 'profile details');
       await this.setUserLoggedIn(user.id, true);
       const tokens = await this.getTokens(user.id, user.email, user.role);
-
-      console.log(tokens, 'rotke');
       // if (config.env === 'production') {
       //   const data = {
       //     env: 'Production',
@@ -562,7 +550,7 @@ export class AuthService {
         message: 'Account was successfully created',
       };
     } catch (error) {
-      console.error('Error in signup process:', error);
+      AppLogger.error('AuthService', 'Error in signup process');
       throw error; // Re-throw to ensure it propagates
     }
   }
@@ -940,7 +928,7 @@ export class AuthService {
         refreshToken,
       };
     } catch (error) {
-      console.log(error);
+      AppLogger.error('AuthService', 'Error generating auth tokens');
       throw error;
     }
   }
@@ -997,7 +985,6 @@ export class AuthService {
   async getUserAccountById(id: number): Promise<User | undefined> {
     const user = await this.userRepository.findOneBy({ id });
 
-    console.log(user);
     if (!user) {
       throw new HttpException('User not found.', HttpStatus.BAD_REQUEST);
     }
@@ -1329,8 +1316,6 @@ export class AuthService {
       selectedUserOrg.role,
     );
 
-    console.log(token, 'tokentoken');
-
     return {
       user: this.sanitizeUser(user),
       organization: {
@@ -1443,7 +1428,6 @@ export class AuthService {
       expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
     });
 
-    console.log(accessToken, 'accessToken');
     return {
       accessToken,
       refreshToken,

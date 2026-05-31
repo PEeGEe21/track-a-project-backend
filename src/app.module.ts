@@ -62,26 +62,41 @@ import { Invoice } from './typeorm/entities/Invoice';
 import { Plan } from './typeorm/entities/Plan';
 import { AuditLog } from './typeorm/entities/AuditLog';
 import { AdminModule } from './admin/admin.module';
+import { HealthModule } from './health/health.module';
+import { config } from './config';
+import { RedisModule } from './redis/redis.module';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler.storage';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 @Module({
   imports: [
-    // ConfigModule.forRoot({
-    //   isGlobal: true,
-    //   load: [configuration],
-    // }),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
+    RedisModule,
+    RateLimitModule,
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRootAsync({
+      imports: [RateLimitModule],
+      inject: [RedisThrottlerStorage],
+      useFactory: (storage: RedisThrottlerStorage) => ({
+        storage,
+        throttlers: [
+          {
+            name: 'default',
+            ttl: config.rateLimit.defaultWindowMs,
+            limit: config.rateLimit.defaultMax,
+            blockDuration: config.rateLimit.defaultWindowMs,
+          },
+        ],
+        getTracker: (req) =>
+          String(req.user?.userId ?? req.ip ?? req.ips?.[0] ?? 'anonymous'),
+      }),
+    }),
     TypeOrmModule.forRootAsync({
       useFactory: () => {
-        // console.log('=== DB CONFIG ===', {
-        //   host: process.env.DATABASE_HOST,
-        //   port: process.env.DATABASE_PORT,
-        //   user: process.env.DATABASE_USERNAME,
-        //   password: process.env.DATABASE_PASSWORD,
-        //   db: process.env.DATABASE_NAME,
-        // });
         return {
           type: 'mysql',
           host: process.env.DATABASE_HOST,
@@ -129,7 +144,8 @@ import { AdminModule } from './admin/admin.module';
             Plan,
             AuditLog,
           ],
-          synchronize: process.env.NODE_ENV === 'development',
+          synchronize: false,
+          migrationsRun: config.db.runMigrationsOnStartup,
           migrations: ['dist/migrations/**/*{.ts,.js}'],
           autoLoadEntities: true,
           extra: {
@@ -138,59 +154,6 @@ import { AdminModule } from './admin/admin.module';
         };
       },
     }),
-    // TypeOrmModule.forRoot({
-    //   type: 'mysql',
-    //   host: process.env.DATABASE_HOST,
-    //   port: Number(process.env.DATABASE_PORT),
-    //   username: process.env.DATABASE_USERNAME,
-    //   password: process.env.DATABASE_PASSWORD,
-    //   database: process.env.DATABASE_NAME,
-    //   timezone: 'Z', // More explicit than 'Z'
-    //   // ssl: false,
-    //   ssl: { rejectUnauthorized: false },
-
-    //   entities: [
-    //     User,
-    //     Profile,
-    //     Post,
-    //     Project,
-    //     Task,
-    //     Tag,
-    //     ProjectPeer,
-    //     ProjectPeerInvite,
-    //     Status,
-    //     UserPeer,
-    //     Category,
-    //     UserPeerInvite,
-    //     Notification,
-    //     UserNotificationPreference,
-    //     ProjectComment,
-    //     Note,
-    //     Document,
-    //     Resource,
-    //     Whiteboard,
-    //     Conversation,
-    //     ConversationParticipant,
-    //     Message,
-    //     MessageReaction,
-    //     MessageReadReceipt,
-    //     DocumentFile,
-    //     Folder,
-    //     UserOrganization,
-    //     OrganizationMenu,
-    //     GlobalMenu,
-    //     Organization,
-    //     ProjectActivity,
-    //   ],
-    //   synchronize: process.env.NODE_ENV == 'development',
-    //   // migrationsRun: true, // Auto-run migrations on startup
-    //   migrations: ['dist/migrations/**/*{.ts,.js}'],
-    //   autoLoadEntities: true,
-    //   extra: {
-    //     timezone: '+00:00',
-    //     // connectionTimeZone: '+00:00',
-    //   },
-    // }),
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -250,8 +213,16 @@ import { AdminModule } from './admin/admin.module';
     OrganizationsModule,
     BillingModule,
     AdminModule,
+    HealthModule,
   ],
   controllers: [AppController],
-  providers: [AppService, SeederService],
+  providers: [
+    AppService,
+    SeederService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

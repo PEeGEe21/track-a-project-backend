@@ -23,7 +23,6 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
     const orgId = request.headers['x-organization-id'];
 
-    console.log(user, 'user');
     if (!user) return false;
 
     if (user?.role === 'super_admin') return true;

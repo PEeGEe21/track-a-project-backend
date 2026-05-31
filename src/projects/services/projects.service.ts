@@ -44,6 +44,8 @@ import { ProjectActivitiesService } from 'src/project-activities/services/projec
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
+import { AppLogger } from 'src/common/logging/app-logger';
+import { InviteLinks } from 'src/common/services/invite-links';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -111,7 +113,6 @@ export class ProjectsService {
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-      console.log(project, 'project');
       let data = {
         project,
         tasks: project.tasks,
@@ -320,7 +321,7 @@ export class ProjectsService {
         success: 'success',
       };
     } catch (error) {
-      console.error('Error fetching user projects:', error);
+      AppLogger.error('ProjectsService', 'Error fetching user projects');
       throw new HttpException(
         'Error fetching user projects',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -330,12 +331,10 @@ export class ProjectsService {
 
   async updateProject(id: number, updateProjectDetails: CreateProjectParams) {
     try {
-      console.log(id);
       const project = await this.projectRepository.findOneBy({ id });
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-      console.log(project, updateProjectDetails, 'Project');
       const data = {
         description: updateProjectDetails.description,
         title: updateProjectDetails.title,
@@ -345,8 +344,6 @@ export class ProjectsService {
         { id },
         { ...data },
       );
-
-      console.log(updatedResult, 'rererr');
 
       if (updatedResult.affected < 1) {
         return {
@@ -404,7 +401,7 @@ export class ProjectsService {
 
       return { success: 'success', message: 'Project deleted successfully' };
     } catch (err) {
-      console.error('Error deleting project:', err);
+      AppLogger.error('ProjectsService', 'Error deleting project');
       throw new HttpException(
         'Error deleting project',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -476,7 +473,7 @@ export class ProjectsService {
         data: project_peers,
       };
     } catch (err) {
-      console.error('Error fetching project peers:', err);
+      AppLogger.error('ProjectsService', 'Error fetching project peers');
       throw new HttpException(
         err?.message || 'Failed to fetch project peers',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -521,7 +518,6 @@ export class ProjectsService {
 
       const project_peers = await queryBuilder.getMany();
 
-      console.log(project_peers, 'project_peers');
       return {
         success: true,
         data: project_peers,
@@ -634,7 +630,7 @@ export class ProjectsService {
         data: tasks,
       };
     } catch (err) {
-      console.error('Error fetching project tasks:', err);
+      AppLogger.error('ProjectsService', 'Error fetching project tasks');
       throw new HttpException(
         err?.message || 'Failed to fetch project tasks',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -726,7 +722,7 @@ export class ProjectsService {
       if (error instanceof HttpException) {
         throw error;
       } else {
-        console.error('Error creating project:', error);
+        AppLogger.error('ProjectsService', 'Error creating project');
         throw new HttpException(
           'Internal Server Error',
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -826,7 +822,6 @@ export class ProjectsService {
             },
           });
 
-          console.log(existingProjectPeer, 'existingProjectPeer');
           // If no existing project peer relationship, create project peer invite
           if (!existingProjectPeer) {
             // Create project peer invite
@@ -856,14 +851,6 @@ export class ProjectsService {
                 payload,
                 organizationId,
               );
-              console.log(
-                existingProjectPeer,
-                payload,
-                foundPeer,
-                project,
-                'feefef',
-              );
-
               // return;
 
               // Send project peer invite email
@@ -875,9 +862,7 @@ export class ProjectsService {
                 foundPeer,
                 project, // Pass the project to the email function
               );
-            } catch (err) {
-              console.log(err, 'err in notification');
-            }
+            } catch (err) {}
           }
         } else {
           // Handle invites for non-existing users
@@ -890,7 +875,7 @@ export class ProjectsService {
         message: 'Peer invites sent successfully',
       };
     } catch (err) {
-      console.error('Error in sending peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error in sending peer invite');
       throw new UnauthorizedException('Could not send peer invites');
     }
   }
@@ -982,7 +967,6 @@ export class ProjectsService {
             },
           });
 
-          console.log(existingProjectPeer, 'existingProjectPeer');
           // If no existing project peer relationship, create project peer invite
           if (!existingProjectPeer) {
             // Create project peer invite
@@ -1010,16 +994,7 @@ export class ProjectsService {
                 payload,
                 organizationId,
               );
-              console.log(
-                existingProjectPeer,
-                payload,
-                foundPeer,
-                project,
-                'feefef',
-              );
-            } catch (err) {
-              console.log(err, 'err in notification');
-            }
+            } catch (err) {}
 
             // return;
 
@@ -1062,7 +1037,7 @@ export class ProjectsService {
         message: 'Peer invites sent successfully',
       };
     } catch (err) {
-      console.error('Error in sending peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error in sending peer invite');
       throw new UnauthorizedException('Could not send peer invites');
     }
   }
@@ -1077,15 +1052,11 @@ export class ProjectsService {
   ): Promise<any> {
     let peerEmail;
     let eventLink;
-    // let peerAccount = false;
 
     if (foundPeer || existingPeer) {
-      eventLink = ` ${process.env.FRONTEND_URL}/auth/login?${inviteCode}`;
-    } else {
-      // eventLink = `${process.env.FRONTEND_URL}/auth/peer-invite?refCode=${inviteCode}&refEmail=${email}`;
+      eventLink = InviteLinks.peerLogin(inviteCode);
     }
 
-    // return;
     await this.MailingService.sendProjectPeerInvite(
       email,
       user,
@@ -1217,7 +1188,6 @@ export class ProjectsService {
         comment: message,
       };
     } catch (err) {
-      console.log(err);
       throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
     }
   }
@@ -1297,9 +1267,7 @@ export class ProjectsService {
           organizationId,
         );
       }
-    } catch (err) {
-      console.log(err, 'errrr');
-    }
+    } catch (err) {}
   }
 
   async getProjectComments(user: any, projectId: number) {
@@ -1331,7 +1299,6 @@ export class ProjectsService {
         })),
       };
     } catch (err) {
-      console.log(err);
       throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
     }
   }
@@ -1387,7 +1354,6 @@ export class ProjectsService {
 
       return true;
     } catch (err) {
-      console.log(err);
       return false;
     }
   }
@@ -1521,7 +1487,7 @@ export class ProjectsService {
         success: true,
       };
     } catch (error) {
-      console.error('Error fetching project peers invites:', error);
+      AppLogger.error('ProjectsService', 'Error fetching project peers invites');
       throw new HttpException(
         'An Error Occurred While Fetching Project Peer Invites',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1647,7 +1613,7 @@ export class ProjectsService {
         message: response?.message,
       };
     } catch (err) {
-      console.error('Error accepting peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error accepting peer invite');
       throw new HttpException(
         err?.message || 'Error accepting peer invite',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1708,7 +1674,7 @@ export class ProjectsService {
         message: response?.message,
       };
     } catch (err) {
-      console.error('Error rejecting peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error rejecting peer invite');
       throw new HttpException(
         err?.message || 'Error rejecting peer invite',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1888,9 +1854,6 @@ export class ProjectsService {
         .getOne();
 
       if (existingConnection) {
-        console.log(
-          `Users ${invitedBy.id} and ${newUser.id} are already connected to the project. Skipping peer creation.`,
-        );
         return null;
       }
 
@@ -1937,7 +1900,7 @@ export class ProjectsService {
         success: true,
       };
     } catch (err) {
-      console.error('Error creating project peer:', err);
+      AppLogger.error('ProjectsService', 'Error creating project peer');
       return {
         success: false,
       };
@@ -1956,7 +1919,6 @@ export class ProjectsService {
         relations: ['inviter_user_id'],
       });
 
-      console.log(invite, 'invite in create user peer');
       if (!invite) {
         // Invalid invite code — silently skip peer creation (optional: log if needed)
         return null;
@@ -1966,7 +1928,6 @@ export class ProjectsService {
         invite.inviter_user_id.id,
       );
 
-      console.log(invite.status, 'invite.status');
       if (invite.status !== 'accepted') {
         // Invite not accepted — skip peer creation
         return null;
@@ -1998,13 +1959,7 @@ export class ProjectsService {
         )
         .getOne();
 
-      console.log(existingConnection, 'existingConnection');
-      // return
-
       if (existingConnection) {
-        console.log(
-          `Users ${invitedBy.id} and ${newUser.id} are already connected to the project. Skipping peer creation.`,
-        );
         return null;
       }
 
@@ -2094,7 +2049,7 @@ export class ProjectsService {
 
       return { success: true };
     } catch (err) {
-      console.error('Error rejecting peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error rejecting peer invite');
       return { success: false, message: 'Failed to reject peer invite.' };
     }
   }
@@ -2136,17 +2091,13 @@ export class ProjectsService {
         )
         .getOne();
 
-      console.log(
-        `Users ${invitedBy.id} and ${newUser.id} are already connected. Skipping peer creation.`,
-      );
-
       await this.notifyReceiver(invitedBy, newUser, project, organizationId);
 
       await this.notifyInviter(invitedBy, newUser, project, organizationId);
 
       return { success: true };
     } catch (err) {
-      console.error('Error rejecting peer invite:', err);
+      AppLogger.error('ProjectsService', 'Error rejecting peer invite');
       return { success: false, message: 'Failed to reject peer invite.' };
     }
   }
@@ -2185,7 +2136,6 @@ export class ProjectsService {
 
   async checkSessionTimezone(user: any) {
     const result = await this.entityManager.query('SELECT @@session.time_zone');
-    console.log('Current session timezone:', result[0]['@@session.time_zone']);
   }
 
   // todo: outdated, remove
@@ -2290,7 +2240,7 @@ export class ProjectsService {
         success: 'success',
       };
     } catch (error) {
-      console.error('Error fetching user projects:', error);
+      AppLogger.error('ProjectsService', 'Error fetching user projects');
       throw new HttpException(
         'Error fetching user projects',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2465,7 +2415,7 @@ export class ProjectsService {
           if (checkUserAccount) {
             // User exists and is in organization
             peerEmail = `You just received a project invitation from ${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view the project invitation.`;
-            eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
+            eventLink = InviteLinks.projectLogin();
             peerAccount = true;
 
             // Create project peer invite for existing user
@@ -2496,7 +2446,7 @@ export class ProjectsService {
           } else {
             // User doesn't exist - invite them to both platform and project
             peerEmail = `You just received a project invitation and an invite to join the ProjexTrackr platform from ${user.profile.firstname} ${user.profile.lastname}. Accept the invite to onboard and view the project.`;
-            eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+            eventLink = InviteLinks.projectInvite(inviteCode, project.id);
             peerAccount = false;
 
             // Create project peer invite for non-existing user
@@ -2525,10 +2475,9 @@ export class ProjectsService {
             status: 'sent',
           });
         } catch (emailError) {
-          console.error(
-            `Error processing invite for ${userEmail}:`,
-            emailError,
-          );
+          AppLogger.error('ProjectsService', 'Error processing invite', {
+            email: userEmail,
+          });
           errors.push({
             email: userEmail,
             reason: emailError.message || 'Failed to send invite',
@@ -2550,7 +2499,7 @@ export class ProjectsService {
         },
       };
     } catch (err) {
-      console.error('Error in sendProjectInvite:', err);
+      AppLogger.error('ProjectsService', 'Error in sendProjectInvite');
       throw new HttpException(
         err?.message || 'An error occurred while sending project invites',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2582,31 +2531,25 @@ export class ProjectsService {
         where: { id: projectId },
       });
 
-      console.log(emails, 'peeremails.emails');
-      // for (const userEmail of emails) {
-      //   console.log(userEmail, 'here')
-      // }
       for (const userEmail of emails) {
-        console.log(userEmail, 'emails');
-
         const checkUserAccount =
           await this.usersService.getUserAccountByEmail(userEmail);
 
-        const inviteCode = this.usersService.generateInviteCode(); // Assuming you have this function
-
-        console.log(inviteCode, userEmail, checkUserAccount, 'emails');
+        const inviteCode = this.usersService.generateInviteCode();
 
         let peerEmail;
         let eventLink;
         let peerAccount = false;
 
         if (checkUserAccount) {
-          peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${process.env.PEER_LINK_MAIN}/auth/login)`;
-          eventLink = `${process.env.PEER_LINK_MAIN}/auth/login`;
+          const loginLink = InviteLinks.projectLogin();
+          peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${loginLink})`;
+          eventLink = loginLink;
           peerAccount = true;
         } else {
-          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
-          eventLink = `${process.env.PEER_LINK_MAIN}/peerinvites/${inviteCode}/${project.id}`;
+          const inviteLink = InviteLinks.projectInvite(inviteCode, project.id);
+          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${inviteLink}`;
+          eventLink = inviteLink;
         }
 
         const sentEmail = await this.MailingService.sendPeerProject(
@@ -2622,7 +2565,6 @@ export class ProjectsService {
         message: 'Project invites sent successfully',
       };
     } catch (err) {
-      console.log(err);
       return {
         error: 'error',
         message: 'An error occurred while sending project invites',
@@ -2788,7 +2730,7 @@ export class ProjectsService {
         priorityChartData,
       };
     } catch (err) {
-      console.error('Error in ProjectOverviewData:', err);
+      AppLogger.error('ProjectsService', 'Error in ProjectOverviewData');
       throw new HttpException(
         err?.message || 'Failed to get project overview',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2918,7 +2860,7 @@ export class ProjectsService {
         priorityChartData,
       };
     } catch (err) {
-      console.error('Error in ProjectOverviewData:', err);
+      AppLogger.error('ProjectsService', 'Error in ProjectOverviewData');
       throw new HttpException(
         'Failed to get project overview',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2991,7 +2933,7 @@ export class ProjectsService {
         })),
       };
     } catch (err) {
-      console.error('Error in ProjectOverviewData:', err);
+      AppLogger.error('ProjectsService', 'Error in ProjectOverviewData');
       throw new HttpException(
         'Failed to get project overview',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -3417,7 +3359,7 @@ export class ProjectsService {
         data,
       };
     } catch (err) {
-      console.error('projectPeerAnalytics error:', err);
+      AppLogger.error('ProjectsService', 'Project peer analytics error');
       throw new HttpException(
         err?.message || 'Failed to fetch peer analytics',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -3857,7 +3799,7 @@ export class ProjectsService {
         data,
       };
     } catch (err) {
-      console.error('projectPeerAnalytics error:', err);
+      AppLogger.error('ProjectsService', 'Project peer analytics error');
       throw new HttpException(
         err?.message || 'Failed to fetch peer analytics',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -3977,7 +3919,6 @@ export class ProjectsService {
         '60days': 60,
       };
 
-      console.log(period, projectId, userId);
       const days = periodMap[period];
       const startDate = moment().subtract(days, 'days').startOf('day').toDate();
 
@@ -4016,8 +3957,6 @@ export class ProjectsService {
       queryBuilder.groupBy('DATE(activity.createdAt)').orderBy('date', 'ASC');
 
       const rawResults = await queryBuilder.getRawMany();
-
-      console.log('Raw results from DB:', rawResults);
 
       // Create a map for quick lookup
       const activityMap = new Map(

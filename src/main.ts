@@ -2,18 +2,19 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { config } from './config';
 import { ValidationPipe } from '@nestjs/common';
-import * as helmet from 'helmet';
+import helmet from 'helmet';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import * as csurf from 'csurf';
-import { SeederService } from './seeder/seeder.service';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { AppLogger } from './common/logging/app-logger';
 
 process.env.TZ = 'UTC';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // app.use(helmet());
+  app.use(helmet());
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -25,20 +26,27 @@ async function bootstrap() {
     }),
   );
 
-  const corsOptions = {
-    origin: config.env === 'development' ? '*' : '*',
+  const allowedOrigins = config.corsAllowedOrigins;
+  const corsOptions: CorsOptions = {
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+    },
+    credentials: true,
     optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204
   };
-  app.enableCors(corsOptions); // TODO: Setup cors config based on FE's server IPs
-  // app.use(csurf());
+  app.enableCors(corsOptions);
   app.setGlobalPrefix('/api/');
 
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-
-  // const seederService = app.get(SeederService);
-  // await seederService.seedOrganizationsAndLinks();
-  // await seederService.seedAdmin();
-  // await seederService.seedUserPeers();
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Project Tracking Panel')
@@ -53,6 +61,12 @@ async function bootstrap() {
   const port = process.env.PORT || config.port;
   await app.listen(port, '0.0.0.0');
 
-  console.log(`listening on: http://localhost:${port}`);
+  AppLogger.log('Bootstrap', 'Backend started', {
+    port,
+    environment: config.env,
+    allowedOrigins,
+    docsUrl: '/api/docs',
+    healthUrl: '/api/health',
+  });
 }
 bootstrap();

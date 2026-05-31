@@ -5,6 +5,8 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,12 +18,30 @@ import { NotificationsGateway } from '../notifications.gateway';
 import { UsersService } from 'src/users/services/users.service';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { Queue, Worker } from 'bullmq';
+import { RedisService } from 'src/redis/redis.service';
+import { config } from 'src/config';
+import { AppLogger } from 'src/common/logging/app-logger';
+
+interface NotificationJobPayload {
+  organizationId: string;
+  recipientId: number;
+  senderId?: number | null;
+  title: string;
+  message?: string;
+  type: string;
+  metadata?: Record<string, any>;
+}
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit, OnModuleDestroy {
+  private queue: Queue<NotificationJobPayload> | null = null;
+  private worker: Worker<NotificationJobPayload> | null = null;
+
   constructor(
     @Inject(forwardRef(() => UsersService)) private usersService: UsersService,
     private notificationsGateway: NotificationsGateway,
+    private redisService: RedisService,
 
     @InjectRepository(Notification)
     private notificationsRepository: Repository<Notification>,
@@ -30,6 +50,39 @@ export class NotificationsService {
     @InjectRepository(Organization)
     private orgRepository: Repository<Organization>,
   ) {}
+
+  async onModuleInit() {
+    if (config.queue.driver !== 'redis') {
+      return;
+    }
+
+    const connection = this.redisService.getBullConnection();
+    if (!connection) {
+      AppLogger.warn(
+        'NotificationsService',
+        'QUEUE_DRIVER=redis is configured but Redis is unavailable. Falling back to inline notification delivery.',
+      );
+      return;
+    }
+
+    this.queue = new Queue<NotificationJobPayload>('notifications', {
+      connection,
+      prefix: config.redis.prefix,
+    });
+    this.worker = new Worker<NotificationJobPayload>(
+      'notifications',
+      async (job) => this.createNotificationDirect(job.data),
+      {
+        connection,
+        prefix: config.redis.prefix,
+      },
+    );
+  }
+
+  async onModuleDestroy() {
+    await this.worker?.close();
+    await this.queue?.close();
+  }
 
   async findAll(user: any, organizationId: string) {
     try {
@@ -53,7 +106,10 @@ export class NotificationsService {
         message: 'Success',
       };
     } catch (error) {
-      console.error('Error fetching user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error fetching user notifications',
+      );
       throw new HttpException(
         'Error fetching user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -138,7 +194,10 @@ export class NotificationsService {
         success: true,
       };
     } catch (error) {
-      console.error('Error fetching user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error fetching user notifications',
+      );
       throw new HttpException(
         'Error fetching user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -167,7 +226,10 @@ export class NotificationsService {
         message: 'Success',
       };
     } catch (error) {
-      console.error('Error fetching user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error fetching user notifications',
+      );
       throw new HttpException(
         'Error fetching user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -181,45 +243,34 @@ export class NotificationsService {
     organizationId: string,
   ) {
     try {
-      console.log(createNotificationDto, 'ccreate notifcation');
-      const organization = await this.orgRepository.findOne({
-        where: { id: organizationId },
-      });
-      // return
-      //   const userFound = await this.usersService.getUserAccountById(user.userId);
-      //   if (!userFound) {
-      //     throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      //   }
+      const payload = this.toJobPayload(createNotificationDto, organizationId);
 
-      const notification = this.notificationsRepository.create({
-        ...createNotificationDto,
-        is_read: false,
-        created_at: new Date(),
-        organization_id: organizationId,
-        organization,
-      });
+      if (config.queue.driver === 'redis' && this.queue) {
+        await this.queue.add('deliver-notification', payload, {
+          attempts: 3,
+          removeOnComplete: 100,
+          removeOnFail: 100,
+        });
 
-      const savedNotification =
-        await this.notificationsRepository.save(notification);
+        return {
+          success: true,
+          queued: true,
+          message: 'Notification queued successfully',
+        };
+      }
 
-      console.log(
-        createNotificationDto.recipient.id,
-        savedNotification,
-        'createNotificationDto.recipient.id',
-      );
-      // Send via WebSocket if user is connected
-      this.notificationsGateway.sendNotificationToUser(
-        String(createNotificationDto.recipient.id),
-        savedNotification,
-      );
-
-      // return {
-      //   data: notification,
-      //   success: true,
-      //   message: 'Success',
-      // };
+      const savedNotification = await this.createNotificationDirect(payload);
+      return {
+        data: savedNotification,
+        success: true,
+        queued: false,
+        message: 'Notification created successfully',
+      };
     } catch (error) {
-      console.error('Error creating user notification:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error creating user notification',
+      );
       throw new HttpException(
         'Error creating user notification',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -234,13 +285,10 @@ export class NotificationsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log(userFound, 'fioniofni');
       const notification = await this.notificationsRepository.findOne({
         where: { id },
       });
       notification.is_read = true;
-
-      console.log(notification, 'notification');
 
       await this.notificationsRepository.save(notification);
 
@@ -250,7 +298,10 @@ export class NotificationsService {
         message: 'Success',
       };
     } catch (error) {
-      console.error('Error marking user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error marking user notifications',
+      );
       throw new HttpException(
         'Error marking user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -279,7 +330,10 @@ export class NotificationsService {
         success: true,
       };
     } catch (error) {
-      console.error('Error marking user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error marking user notifications',
+      );
       throw new HttpException(
         'Error marking user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -304,12 +358,60 @@ export class NotificationsService {
         success: true,
       };
     } catch (error) {
-      console.error('Error marking user notifications:', error);
+      AppLogger.error(
+        'NotificationsService',
+        'Error deleting user notification',
+      );
       throw new HttpException(
         'Error marking user notifications',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private toJobPayload(
+    createNotificationDto: CreateNotificationDto,
+    organizationId: string,
+  ): NotificationJobPayload {
+    return {
+      organizationId,
+      recipientId: createNotificationDto.recipient.id,
+      senderId: createNotificationDto.sender?.id ?? null,
+      title: createNotificationDto.title,
+      message: createNotificationDto.message,
+      type: createNotificationDto.type,
+      metadata: createNotificationDto.metadata,
+    };
+  }
+
+  private async createNotificationDirect(payload: NotificationJobPayload) {
+    const organization = await this.orgRepository.findOne({
+      where: { id: payload.organizationId },
+    });
+
+    const notification = this.notificationsRepository.create({
+      recipient: { id: payload.recipientId } as any,
+      sender: payload.senderId ? ({ id: payload.senderId } as any) : null,
+      title: payload.title,
+      message: payload.message,
+      type: payload.type,
+      metadata: payload.metadata,
+      is_read: false,
+      created_at: new Date(),
+      organization_id: payload.organizationId,
+      organization,
+    });
+
+    const savedNotification = await this.notificationsRepository.save(
+      notification,
+    );
+
+    this.notificationsGateway.sendNotificationToUser(
+      String(payload.recipientId),
+      savedNotification,
+    );
+
+    return savedNotification;
   }
 
   //   async createNotification(dto: CreateNotificationDto) {

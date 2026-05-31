@@ -32,6 +32,8 @@ import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { config } from 'src/config';
 
 @Controller('users')
 export class UsersController {
@@ -68,6 +70,12 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   @Post('/send-peer-invite')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   sendPeerInvite(
     @Body() inviteData: any,
     @Req() req: any,
@@ -81,11 +89,23 @@ export class UsersController {
   }
 
   @Post('/check-invite-code-status/:inviteCode')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   checkPeerInviteCodeStatus(@Param('inviteCode') inviteCode: string) {
     return this.userService.getPeerInviteCodeStatus(inviteCode);
   }
 
   @Post('/submit-peer-invite-code')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   submitPeerInviteCodeStatus(@Body() inviteData: any) {
     return this.userService.submitPeerInviteCodeStatus(inviteData);
   }
@@ -117,8 +137,6 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
     @Body() updateUserDto: UpdateUserDto,
   ) {
-    console.log('File:', file);
-    console.log('Body:', updateUserDto);
     return this.userService.updateUser(id, updateUserDto, file);
   }
 

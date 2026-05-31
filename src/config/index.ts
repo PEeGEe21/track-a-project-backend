@@ -1,6 +1,17 @@
 import * as dotenv from 'dotenv';
 import * as joi from 'joi';
 
+function parseOrigins(value?: string): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 process.env.ENV_PATH
   ? dotenv.config({ path: process.env.ENV_PATH })
   : dotenv.config();
@@ -22,10 +33,51 @@ const envVarsSchema = joi
     JWT_ACCESS_TOKEN_SECRET: joi.string().required(),
     JWT_ACCESS_EXPIRES_IN: joi.string().required(),
     JWT_REFRESH_TOKEN_SECRET: joi.string().required(),
-    FRONTEND_URL: joi.string().required(),
+    JWT_REFRESH_EXPIRES_IN: joi.string().required(),
+    FRONTEND_URL: joi.string().uri().required(),
+    ADMIN_FRONTEND_URL: joi.string().uri().optional(),
+    CORS_ALLOWED_ORIGINS: joi.string().optional(),
+    PEER_LINK_MAIN: joi.string().uri().optional(),
+    APP_URL: joi.string().uri().optional(),
+    REDIS_ENABLED: joi
+      .boolean()
+      .truthy('TRUE')
+      .truthy('true')
+      .falsy('FALSE')
+      .falsy('false')
+      .default(false),
+    REDIS_URL: joi.string().pattern(/^rediss?:\/\//).optional(),
+    REDIS_PREFIX: joi.string().default('trackr'),
+    RATE_LIMIT_DRIVER: joi
+      .string()
+      .allow(...['memory', 'redis'])
+      .default('memory'),
+    QUEUE_DRIVER: joi.string().allow(...['inline', 'redis']).default('inline'),
+    RATE_LIMIT_DEFAULT_MAX: joi.number().integer().min(1).default(120),
+    RATE_LIMIT_DEFAULT_WINDOW_MS: joi.number().integer().min(1000).default(60000),
+    RATE_LIMIT_AUTH_MAX: joi.number().integer().min(1).default(10),
+    RATE_LIMIT_AUTH_WINDOW_MS: joi.number().integer().min(1000).default(900000),
+    RATE_LIMIT_INVITE_MAX: joi.number().integer().min(1).default(10),
+    RATE_LIMIT_INVITE_WINDOW_MS: joi.number().integer().min(1000).default(600000),
+    WS_RATE_LIMIT_MAX: joi.number().integer().min(1).default(60),
+    WS_RATE_LIMIT_WINDOW_MS: joi.number().integer().min(1000).default(60000),
+    WS_RATE_LIMIT_BURST_MAX: joi.number().integer().min(1).default(180),
+    WS_RATE_LIMIT_BURST_WINDOW_MS: joi.number().integer().min(1000).default(10000),
 
     // database config
     // MONGODB_URI: joi.string().required(),
+    DATABASE_HOST: joi.string().required(),
+    DATABASE_PORT: joi.number().port().required(),
+    DATABASE_USERNAME: joi.string().required(),
+    DATABASE_PASSWORD: joi.string().required(),
+    DATABASE_NAME: joi.string().required(),
+    RUN_MIGRATIONS_ON_STARTUP: joi
+      .boolean()
+      .truthy('TRUE')
+      .truthy('true')
+      .falsy('FALSE')
+      .falsy('false')
+      .default(false),
     DATABASE_LOGGING: joi
       .boolean()
       .truthy('TRUE')
@@ -45,8 +97,12 @@ const envVarsSchema = joi
     // AT_USERNAME: joi.string().required(),
     OTP_TTL: joi.number().required().default(600),
     PASSWORD_RECOVERY_TTL: joi.number().required().default(72),
-    PASSWORD_RECOVERY_EMAIL: joi.string().required(),
-    PASSWORD_RECOVERY_URL: joi.string().required(),
+    PASSWORD_RECOVERY_EMAIL: joi.string().email().required(),
+    PASSWORD_RECOVERY_URL: joi.string().uri().required(),
+    SUPABASE_URL: joi.string().uri().required(),
+    SUPABASE_BUCKET_NAME: joi.string().required(),
+    SUPABASE_KEY: joi.string().required(),
+    SUPABASE_ANON_KEY: joi.string().required(),
     // TWILIO_ACCOUNT_SID: joi.string().required(),
     // TWILIO_AUTH_TOKEN: joi.string().required(),
     // CLOUDINARY_API_KEY: joi.string().required(),
@@ -70,6 +126,22 @@ if (error) {
   throw new Error(`Config validation error: ${error}`);
 }
 
+if (envVars.REDIS_ENABLED && !envVars.REDIS_URL) {
+  throw new Error('Config validation error: REDIS_URL is required when REDIS_ENABLED=true');
+}
+
+if (envVars.RATE_LIMIT_DRIVER === 'redis' && !envVars.REDIS_ENABLED) {
+  throw new Error(
+    'Config validation error: RATE_LIMIT_DRIVER=redis requires REDIS_ENABLED=true',
+  );
+}
+
+if (envVars.QUEUE_DRIVER === 'redis' && !envVars.REDIS_ENABLED) {
+  throw new Error(
+    'Config validation error: QUEUE_DRIVER=redis requires REDIS_ENABLED=true',
+  );
+}
+
 export const config = {
   env: envVars.NODE_ENV,
   url: envVars.APP_URL,
@@ -78,16 +150,27 @@ export const config = {
   secret: envVars.JWT_ACCESS_TOKEN_SECRET,
   expiresIn: envVars.JWT_ACCESS_EXPIRES_IN,
   refreshSecret: envVars.JWT_REFRESH_TOKEN_SECRET,
+  refreshExpiresIn: envVars.JWT_REFRESH_EXPIRES_IN,
   feBaseUrl: envVars.FRONTEND_URL,
+  adminFrontendUrl: envVars.ADMIN_FRONTEND_URL,
+  corsAllowedOrigins: Array.from(
+    new Set([
+      envVars.FRONTEND_URL,
+      envVars.ADMIN_FRONTEND_URL,
+      ...parseOrigins(envVars.CORS_ALLOWED_ORIGINS),
+    ].filter(Boolean)),
+  ),
   accountVerificationTtl: envVars.ACCOUNT_VERIFICATION_TTL,
   accountVerificationUrl: envVars.ACCOUNT_VERIFICATION_URL,
   verifyHash: envVars.VERIFY_HASH_HOOK,
   db: {
     // uri: envVars.MONGODB_URI,
     host: envVars.DATABASE_HOST,
+    port: envVars.DATABASE_PORT,
     username: envVars.DATABASE_USERNAME,
     password: envVars.DATABASE_PASSWORD,
     name: envVars.DATABASE_NAME,
+    runMigrationsOnStartup: envVars.RUN_MIGRATIONS_ON_STARTUP,
     // name: `${envVars.PGDATABASE}${envVars.NODE_ENV === 'test' ? '-test' : ''}`,
     // logging: envVars.DATABASE_LOGGING,
   },
@@ -121,6 +204,28 @@ export const config = {
   passwordRecoveryUrl: envVars.PASSWORD_RECOVERY_URL,
   frontendUrl: envVars.FRONTEND_URL,
   groupInviteUrl: envVars.GROUP_INVITE_URL,
+  peerLinkMain: envVars.PEER_LINK_MAIN,
+  redis: {
+    enabled: envVars.REDIS_ENABLED,
+    url: envVars.REDIS_URL,
+    prefix: envVars.REDIS_PREFIX,
+  },
+  rateLimit: {
+    driver: envVars.RATE_LIMIT_DRIVER,
+    defaultMax: envVars.RATE_LIMIT_DEFAULT_MAX,
+    defaultWindowMs: envVars.RATE_LIMIT_DEFAULT_WINDOW_MS,
+    authMax: envVars.RATE_LIMIT_AUTH_MAX,
+    authWindowMs: envVars.RATE_LIMIT_AUTH_WINDOW_MS,
+    inviteMax: envVars.RATE_LIMIT_INVITE_MAX,
+    inviteWindowMs: envVars.RATE_LIMIT_INVITE_WINDOW_MS,
+    websocketMax: envVars.WS_RATE_LIMIT_MAX,
+    websocketWindowMs: envVars.WS_RATE_LIMIT_WINDOW_MS,
+    websocketBurstMax: envVars.WS_RATE_LIMIT_BURST_MAX,
+    websocketBurstWindowMs: envVars.WS_RATE_LIMIT_BURST_WINDOW_MS,
+  },
+  queue: {
+    driver: envVars.QUEUE_DRIVER,
+  },
   boldMetrics: {
     clientId: envVars.BOLD_METRICS_CLIENT_ID,
     userKey: envVars.BOLD_METRICS_USER_KEY,

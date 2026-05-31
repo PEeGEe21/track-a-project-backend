@@ -8,18 +8,14 @@ import {
   Post,
   Query,
   Req,
-  Res,
   UseGuards,
+  ParseIntPipe,
   ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags } from '@nestjs/swagger';
-import { config } from '../../config';
 import { EmailLoginDto } from '../dtos/email-login.dto';
 import { LoginResponseDto } from '../dtos/login-response.dto';
-import { PasswordResetWithCodeDto } from '../dtos/password-reset-with-code.dto';
-import { PasswordResetDto } from '../dtos/password-reset.dto';
-import { RequestOtpDto } from '../dtos/request-otp.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { AuthService } from '../services/auth.service';
 import { SignUpResponseDto } from '../dtos/signup-response.dto';
@@ -27,8 +23,9 @@ import { CreateOrganizationDto } from 'src/organizations/dto/create-organization
 import { JoinOrganizationDto } from 'src/organizations/dto/join-organization.dto';
 import { LoginRequestDto } from '../dtos/login-request.dto';
 import { SuperAdminGuard } from 'src/common/guards/super-admin.guard';
-
-const testt = [];
+import { CreateUserDto } from '../dtos/create-user.dto';
+import { Throttle } from '@nestjs/throttler';
+import { config } from 'src/config';
 
 @Controller('/auth')
 @ApiTags('Authentication')
@@ -47,6 +44,12 @@ export class AuthController {
    * Sign up with new organization (becomes ORG_ADMIN)
    */
   @Post('signup/create-organization')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
   async signUpWithOrganization(
     @Body(ValidationPipe) dto: CreateOrganizationDto,
   ) {
@@ -58,6 +61,12 @@ export class AuthController {
    * Sign up via invitation (joins existing organization)
    */
   @Post('signup/join-organization')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
   async signUpWithInvitation(@Body(ValidationPipe) dto: JoinOrganizationDto) {
     return this.authService.signUpWithInvitation(dto);
   }
@@ -78,6 +87,12 @@ export class AuthController {
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
   async login(@Body(ValidationPipe) dto: LoginRequestDto) {
     return this.authService.login(dto);
   }
@@ -87,36 +102,71 @@ export class AuthController {
    * Validate invitation token before signup
    */
   @Get('validate-invitation')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.inviteMax,
+      ttl: config.rateLimit.inviteWindowMs,
+    },
+  })
   async validateInvitation(@Query('token') token: string) {
     return this.authService.validateInvitation(token);
   }
 
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
   @Post('users/:id/impersonate')
-  async impersonateUser(@Param('id') userId: number, @Req() req: any) {
+  async impersonateUser(
+    @Param('id', ParseIntPipe) userId: number,
+    @Req() req: any,
+  ) {
     return this.authService.impersonateUser(userId, req.user.userId);
   }
 
   @Post('/login-email')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
   async loginWithEmail(
-    @Body() loginDto: EmailLoginDto,
+    @Body(ValidationPipe) loginDto: EmailLoginDto,
   ): Promise<LoginResponseDto> {
     return this.authService.loginWithEmail(loginDto);
   }
 
   @Post('/login-admin')
+  @Throttle({
+    default: {
+      limit: Math.max(3, Math.floor(config.rateLimit.authMax / 2)),
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
   async loginWithAdmin(
-    @Body() loginDto: EmailLoginDto,
+    @Body(ValidationPipe) loginDto: EmailLoginDto,
   ): Promise<LoginResponseDto> {
     return this.authService.loginWithAdmin(loginDto);
   }
 
   @Post('/signup')
-  async userSignup(@Body() userSignupDto: any): Promise<SignUpResponseDto> {
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  async userSignup(
+    @Body(ValidationPipe) userSignupDto: CreateUserDto,
+  ): Promise<SignUpResponseDto> {
     return this.authService.signUp(userSignupDto);
   }
 
   @Get('/access-token')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.defaultMax,
+      ttl: config.rateLimit.defaultWindowMs,
+    },
+  })
   async refresh(@Query('refreshToken') refreshToken: string): Promise<any> {
     return this.authService.refreshToken(refreshToken);
   }
@@ -188,10 +238,13 @@ export class AuthController {
   //   return this.authService.verifyEmail(confirmationCode);
   // }
 
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
   @Post('/webhook')
   async webhook(@Body() body: any): Promise<any> {
-    testt.push(body);
-    return testt;
+    return {
+      received: true,
+      body,
+    };
   }
 
   @Get('/facebook')

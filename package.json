@@ -1,10 +1,14 @@
 {
   "name": "track-a-project-backend",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Backend API for the Track-A-Project platform.",
+  "author": "Trackr Team",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.11.1 <21",
+    "npm": ">=10"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -13,7 +17,9 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:smoke": "jest --runInBand src/auth/controllers/auth.controller.spec.ts src/users/controllers/users.controller.spec.ts src/organizations/controllers/organizations.controller.spec.ts src/health/health.controller.spec.ts src/common/guards/super-admin.guard.spec.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -39,6 +45,7 @@
     "@nestjs/platform-socket.io": "^10.4.17",
     "@nestjs/schedule": "^6.1.1",
     "@nestjs/swagger": "^7.1.17",
+    "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^10.0.1",
     "@nestjs/websockets": "^10.4.17",
     "@pusher/push-notifications-server": "^1.2.6",
@@ -47,6 +54,7 @@
     "axios": "^1.12.2",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^5.77.6",
     "chance": "^1.1.12",
     "cheerio": "^1.1.2",
     "class-transformer": "^0.5.1",
@@ -58,6 +66,7 @@
     "firebase": "^12.4.0",
     "handlebars": "^4.7.8",
     "helmet": "^7.1.0",
+    "ioredis": "^5.11.0",
     "joi": "^17.11.0",
     "moment": "^2.30.1",
     "mysql2": "^3.7.0",
@@ -109,6 +118,9 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
+    },
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

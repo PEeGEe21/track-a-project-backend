@@ -11,7 +11,9 @@ import {
   WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger, UseGuards } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rate-limiter.service';
+import { config } from 'src/config';
 
 @WebSocketGateway({
   cors: {
@@ -30,6 +32,10 @@ export class MessagesGateway
   private onlineUsers: Map<number, string> = new Map(); // userId -> socketId
   private userSockets: Map<string, number> = new Map(); // socketId -> userId
   private readonly logger = new Logger(MessagesGateway.name);
+
+  constructor(
+    private readonly websocketRateLimiter: WebsocketRateLimiterService,
+  ) {}
 
   afterInit(server: Server) {
     this.logger.log('Messages WebSocket Gateway initialized');
@@ -65,10 +71,14 @@ export class MessagesGateway
   }
 
   @SubscribeMessage('register_user')
-  handleRegisterUser(
+  async handleRegisterUser(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { userId: number },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'register_user', {
+      limit: config.rateLimit.authMax,
+      ttlMs: config.rateLimit.authWindowMs,
+    });
     const { userId } = data;
 
     if (!userId) {
@@ -103,10 +113,14 @@ export class MessagesGateway
   }
 
   @SubscribeMessage('join_conversation')
-  handleJoinConversation(
+  async handleJoinConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'join_conversation',
+    );
     const { conversationId } = data;
     const userId = this.userSockets.get(client.id);
 
@@ -126,10 +140,14 @@ export class MessagesGateway
   }
 
   @SubscribeMessage('leave_conversation')
-  handleLeaveConversation(
+  async handleLeaveConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(
+      client,
+      'leave_conversation',
+    );
     const { conversationId } = data;
     const userId = this.userSockets.get(client.id);
 
@@ -167,10 +185,14 @@ export class MessagesGateway
   //   }
 
   @SubscribeMessage('typing_stop')
-  handleTypingStop(
+  async handleTypingStop(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'typing_stop', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     const { conversationId } = data;
     const userId = this.userSockets.get(client.id);
 
@@ -188,10 +210,11 @@ export class MessagesGateway
   }
 
   @SubscribeMessage('message_read')
-  handleMessageRead(
+  async handleMessageRead(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string; messageId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'message_read');
     const { conversationId, messageId } = data;
     const userId = this.userSockets.get(client.id);
 
@@ -215,9 +238,6 @@ export class MessagesGateway
     this.logger.log(
       `Broadcasting new message to conversation ${conversationId}`,
     );
-
-
-    console.log(message, 'messagemessagemessage')
     // Send to everyone in the conversation
     this.server.to(`conversation_${conversationId}`).emit('new_message', {
       conversationId,
@@ -251,10 +271,14 @@ export class MessagesGateway
 
   // messages.gateway.ts – add typing broadcast to the *sender* as well (so UI can show own typing)
   @SubscribeMessage('typing_start')
-  handleTypingStart(
+  async handleTypingStart(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'typing_start', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketBurstWindowMs,
+    });
     const userId = this.userSockets.get(client.id);
     if (!userId || !data.conversationId) return;
     this.server.to(`conversation_${data.conversationId}`).emit('user_typing', {
