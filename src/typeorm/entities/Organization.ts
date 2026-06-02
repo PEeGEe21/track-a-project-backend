@@ -42,8 +42,8 @@ export class Organization {
   @Column({ length: 255 })
   name: string;
 
-  @Column({ type: 'longtext' })
-  description: string;
+  @Column({ type: 'longtext', nullable: true })
+  description: string | null;
 
   @Column({ length: 100, unique: true })
   slug: string;
