@@ -365,7 +365,7 @@ export class OrganizationsService {
       return {
         success: true,
         message: 'Updated Successfully',
-        user: updatedOrg,
+        organization: updatedOrg,
       };
     } catch (err) {
       AppLogger.error('OrganizationsService', 'Failed to update organization', {
@@ -375,7 +375,7 @@ export class OrganizationsService {
     }
   }
 
-  async markOrgOnboardingComplete(orgId: string): Promise<void> {
+  async markOrgOnboardingComplete(orgId: string) {
     try {
       const organization = await this.organizationRepository.findOne({
         where: { id: orgId },
@@ -387,6 +387,16 @@ export class OrganizationsService {
       await this.organizationRepository.update(orgId, {
         onboarding_complete: true,
       });
+
+      const updatedOrganization = await this.organizationRepository.findOne({
+        where: { id: orgId },
+      });
+
+      return {
+        success: true,
+        message: 'Organization onboarding marked complete',
+        organization: updatedOrganization,
+      };
     } catch (err) {
       AppLogger.error(
         'OrganizationsService',

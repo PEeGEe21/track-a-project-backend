@@ -97,7 +97,7 @@ export class OrganizationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('id/onboarding')
+  @Patch(':id/onboarding')
   markOrgOnboardingComplete(@Param('id') id: string) {
     return this.organizationsService.markOrgOnboardingComplete(id);
   }
