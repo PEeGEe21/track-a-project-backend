@@ -32,6 +32,10 @@ import { UserPeerInvite } from './typeorm/entities/UserPeerInvite';
 import { UserNotificationPreference } from './typeorm/entities/UserNotificationPreference';
 import { Notification } from './typeorm/entities/Notification';
 import { ProjectPeerInvite } from './typeorm/entities/ProjectPeerInvite';
+import { Plan } from './typeorm/entities/Plan';
+import { Price } from './typeorm/entities/Price';
+import { Subscription } from './typeorm/entities/Subscription';
+import { Invoice } from './typeorm/entities/Invoice';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -80,6 +84,10 @@ export const AppDataSource = new DataSource({
     OrganizationInvitation,
     Notification,
     UserNotificationPreference,
+    Plan,
+    Price,
+    Subscription,
+    Invoice,
   ],
   migrationsTransactionMode: 'each',
 });
