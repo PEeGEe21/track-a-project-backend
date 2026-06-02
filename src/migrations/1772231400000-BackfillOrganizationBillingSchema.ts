@@ -88,7 +88,8 @@ export class BackfillOrganizationBillingSchema1772231400000
           'organizations',
           new TableColumn({
             name: 'active_subscription_id',
-            type: 'uuid',
+            type: 'varchar',
+            length: '36',
             isNullable: true,
           }),
         );
@@ -117,10 +118,9 @@ export class BackfillOrganizationBillingSchema1772231400000
           columns: [
             {
               name: 'id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isPrimary: true,
-              generationStrategy: 'uuid',
-              default: 'uuid()',
             },
             {
               name: 'code',
@@ -177,14 +177,14 @@ export class BackfillOrganizationBillingSchema1772231400000
           columns: [
             {
               name: 'id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isPrimary: true,
-              generationStrategy: 'uuid',
-              default: 'uuid()',
             },
             {
               name: 'plan_id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
             },
             {
               name: 'stripe_price_id',
@@ -263,18 +263,19 @@ export class BackfillOrganizationBillingSchema1772231400000
           columns: [
             {
               name: 'id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isPrimary: true,
-              generationStrategy: 'uuid',
-              default: 'uuid()',
             },
             {
               name: 'organization_id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
             },
             {
               name: 'price_id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isNullable: true,
             },
             {
@@ -393,18 +394,19 @@ export class BackfillOrganizationBillingSchema1772231400000
           columns: [
             {
               name: 'id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isPrimary: true,
-              generationStrategy: 'uuid',
-              default: 'uuid()',
             },
             {
               name: 'organization_id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
             },
             {
               name: 'subscription_id',
-              type: 'uuid',
+              type: 'varchar',
+              length: '36',
               isNullable: true,
             },
             {
