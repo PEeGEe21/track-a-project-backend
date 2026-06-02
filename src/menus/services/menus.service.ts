@@ -11,6 +11,7 @@ import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
 import { ReorderMenusDto } from '../dto/reorder-menu.dto';
 import { AuthUser } from 'src/types/users';
+import { globalMenuSeedData } from 'src/database/seeds/global-menu.seed';
 
 @Injectable()
 export class MenusService {
@@ -163,17 +164,33 @@ export class MenusService {
     //   order: { order_index: 'ASC' },
     // });
 
-    const globalMenus = await this.globalMenuRepository
+    let globalMenus = await this.globalMenuRepository
       .createQueryBuilder('menu')
       .where('menu.is_active = :isActive', { isActive: true })
       .leftJoinAndSelect('menu.children', 'children')
       .orderBy('menu.order_index', 'ASC')
       .getMany();
 
-    // Get organization's menu customizations
-    const orgMenus = await this.organizationMenuRepository.find({
+    if (globalMenus.length === 0) {
+      await this.seedDefaultGlobalMenus();
+      globalMenus = await this.globalMenuRepository
+        .createQueryBuilder('menu')
+        .where('menu.is_active = :isActive', { isActive: true })
+        .leftJoinAndSelect('menu.children', 'children')
+        .orderBy('menu.order_index', 'ASC')
+        .getMany();
+    }
+
+    let orgMenus = await this.organizationMenuRepository.find({
       where: { organization_id: organizationId },
     });
+
+    if (orgMenus.length === 0) {
+      await this.initializeOrgMenus(organizationId);
+      orgMenus = await this.organizationMenuRepository.find({
+        where: { organization_id: organizationId },
+      });
+    }
 
     // console.log(orgMenus, organizationId, 'vv');
 
@@ -217,22 +234,72 @@ export class MenusService {
     return this.buildMenuTree(filteredMenus);
   }
 
+  async seedDefaultGlobalMenus() {
+    const existingMenus = await this.globalMenuRepository.find();
+    const existingByLabel = new Set(existingMenus.map((menu) => menu.label));
+
+    const menusToCreate = globalMenuSeedData
+      .filter((menu) => !existingByLabel.has(menu.label))
+      .map((menu) => this.globalMenuRepository.create(menu));
+
+    if (menusToCreate.length > 0) {
+      await this.globalMenuRepository.save(menusToCreate);
+    }
+
+    return {
+      created: menusToCreate.length,
+      total: await this.globalMenuRepository.count(),
+    };
+  }
+
   async initializeOrgMenus(organizationId: string): Promise<void> {
     // Get all active global menus
     const globalMenus = await this.globalMenuRepository.find({
       where: { is_active: true },
     });
 
-    // Create organization menu entries for each global menu
-    const orgMenus = globalMenus.map((menu) => {
-      return this.organizationMenuRepository.create({
-        organization_id: organizationId,
-        global_menu_id: menu.id,
-        is_enabled: true,
-      });
+    const existingOrgMenus = await this.organizationMenuRepository.find({
+      where: { organization_id: organizationId },
     });
 
-    await this.organizationMenuRepository.save(orgMenus);
+    const existingGlobalMenuIds = new Set(
+      existingOrgMenus.map((menu) => menu.global_menu_id),
+    );
+
+    const orgMenus = globalMenus
+      .filter((menu) => !existingGlobalMenuIds.has(menu.id))
+      .map((menu) => {
+        return this.organizationMenuRepository.create({
+          organization_id: organizationId,
+          global_menu_id: menu.id,
+          is_enabled: true,
+          custom_label: null,
+          order_index: menu.order_index,
+        });
+      });
+
+    if (orgMenus.length > 0) {
+      await this.organizationMenuRepository.save(orgMenus);
+    }
+  }
+
+  async seedMenusForOrganization(organizationId: string) {
+    const globalSeed = await this.seedDefaultGlobalMenus();
+    await this.initializeOrgMenus(organizationId);
+
+    const organizationMenuCount = await this.organizationMenuRepository.count({
+      where: { organization_id: organizationId },
+    });
+
+    return {
+      success: true,
+      message: 'Menus seeded successfully',
+      data: {
+        globalMenusCreated: globalSeed.created,
+        totalGlobalMenus: globalSeed.total,
+        organizationMenuCount,
+      },
+    };
   }
 
   async updateOrgMenu(

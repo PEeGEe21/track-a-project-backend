@@ -41,6 +41,15 @@ export class MenusController {
     return this.menusService.getMenusForOrganization(organizationId, req.user);
   }
 
+  @Post('organization/seed')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  @Roles('org_admin')
+  async seedOrganizationMenus(
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.menusService.seedMenusForOrganization(organizationId);
+  }
+
   @Put('organization/:menuId')
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   @Roles('org_admin')

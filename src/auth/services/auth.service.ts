@@ -62,6 +62,8 @@ import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitat
 import { LoginDto } from '../dtos/login.dto';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { AppLogger } from 'src/common/logging/app-logger';
+import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
+import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -1093,6 +1095,24 @@ export class AuthService {
         role: OrganizationRole.ORG_ADMIN, // First user becomes admin
       });
       await queryRunner.manager.save(userOrganization);
+
+      const globalMenus = await queryRunner.manager.find(GlobalMenu, {
+        where: { is_active: true },
+      });
+
+      if (globalMenus.length > 0) {
+        const organizationMenus = globalMenus.map((menu) =>
+          queryRunner.manager.create(OrganizationMenu, {
+            organization_id: organization.id,
+            global_menu_id: menu.id,
+            is_enabled: true,
+            custom_label: null,
+            order_index: menu.order_index,
+          }),
+        );
+
+        await queryRunner.manager.save(organizationMenus);
+      }
 
       await queryRunner.commitTransaction();
 
