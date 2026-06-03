@@ -30,7 +30,6 @@ import { Message } from 'src/typeorm/entities/Message';
 import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
 import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
 import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
-import { UsersService } from 'src/users/services/users.service';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
@@ -74,7 +73,6 @@ import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
   controllers: [MenusController],
   providers: [
     MenusService,
-    UsersService,
     NotificationsService,
     NotificationsGateway,
   ],

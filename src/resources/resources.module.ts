@@ -8,7 +8,6 @@ import { Task } from '../typeorm/entities/Task';
 import { User } from '../typeorm/entities/User';
 import { FirebaseStorageService } from '../firebase/firebase-storage.service';
 import { SimplePreviewService } from '../services/simple-preview.service';
-import { UsersService } from 'src/users/services/users.service';
 import { Profile } from 'src/typeorm/entities/Profile';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { JwtModule } from '@nestjs/jwt';
@@ -26,12 +25,12 @@ import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { Note } from 'src/typeorm/entities/Note';
 import { Notification } from 'src/typeorm/entities/Notification';
-import { SupabaseStorageService } from 'src/storage/supabase-storage.service';
 import { ConfigModule } from '@nestjs/config';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -42,6 +41,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     ConfigModule,
+    StorageModule,
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -67,15 +67,12 @@ import { Organization } from 'src/typeorm/entities/Organization';
   controllers: [ResourcesController],
   providers: [
     ResourcesService,
-    UsersService,
     FirebaseStorageService,
-    SupabaseStorageService,
     SimplePreviewService,
   ],
   exports: [
     ResourcesService,
     FirebaseStorageService,
-    SupabaseStorageService,
     SimplePreviewService,
   ],
 })

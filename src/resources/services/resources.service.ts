@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Inject,
   HttpException,
   HttpStatus,
   NotFoundException,
@@ -20,12 +21,12 @@ import { FirebaseStorageService } from '../../firebase/firebase-storage.service'
 import { MulterFile } from '../../types/multer.types';
 import { SimplePreviewService } from '../../services/simple-preview.service';
 import { UsersService } from 'src/users/services/users.service';
-import { SupabaseStorageService } from 'src/storage/supabase-storage.service';
 import { Response } from 'express';
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageService } from 'src/types/storage.interface';
 
 @Injectable()
 export class ResourcesService {
@@ -43,7 +44,8 @@ export class ResourcesService {
     @InjectRepository(Organization)
     private userRepository: Repository<User>,
     private firebaseStorageService: FirebaseStorageService,
-    private supabaseStorageService: SupabaseStorageService,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
     private previewService: SimplePreviewService,
     private userService: UsersService,
     private projectActivitiesService: ProjectActivitiesService,
@@ -186,13 +188,12 @@ export class ResourcesService {
           );
         }
 
-        // Generate file path and upload to Supabase
-        const filePath = this.supabaseStorageService.generateFilePath(
+        const filePath = this.storageService.generateFilePath(
           Number(projectId),
           Number(taskId),
           file.originalname,
         );
-        fileUrl = await this.supabaseStorageService.uploadFile(file, filePath);
+        fileUrl = await this.storageService.uploadFile(file, filePath);
 
         // Generate file path and upload to Firebase
         // const filePath = this.firebaseStorageService.generateFilePath(
@@ -537,7 +538,7 @@ export class ResourcesService {
     }
 
     try {
-      const buffer = await this.supabaseStorageService.downloadFile(resource.file_path);
+      const buffer = await this.storageService.downloadFile(resource.file_path);
 
       res.set({
         'Content-Type': resource.type || 'application/octet-stream',
@@ -740,27 +741,9 @@ export class ResourcesService {
     }
 
     try {
-      // Extract file path from URL
-      const url = new URL(resource.file_path);
-
-      // For public URLs: /storage/v1/object/public/{bucket}/{path}
-      // We need to extract everything after the bucket name
-      const pathParts = url.pathname.split('/');
-      const publicIndex = pathParts.indexOf('public');
-
-      if (publicIndex === -1) {
-        throw new Error('Invalid storage URL format');
-      }
-
-      // Skip 'public' and bucket name, get the rest
-      const filePath = pathParts.slice(publicIndex + 2).join('/');
-
-      console.log('Extracted file path:', filePath);
-
-      // Get signed URL (expires in 1 hour)
-      const signedUrl = await this.supabaseStorageService.getSignedUrl(
-        decodeURIComponent(filePath),
-        3600, // 1 hour
+      const signedUrl = await this.storageService.getSignedUrl(
+        resource.file_path,
+        3600,
       );
 
       return {

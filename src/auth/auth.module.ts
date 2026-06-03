@@ -37,6 +37,9 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
+import { Plan } from 'src/typeorm/entities/Plan';
+import { Price } from 'src/typeorm/entities/Price';
+import { Subscription } from 'src/typeorm/entities/Subscription';
 
 @Module({
   imports: [
@@ -78,6 +81,9 @@ import { AuditLog } from 'src/typeorm/entities/AuditLog';
       Organization,
       OrganizationInvitation,
       AuditLog,
+      Plan,
+      Price,
+      Subscription,
     ]),
   ],
   controllers: [AuthController],

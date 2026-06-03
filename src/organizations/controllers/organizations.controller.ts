@@ -26,6 +26,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { Throttle } from '@nestjs/throttler';
 import { config } from 'src/config';
+import { UpdateOrganizationMemberDto } from '../dto/update-organization-member.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
@@ -56,6 +57,34 @@ export class OrganizationsController {
   @Get(':id/team')
   findOneTeam(@Param('id') id: string, @Req() req: any) {
     return this.organizationsService.findOneTeam(req.user, id);
+  }
+
+  @Patch(':id/team/:memberUserId')
+  updateTeamMember(
+    @Param('id') id: string,
+    @Param('memberUserId') memberUserId: string,
+    @Body(ValidationPipe) dto: UpdateOrganizationMemberDto,
+    @Req() req: any,
+  ) {
+    return this.organizationsService.updateTeamMember(
+      req.user,
+      id,
+      memberUserId,
+      dto,
+    );
+  }
+
+  @Delete(':id/team/:memberUserId')
+  removeTeamMember(
+    @Param('id') id: string,
+    @Param('memberUserId') memberUserId: string,
+    @Req() req: any,
+  ) {
+    return this.organizationsService.removeTeamMember(
+      req.user,
+      id,
+      memberUserId,
+    );
   }
 
   // @Post()

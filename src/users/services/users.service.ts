@@ -2,6 +2,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -45,6 +46,7 @@ import { PaginatedResponse } from 'src/types/pagination';
 import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
+import { StorageService } from 'src/types/storage.interface';
 
 @Injectable()
 export class UsersService {
@@ -67,6 +69,8 @@ export class UsersService {
     private jwtService: JwtService,
     private MailingService: MailingService,
     private notificationService: NotificationsService,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
   ) {}
 
   async getUserAccountById(id: number): Promise<User | undefined> {
@@ -114,6 +118,12 @@ export class UsersService {
       const user = await this.getUserAccountById(id);
 
       const userPassword = await this.getUserAccountPassword(user.email);
+      if (!userPassword) {
+        throw new HttpException(
+          'User password record not found',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
       const isCorrectPassword = await bcrypt.compare(
         updateUserPasswordDto.current_password,
@@ -159,7 +169,18 @@ export class UsersService {
         success: 'success',
         message: 'Successfully updated user!',
       };
-    } catch (err) {}
+    } catch (err) {
+      AppLogger.error('UsersService', 'Error in updateUserPassword');
+
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
+      throw new HttpException(
+        'Failed to update password',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async getUserSettings(id: number): Promise<any | undefined> {
@@ -180,15 +201,24 @@ export class UsersService {
         relations: ['user'],
       });
 
-      delete userProfileDetails.user.password;
       delete user.password;
 
+      if (userProfileDetails?.user) {
+        delete userProfileDetails.user.password;
+      }
+
       return {
-        profile: userProfileDetails,
+        profile: userProfileDetails ?? null,
         user: user,
         success: 'success',
       };
-    } catch (err) {}
+    } catch (err) {
+      AppLogger.error('UsersService', 'Error in getUserSettings');
+      throw new HttpException(
+        'Could not fetch user settings',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async updateUserProfile(
@@ -246,8 +276,25 @@ export class UsersService {
     } catch (err) {}
   }
 
-  async markUserOnboardingComplete(user, userId: number): Promise<void> {
-    await this.userRepository.update(userId, { onboarding_complete: true });
+  async markUserOnboardingComplete(
+    user,
+    userId: number,
+  ): Promise<{ message: string }> {
+    if (+user?.id !== userId) {
+      throw new UnauthorizedException(
+        'You are not allowed to update this onboarding status',
+      );
+    }
+
+    const updatedResult = await this.userRepository.update(userId, {
+      onboarding_complete: true,
+    });
+
+    if (updatedResult.affected < 1) {
+      throw new NotFoundException('User not found');
+    }
+
+    return { message: 'Onboarding completed successfully' };
   }
 
   async getUserAccountPassword(email: string): Promise<string | undefined> {
@@ -281,7 +328,7 @@ export class UsersService {
   async updateUser(
     id: number,
     updateUserDetails: UpdateUserParams,
-    file?: Express.Multer.File, // ← Add file parameter
+    file?: Express.Multer.File,
   ) {
     try {
       const user = await this.userRepository.findOne({ where: { id } });
@@ -290,10 +337,24 @@ export class UsersService {
         throw new NotFoundException('User not found');
       }
 
+      const nextUserDetails = { ...updateUserDetails };
+
       if (file) {
+        if (!file.buffer?.length) {
+          throw new BadRequestException('Avatar upload data is invalid');
+        }
+
+        const sanitizedFilename = file.originalname.replace(
+          /[^a-zA-Z0-9.-]/g,
+          '_',
+        );
+        const filePath = `users/${id}/avatars/${Date.now()}_${sanitizedFilename}`;
+        const avatarUrl = await this.storageService.uploadFile(file, filePath);
+
+        nextUserDetails.avatar = avatarUrl;
       }
 
-      await this.userRepository.update({ id }, { ...updateUserDetails });
+      await this.userRepository.update({ id }, nextUserDetails);
 
       const updatedUser = await this.userRepository.findOne({ where: { id } });
 
@@ -302,7 +363,18 @@ export class UsersService {
         message: 'Updated Successfully',
         user: updatedUser,
       };
-    } catch (err) {}
+    } catch (err) {
+      AppLogger.error('UsersService', 'Error in updateUser');
+
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
+      throw new HttpException(
+        'Failed to update user account',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   async updateUser2(id: number, updateUserDetails: UpdateUserParams) {

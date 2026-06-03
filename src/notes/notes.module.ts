@@ -5,7 +5,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/typeorm/entities/User';
 import { Task } from 'src/typeorm/entities/Task';
 import { Note } from 'src/typeorm/entities/Note';
-import { UsersService } from 'src/users/services/users.service';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
 import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
@@ -62,7 +61,6 @@ import { Organization } from 'src/typeorm/entities/Organization';
   controllers: [NotesController],
   providers: [
     NotesService,
-    UsersService,
     NotificationsService,
     NotificationsGateway,
   ],

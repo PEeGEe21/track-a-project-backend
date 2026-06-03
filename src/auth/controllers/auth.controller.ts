@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -26,6 +27,9 @@ import { SuperAdminGuard } from 'src/common/guards/super-admin.guard';
 import { CreateUserDto } from '../dtos/create-user.dto';
 import { Throttle } from '@nestjs/throttler';
 import { config } from 'src/config';
+import { RequestEmailOtpDto } from '../dtos/request-email-otp.dto';
+import { VerifyForgotPasswordOtpDto } from '../dtos/verify-forgot-password-otp.dto';
+import { ResetPasswordEmailDto } from '../dtos/reset-password-email.dto';
 
 @Controller('/auth')
 @ApiTags('Authentication')
@@ -174,6 +178,41 @@ export class AuthController {
   @Post('/logout')
   async logout(@Body('refreshToken') refreshToken: string): Promise<any> {
     return this.authService.logOut(refreshToken);
+  }
+
+  @Post('/forgot-password')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  async forgotPassword(@Body(ValidationPipe) dto: RequestEmailOtpDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('/verify-forgot-password-otp')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  async verifyForgotPasswordOtp(
+    @Body(ValidationPipe) dto: VerifyForgotPasswordOtpDto,
+  ) {
+    return this.authService.verifyForgotPasswordOtp(dto.email, dto.otp);
+  }
+
+  @Patch('/reset-password')
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  async resetPassword(@Body(ValidationPipe) dto: ResetPasswordEmailDto) {
+    return this.authService.resetPasswordWithEmail(dto.email, dto.password);
   }
 
   // @Post('/send-signup-otp')

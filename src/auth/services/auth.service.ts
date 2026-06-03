@@ -64,6 +64,13 @@ import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
+import { Plan } from 'src/typeorm/entities/Plan';
+import { Price } from 'src/typeorm/entities/Price';
+import { Subscription } from 'src/typeorm/entities/Subscription';
+import { PriceInterval } from 'src/utils/constants/priceIntervalEnums';
+import { SubscriptionStatus } from 'src/utils/constants/subscriptionStatusEnums';
+import { QueryRunner } from 'typeorm';
+import { MailingService } from 'src/utils/mailing/mailing.service';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -107,7 +114,176 @@ export class AuthService {
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
+    private mailingService: MailingService,
   ) {}
+
+  private async provisionInitialFreeSubscription(
+    queryRunner: QueryRunner,
+    organizationId: string,
+  ) {
+    const freePlan = await queryRunner.manager.findOne(Plan, {
+      where: { code: 'free' },
+    });
+
+    if (!freePlan) {
+      throw new NotFoundException('Free plan not found in catalog');
+    }
+
+    const freePrice = await queryRunner.manager.findOne(Price, {
+      where: {
+        plan: { id: freePlan.id },
+        interval: PriceInterval.ONE_TIME,
+      },
+      relations: ['plan'],
+    });
+
+    if (!freePrice) {
+      throw new NotFoundException('Free price not configured');
+    }
+
+    const subscription = queryRunner.manager.create(Subscription, {
+      organization_id: organizationId,
+      price_id: freePrice.id,
+      status: SubscriptionStatus.ACTIVE,
+      current_period_start: new Date(),
+      current_period_end: null,
+      max_users: 5,
+      max_projects: 10,
+      quantity: 1,
+      metadata: { source: 'onboarding' },
+    });
+
+    const savedSubscription = await queryRunner.manager.save(subscription);
+
+    await queryRunner.manager.update(Organization, organizationId, {
+      active_subscription_id: savedSubscription.id,
+    });
+
+    return savedSubscription;
+  }
+
+  private getPasswordResetExpiryDate(): Date {
+    return new Date(Date.now() + config.otpTtl * 1000);
+  }
+
+  private isPasswordResetVerificationExpired(verifiedAt: Date | null): boolean {
+    if (!verifiedAt) {
+      return true;
+    }
+
+    const expiresAt = new Date(verifiedAt.getTime() + config.otpTtl * 1000);
+    return expiresAt.getTime() < Date.now();
+  }
+
+  async requestPasswordReset(email: string) {
+    try {
+      const successMessage =
+        'If an account exists for that email, a verification code has been sent.';
+      const user = await this.userRepository.findOne({
+        where: { email: email.toLowerCase().trim() },
+      });
+
+      console.log(user, 'user');
+      if (!user) {
+        return {
+          success: true,
+          message: successMessage,
+        };
+      }
+
+      const otp = String(this.generateOtp()).padStart(6, '0');
+      user.password_reset_otp = otp;
+      user.password_reset_otp_expires_at = this.getPasswordResetExpiryDate();
+      user.password_reset_verified_at = null;
+      await this.userRepository.save(user);
+
+      try {
+        await this.mailingService.sendPasswordResetOtp(
+          user.email,
+          otp,
+          user.first_name,
+        );
+      } catch (error) {
+        console.log(error);
+      }
+      return {
+        success: true,
+        message: successMessage,
+        ...(process.env.NODE_ENV === 'production' ? {} : { debugOtp: otp }),
+      };
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  async verifyForgotPasswordOtp(email: string, otp: string) {
+    const user = await this.userRepository.findOne({
+      where: { email: email.toLowerCase().trim() },
+    });
+
+    if (
+      !user ||
+      !user.password_reset_otp ||
+      !user.password_reset_otp_expires_at
+    ) {
+      throw new BadRequestException(
+        'You have not requested a password reset or the code has expired.',
+      );
+    }
+
+    if (user.password_reset_otp_expires_at.getTime() < Date.now()) {
+      user.password_reset_otp = null;
+      user.password_reset_otp_expires_at = null;
+      user.password_reset_verified_at = null;
+      await this.userRepository.save(user);
+      throw new BadRequestException('This verification code has expired.');
+    }
+
+    if (user.password_reset_otp !== otp.trim()) {
+      throw new BadRequestException('The verification code is incorrect.');
+    }
+
+    user.password_reset_verified_at = new Date();
+    await this.userRepository.save(user);
+
+    return {
+      success: true,
+      message: 'Verification successful. You can now reset your password.',
+    };
+  }
+
+  async resetPasswordWithEmail(email: string, password: string) {
+    const user = await this.userRepository.findOne({
+      where: { email: email.toLowerCase().trim() },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (
+      this.isPasswordResetVerificationExpired(user.password_reset_verified_at)
+    ) {
+      user.password_reset_otp = null;
+      user.password_reset_otp_expires_at = null;
+      user.password_reset_verified_at = null;
+      await this.userRepository.save(user);
+      throw new BadRequestException(
+        'Password reset verification has expired. Please request a new code.',
+      );
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.password_reset_otp = null;
+    user.password_reset_otp_expires_at = null;
+    user.password_reset_verified_at = null;
+    await this.userRepository.save(user);
+
+    return {
+      success: true,
+      message: 'Password reset successful',
+    };
+  }
 
   // async resetPasswordWithRecoveryCode(
   //   passwordResetWithCodeDto: PasswordResetWithCodeDto,
@@ -1087,6 +1263,8 @@ export class AuthService {
         is_active: true,
       });
       await queryRunner.manager.save(organization);
+
+      await this.provisionInitialFreeSubscription(queryRunner, organization.id);
 
       // Create user-organization relationship (as ORG_ADMIN)
       const userOrganization = queryRunner.manager.create(UserOrganization, {

@@ -120,9 +120,20 @@ export class SubscriptionService {
     });
 
     if (!org?.active_subscription_id) {
-      throw new NotFoundException(
-        'No active subscription found for organization',
-      );
+      const fallback = await this.subscriptionRepo.findOne({
+        where: { organization_id: orgId, status: SubscriptionStatus.ACTIVE },
+        order: { created_at: 'DESC' },
+        relations: ['price', 'price.plan'],
+      });
+
+      if (fallback) {
+        await this.orgRepo.update(orgId, {
+          active_subscription_id: fallback.id,
+        });
+        return fallback;
+      }
+
+      return this.createInitialFreeSubscription(orgId);
     }
 
     const sub = await this.subscriptionRepo.findOne({
@@ -130,7 +141,22 @@ export class SubscriptionService {
       relations: ['price', 'price.plan'],
     });
 
-    if (!sub) throw new NotFoundException('Active subscription record missing');
+    if (!sub) {
+      const fallback = await this.subscriptionRepo.findOne({
+        where: { organization_id: orgId, status: SubscriptionStatus.ACTIVE },
+        order: { created_at: 'DESC' },
+        relations: ['price', 'price.plan'],
+      });
+
+      if (fallback) {
+        await this.orgRepo.update(orgId, {
+          active_subscription_id: fallback.id,
+        });
+        return fallback;
+      }
+
+      return this.createInitialFreeSubscription(orgId);
+    }
 
     // Optional: fallback if pointer is broken
     if (sub.status !== SubscriptionStatus.ACTIVE) {
@@ -199,13 +225,8 @@ export class SubscriptionService {
       status: SubscriptionStatus.ACTIVE,
       current_period_start: new Date(),
       current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // example
-      max_users:
-        newPrice.plan.code === 'free'
-          ? 5
-          : newPrice.plan.code === 'pro'
-            ? 100
-            : 9999,
-      max_projects: newPrice.plan.code === 'free' ? 10 : 9999,
+      max_users: newLimits.maxUsers,
+      max_projects: newLimits.maxProjects,
       quantity: currentSub.quantity,
       metadata: { upgraded_from: currentSub.id },
     });

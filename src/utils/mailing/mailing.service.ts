@@ -252,6 +252,46 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async sendPasswordResetOtp(
+    email: string,
+    otp: string,
+    firstName?: string | null,
+  ): Promise<string> {
+    const displayName = firstName?.trim() || 'there';
+    const html = `
+      <div style="background:#F8FAFC; padding:32px 16px; font-family:Arial, sans-serif; color:#102A43;">
+        <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; overflow:hidden;">
+          <div style="padding:24px 28px; background:linear-gradient(135deg,#0F172A 0%,#102A43 55%,#2563EB 140%); color:#FFFFFF;">
+            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">Trackr Security</p>
+            <h2 style="margin:12px 0 0; font-size:28px; line-height:1.2;">Password reset code</h2>
+          </div>
+          <div style="padding:28px;">
+            <p style="margin:0 0 12px; font-size:16px; line-height:1.7;">Hi ${displayName},</p>
+            <p style="margin:0; font-size:16px; line-height:1.7;">
+              We received a request to reset your password. Use the verification code below to continue.
+            </p>
+            <div style="margin:28px 0; padding:18px 20px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:16px; text-align:center;">
+              <span style="font-size:34px; font-weight:700; letter-spacing:10px; color:#0F172A;">${otp}</span>
+            </div>
+            <p style="margin:0 0 10px; font-size:14px; line-height:1.7; color:#486581;">
+              This code expires in a few minutes. If you did not request this change, you can safely ignore this email.
+            </p>
+            <p style="margin:0; font-size:14px; line-height:1.7; color:#486581;">
+              For security, never share this code with anyone.
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: email,
+      subject: 'Your password reset code',
+      text: `Your password reset code is ${otp}`,
+      html,
+    });
+  }
+
   private async compileTemplate2(templateName: string, context: any) {
     const templatePath = path.join(
       __dirname,

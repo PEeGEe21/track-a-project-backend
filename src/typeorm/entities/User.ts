@@ -78,6 +78,14 @@ export class User {
   @Column({ default: false })
   logged_in: boolean;
 
+  @Column({ nullable: true, length: 6 })
+  password_reset_otp: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  password_reset_otp_expires_at: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  password_reset_verified_at: Date | null;
 
   @Column({ default: false })
   onboarding_complete: boolean;

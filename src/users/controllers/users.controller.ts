@@ -34,6 +34,7 @@ import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { config } from 'src/config';
+import { memoryStorage } from 'multer';
 
 @Controller('users')
 export class UsersController {
@@ -62,9 +63,12 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('id/onboarding')
-  markUserOnboardingComplete(@Param('id') id: number, @Req() req: any) {
-    return this.userService.markUserOnboardingComplete(req.user, +id);
+  @Patch(':id/onboarding')
+  markUserOnboardingComplete(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+  ) {
+    return this.userService.markUserOnboardingComplete(req.user, id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -130,7 +134,14 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('avatar'))
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
   @Patch(':id/account-update')
   updateUserById(
     @Param('id', ParseIntPipe) id: number,

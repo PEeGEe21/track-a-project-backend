@@ -8,7 +8,8 @@ NestJS API for the Trackr platform. This service powers authentication, organiza
 - TypeORM
 - MySQL
 - JWT auth
-- Supabase storage
+- Supabase storage for hosted environments
+- MinIO/S3-compatible storage for local environments
 - Redis-ready throttling and queues
 - Socket.IO gateways
 
@@ -67,10 +68,10 @@ Required core values:
 - `DATABASE_USERNAME`
 - `DATABASE_PASSWORD`
 - `DATABASE_NAME`
-- `SUPABASE_URL`
-- `SUPABASE_BUCKET_NAME`
-- `SUPABASE_KEY`
-- `SUPABASE_ANON_KEY`
+- `STORAGE_DRIVER`
+- Supabase credentials when `STORAGE_DRIVER=supabase`
+- S3/MinIO credentials when `STORAGE_DRIVER=minio`
+- For local avatar/file display through direct MinIO URLs, set `S3_BUCKET_PUBLIC_READ=true`
 
 Important optional values:
 

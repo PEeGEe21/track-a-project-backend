@@ -26,6 +26,7 @@ import { BillingService } from 'src/billing/services/billing.service';
 import { SubscriptionService } from 'src/billing/services/subscription.service';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
+import { UpdateOrganizationMemberDto } from '../dto/update-organization-member.dto';
 
 @Injectable()
 export class OrganizationsService {
@@ -41,6 +42,32 @@ export class OrganizationsService {
     private billingService: BillingService,
     private subscriptionService: SubscriptionService,
   ) {}
+
+  private async assertOrganizationAdmin(userId: number, organizationId: string) {
+    const membership = await this.userOrganizationRepository.findOne({
+      where: {
+        user_id: userId,
+        organization_id: organizationId,
+      },
+    });
+
+    if (!membership || membership.role !== OrganizationRole.ORG_ADMIN) {
+      throw new ForbiddenException(
+        'Only organization admins can manage team members',
+      );
+    }
+
+    return membership;
+  }
+
+  private async countOrganizationAdmins(organizationId: string) {
+    return this.userOrganizationRepository.count({
+      where: {
+        organization_id: organizationId,
+        role: OrganizationRole.ORG_ADMIN,
+      },
+    });
+  }
 
   async findAll(
     authUser: AuthUser,
@@ -147,6 +174,113 @@ export class OrganizationsService {
     return {
       data: team,
       success: true,
+    };
+  }
+
+  async updateTeamMember(
+    authUser: AuthUser,
+    organizationId: string,
+    memberUserId: string,
+    dto: UpdateOrganizationMemberDto,
+  ) {
+    const foundUser = await this.userService.getUserAccountById(
+      authUser.userId,
+    );
+
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    await this.assertOrganizationAdmin(authUser.userId, organizationId);
+
+    const member = await this.userOrganizationRepository.findOne({
+      where: {
+        organization_id: organizationId,
+        user_id: Number(memberUserId),
+      },
+      relations: ['user'],
+    });
+
+    if (!member) {
+      throw new NotFoundException('Organization member not found');
+    }
+
+    if (member.role === dto.role) {
+      return {
+        success: true,
+        message: 'Member role is already up to date',
+        data: member,
+      };
+    }
+
+    if (member.role === OrganizationRole.ORG_ADMIN) {
+      const adminCount = await this.countOrganizationAdmins(organizationId);
+
+      if (adminCount <= 1) {
+        throw new BadRequestException(
+          'You cannot demote the last organization admin',
+        );
+      }
+    }
+
+    member.role = dto.role;
+    await this.userOrganizationRepository.save(member);
+
+    return {
+      success: true,
+      message: 'Member role updated successfully',
+      data: member,
+    };
+  }
+
+  async removeTeamMember(
+    authUser: AuthUser,
+    organizationId: string,
+    memberUserId: string,
+  ) {
+    const foundUser = await this.userService.getUserAccountById(
+      authUser.userId,
+    );
+
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    await this.assertOrganizationAdmin(authUser.userId, organizationId);
+
+    const member = await this.userOrganizationRepository.findOne({
+      where: {
+        organization_id: organizationId,
+        user_id: Number(memberUserId),
+      },
+      relations: ['user'],
+    });
+
+    if (!member) {
+      throw new NotFoundException('Organization member not found');
+    }
+
+    if (member.user_id === authUser.userId) {
+      throw new BadRequestException(
+        'Organization admins cannot remove themselves from the workspace',
+      );
+    }
+
+    if (member.role === OrganizationRole.ORG_ADMIN) {
+      const adminCount = await this.countOrganizationAdmins(organizationId);
+
+      if (adminCount <= 1) {
+        throw new BadRequestException(
+          'You cannot remove the last organization admin',
+        );
+      }
+    }
+
+    await this.userOrganizationRepository.remove(member);
+
+    return {
+      success: true,
+      message: 'Member removed successfully',
     };
   }
 

@@ -7,15 +7,22 @@ import { AppLogger } from 'src/common/logging/app-logger';
 
 @Injectable()
 export class SupabaseStorageService implements StorageService {
-  private supabase: SupabaseClient;
-  private bucketName: string;
+  private supabase?: SupabaseClient;
+  private bucketName?: string;
+  private readonly enabled: boolean;
 
   constructor(private configService: ConfigService) {
+    this.enabled = this.configService.get<string>('STORAGE_DRIVER') === 'supabase';
+
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
     const bucketName = this.configService.get<string>('SUPABASE_BUCKET_NAME');
 
     this.bucketName = bucketName;
+
+    if (!this.enabled) {
+      return;
+    }
 
     if (!supabaseUrl || !supabaseKey || !bucketName) {
       throw new Error('Supabase URL and Key and BucketName must be provided');
@@ -36,6 +43,8 @@ export class SupabaseStorageService implements StorageService {
    */
   private async initializeBucket() {
     try {
+      this.assertEnabled();
+
       const { data: buckets } = await this.supabase.storage.listBuckets();
       const bucketExists = buckets?.some(
         (bucket) => bucket.name === this.bucketName,
@@ -68,6 +77,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async uploadFile(file: MulterFile, path: string): Promise<string> {
     try {
+      this.assertEnabled();
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .upload(path, file.buffer, {
@@ -101,6 +112,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async deleteFile(filePath: string): Promise<void> {
     try {
+      this.assertEnabled();
+
       const { error } = await this.supabase.storage
         .from(this.bucketName)
         .remove([filePath]);
@@ -128,6 +141,8 @@ export class SupabaseStorageService implements StorageService {
     expiresIn: number = 3600,
   ): Promise<string> {
     try {
+      this.assertEnabled();
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .createSignedUrl(filePath, expiresIn);
@@ -153,6 +168,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async downloadFile(filePath: string): Promise<Buffer> {
     try {
+      this.assertEnabled();
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .download(filePath);
@@ -181,6 +198,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async listFiles(path: string): Promise<any[]> {
     try {
+      this.assertEnabled();
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .list(path);
@@ -206,6 +225,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async moveFile(fromPath: string, toPath: string): Promise<void> {
     try {
+      this.assertEnabled();
+
       const { error } = await this.supabase.storage
         .from(this.bucketName)
         .move(fromPath, toPath);
@@ -247,6 +268,8 @@ export class SupabaseStorageService implements StorageService {
    */
   async getFileMetadata(filePath: string): Promise<any> {
     try {
+      this.assertEnabled();
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
         .list(filePath.split('/').slice(0, -1).join('/'), {
@@ -261,6 +284,15 @@ export class SupabaseStorageService implements StorageService {
     } catch (error) {
       throw new HttpException(
         `Failed to get file metadata: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private assertEnabled() {
+    if (!this.enabled || !this.supabase || !this.bucketName) {
+      throw new HttpException(
+        'Supabase storage is not enabled for this environment',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

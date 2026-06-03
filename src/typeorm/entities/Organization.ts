@@ -7,6 +7,8 @@ import {
   UpdateDateColumn,
   OneToMany,
   Index,
+  OneToOne,
+  JoinColumn,
 } from 'typeorm';
 import { OrganizationMenu } from './OrganizationMenu';
 import { UserOrganization } from './UserOrganization';
@@ -87,6 +89,10 @@ export class Organization {
   @Index()
   @Column({ type: 'uuid', nullable: true })
   active_subscription_id: string | null;
+
+  @OneToOne(() => Subscription, { nullable: true })
+  @JoinColumn({ name: 'active_subscription_id' })
+  activeSubscription: Subscription | null;
 
   @OneToMany(() => UserOrganization, (uo) => uo.organization)
   user_organizations: UserOrganization[];

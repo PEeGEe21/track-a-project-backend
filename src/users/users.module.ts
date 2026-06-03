@@ -32,12 +32,14 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
     JwtModule,
     MailingModule,
     ConfigModule,
+    StorageModule,
     forwardRef(() => NotificationsModule),
     TypeOrmModule.forFeature([
       User,

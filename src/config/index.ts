@@ -99,10 +99,20 @@ const envVarsSchema = joi
     PASSWORD_RECOVERY_TTL: joi.number().required().default(72),
     PASSWORD_RECOVERY_EMAIL: joi.string().email().required(),
     PASSWORD_RECOVERY_URL: joi.string().uri().required(),
-    SUPABASE_URL: joi.string().uri().required(),
-    SUPABASE_BUCKET_NAME: joi.string().required(),
-    SUPABASE_KEY: joi.string().required(),
-    SUPABASE_ANON_KEY: joi.string().required(),
+    STORAGE_DRIVER: joi.string().allow(...['supabase', 'minio']).default('supabase'),
+    SUPABASE_URL: joi.string().uri().optional(),
+    SUPABASE_BUCKET_NAME: joi.string().optional(),
+    SUPABASE_KEY: joi.string().optional(),
+    SUPABASE_ANON_KEY: joi.string().optional(),
+    S3_BUCKET_NAME: joi.string().optional(),
+    S3_ACCESS_KEY_ID: joi.string().optional(),
+    S3_SECRET_ACCESS_KEY: joi.string().optional(),
+    S3_ENDPOINT: joi.string().uri().optional(),
+    S3_PUBLIC_BASE_URL: joi.string().uri().optional(),
+    S3_REGION: joi.string().optional(),
+    S3_FORCE_PATH_STYLE: joi.string().optional(),
+    S3_BUCKET_PUBLIC_READ: joi.string().optional(),
+    S3_SIGNED_URL_TTL_SECONDS: joi.number().integer().min(60).default(3600),
     // TWILIO_ACCOUNT_SID: joi.string().required(),
     // TWILIO_AUTH_TOKEN: joi.string().required(),
     // CLOUDINARY_API_KEY: joi.string().required(),
@@ -140,6 +150,31 @@ if (envVars.QUEUE_DRIVER === 'redis' && !envVars.REDIS_ENABLED) {
   throw new Error(
     'Config validation error: QUEUE_DRIVER=redis requires REDIS_ENABLED=true',
   );
+}
+
+if (envVars.STORAGE_DRIVER === 'supabase') {
+  if (
+    !envVars.SUPABASE_URL ||
+    !envVars.SUPABASE_BUCKET_NAME ||
+    !envVars.SUPABASE_KEY ||
+    !envVars.SUPABASE_ANON_KEY
+  ) {
+    throw new Error(
+      'Config validation error: Supabase storage requires SUPABASE_URL, SUPABASE_BUCKET_NAME, SUPABASE_KEY, and SUPABASE_ANON_KEY',
+    );
+  }
+}
+
+if (envVars.STORAGE_DRIVER === 'minio') {
+  if (
+    !envVars.S3_BUCKET_NAME ||
+    !envVars.S3_ACCESS_KEY_ID ||
+    !envVars.S3_SECRET_ACCESS_KEY
+  ) {
+    throw new Error(
+      'Config validation error: MinIO storage requires S3_BUCKET_NAME, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY',
+    );
+  }
 }
 
 export const config = {
@@ -205,6 +240,18 @@ export const config = {
   frontendUrl: envVars.FRONTEND_URL,
   groupInviteUrl: envVars.GROUP_INVITE_URL,
   peerLinkMain: envVars.PEER_LINK_MAIN,
+  storage: {
+    driver: envVars.STORAGE_DRIVER,
+    supabaseUrl: envVars.SUPABASE_URL,
+    supabaseBucketName: envVars.SUPABASE_BUCKET_NAME,
+    s3BucketName: envVars.S3_BUCKET_NAME,
+    s3Endpoint: envVars.S3_ENDPOINT,
+    s3PublicBaseUrl: envVars.S3_PUBLIC_BASE_URL,
+    s3Region: envVars.S3_REGION || 'us-east-1',
+    s3ForcePathStyle: envVars.S3_FORCE_PATH_STYLE === 'true',
+    s3BucketPublicRead: envVars.S3_BUCKET_PUBLIC_READ !== 'false',
+    signedUrlTtlSeconds: envVars.S3_SIGNED_URL_TTL_SECONDS,
+  },
   redis: {
     enabled: envVars.REDIS_ENABLED,
     url: envVars.REDIS_URL,

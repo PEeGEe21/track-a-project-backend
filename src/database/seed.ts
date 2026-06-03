@@ -15,6 +15,7 @@ import { AppDataSource } from '../data-source';
 // import { seedOrganizationsAndLinks } from './seeds/organization.seed';
 import { seedUsers } from './seeds/users.seed';
 import { seedOrganizationsAndLinks } from './seeds/organization.seed';
+import { seedBillingCatalog } from './seeds/billing-catalog.seed';
 
 const runSeed = async () => {
   try {
@@ -26,6 +27,7 @@ const runSeed = async () => {
     // await seedTags(AppDataSource);
     // await seedProjects(AppDataSource);
     // await seedGlobalMenus(AppDataSource);
+    await seedBillingCatalog(AppDataSource);
     await seedOrganizationsAndLinks(AppDataSource);
     await seedUsers(AppDataSource, 10);
     // await seedNotes(AppDataSource);

@@ -1,7 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { OrganizationsService } from './services/organizations.service';
 import { OrganizationsController } from './controllers/organizations.controller';
-import { UsersService } from 'src/users/services/users.service';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { Status } from 'src/typeorm/entities/Status';
 import { Tag } from 'src/typeorm/entities/Tag';
@@ -70,6 +69,6 @@ import { Subscription } from 'src/typeorm/entities/Subscription';
     ]),
   ],
   controllers: [OrganizationsController],
-  providers: [OrganizationsService, UsersService],
+  providers: [OrganizationsService],
 })
 export class OrganizationsModule {}
