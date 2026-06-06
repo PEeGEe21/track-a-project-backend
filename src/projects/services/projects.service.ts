@@ -1748,6 +1748,280 @@ export class ProjectsService {
     };
   }
 
+  async getPublicProjectInviteCodeStatus(
+    inviteCode: string,
+    projectId: number,
+    markExpire = true,
+  ): Promise<{
+    success: boolean;
+    status: string;
+    isActive: boolean;
+    message: string;
+    email?: string;
+    inviteSource?: 'email' | 'link';
+    projectId?: number;
+  }> {
+    const invite = await this.projectPeerInviteRepository.findOne({
+      where: {
+        invite_code: inviteCode,
+        project: { id: projectId },
+      },
+      relations: ['project'],
+    });
+
+    if (!invite) {
+      return {
+        success: false,
+        status: 'invalid',
+        isActive: false,
+        message: 'Invite not found.',
+      };
+    }
+
+    const response = await this.getPeerInviteCodeStatus(inviteCode, markExpire);
+
+    return {
+      ...response,
+      email: invite.email || '',
+      inviteSource: invite.invite_source,
+      projectId: invite.project?.id,
+    };
+  }
+
+  async submitProjectInviteCodeStatus(inviteData) {
+    const { inviteCode, type, projectId } = inviteData;
+    let message = '';
+    const invite = await this.projectPeerInviteRepository.findOne({
+      where: {
+        invite_code: inviteCode,
+        project: projectId ? { id: Number(projectId) } : undefined,
+      },
+      relations: ['project'],
+    });
+
+    if (!invite) {
+      return {
+        success: false,
+        message: 'Invite not found.',
+      };
+    }
+
+    const response = await this.getPublicProjectInviteCodeStatus(
+      inviteCode,
+      invite.project.id,
+      false,
+    );
+
+    if (!response.success) {
+      return {
+        success: false,
+        message: response.message,
+      };
+    }
+
+    if (type === 'accept') {
+      const existingUser = invite.email
+        ? await this.usersService.getUserAccountByEmail(invite.email)
+        : null;
+
+      invite.status = 'accepted';
+      invite.accepted_at = new Date();
+      if (existingUser) {
+        invite.accepted_by = existingUser;
+      }
+      message = 'Invite has been Accepted';
+
+      await this.projectPeerInviteRepository.save(invite);
+
+      if (existingUser) {
+        const createSuccess = await this.createProjectPeer(
+          invite.invite_code,
+          existingUser,
+          invite.project,
+          invite.organization_id ?? invite.project.organization_id ?? null,
+        );
+
+        if (createSuccess?.success && invite.organization_id) {
+          await this.projectActivitiesService.createActivity({
+            organization_id: invite.organization_id,
+            projectId: invite.project.id,
+            userId: existingUser.id,
+            activityType: ActivityType.PEER_ADDED,
+            description: `${existingUser.fullName} peer added to project: ${
+              invite.project.title ?? ''
+            }`,
+            entityType: 'project_invite',
+            entityId: invite.project.id,
+            metadata: { projectTitle: invite.project.title ?? '' },
+          });
+        }
+      }
+    } else {
+      invite.status = 'declined';
+      message = 'Invite has been Rejected';
+      await this.projectPeerInviteRepository.save(invite);
+
+      return {
+        success: true,
+        invite_status: invite.status,
+        email: invite.email || '',
+        inviteSource: invite.invite_source,
+        projectId: invite.project.id,
+        message,
+      };
+    }
+
+    return {
+      success: true,
+      invite_status: invite.status,
+      email: invite.email || '',
+      inviteSource: invite.invite_source,
+      projectId: invite.project.id,
+      message,
+    };
+  }
+
+  async acceptProjectInviteByCode(
+    user: any,
+    inviteCode: string,
+    projectId?: number | string,
+  ) {
+    try {
+      const foundUser = await this.usersService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const invite = await this.projectPeerInviteRepository.findOne({
+        where: {
+          invite_code: inviteCode,
+          project: projectId ? { id: Number(projectId) } : undefined,
+        },
+        relations: ['project'],
+      });
+
+      if (!invite) {
+        throw new HttpException('Invite not found', HttpStatus.NOT_FOUND);
+      }
+
+      const organizationId =
+        invite.organization_id ?? invite.project?.organization_id ?? null;
+      const response = await this.getPeerInviteCodeStatus(
+        invite.invite_code,
+        true,
+        organizationId ?? undefined,
+      );
+
+      if (response.success) {
+        invite.status = 'accepted';
+        invite.accepted_at = new Date();
+        invite.accepted_by = foundUser;
+        await this.projectPeerInviteRepository.save(invite);
+
+        const createSuccess = await this.createProjectPeer(
+          invite.invite_code,
+          foundUser,
+          invite.project,
+          organizationId,
+        );
+
+        if (createSuccess?.success) {
+          if (organizationId) {
+            await this.projectActivitiesService.createActivity({
+              organization_id: organizationId,
+              projectId: invite.project.id,
+              userId: foundUser.id,
+              activityType: ActivityType.PEER_ADDED,
+              description: `${foundUser.fullName} peer added to project: ${
+                invite.project.title ?? ''
+              }`,
+              entityType: 'project_invite',
+              entityId: invite.project.id,
+              metadata: { projectTitle: invite.project.title ?? '' },
+            });
+          }
+
+          return {
+            success: true,
+            invite_status: invite.status,
+            message: 'Invite has been Accepted',
+          };
+        }
+      }
+
+      return {
+        success: false,
+        message: response?.message,
+      };
+    } catch (err) {
+      AppLogger.error('ProjectsService', 'Error accepting project invite by code');
+      throw new HttpException(
+        err?.message || 'Error accepting project invite',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async generateProjectInviteLink(
+    user: any,
+    projectId: number,
+    organizationId: string,
+  ) {
+    const foundUser = await this.usersService.getUserAccountById(user.userId);
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user'],
+    });
+
+    if (!project) {
+      throw new HttpException(
+        'Project not found in this organization',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const isOwner = project.user.id === foundUser.id;
+    const isProjectPeer = await this.projectPeerRepository.exists({
+      where: {
+        project: { id: projectId },
+        user: { id: foundUser.id },
+        organization_id: organizationId,
+      },
+    });
+
+    if (!isOwner && !isProjectPeer) {
+      throw new HttpException(
+        'You do not have permission to invite users to this project',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const inviteCode = this.usersService.generateInviteCode();
+    const inviteExpiry = addDays(new Date(), 7);
+
+    await this.projectPeerInviteRepository.save({
+      inviter_user_id: user,
+      email: null,
+      invite_source: 'link',
+      project,
+      invite_code: inviteCode,
+      status: 'pending',
+      due_date: inviteExpiry,
+      organization_id: organizationId,
+    });
+
+    return {
+      success: true,
+      inviteCode,
+      inviteLink: InviteLinks.projectInvite(inviteCode, project.id),
+      expiresAt: inviteExpiry,
+    };
+  }
+
   async getPeerInviteCodeStatus2(
     inviteCode: string,
     markExpire = true,
@@ -1813,7 +2087,7 @@ export class ProjectsService {
     inviteCode: string,
     newUser: User,
     project: Project,
-    organizationId: string,
+    organizationId: string | null,
   ) {
     try {
       const invite = await this.projectPeerInviteRepository.findOne({
@@ -1880,7 +2154,7 @@ export class ProjectsService {
       await this.notificationService.createNotification(
         newUser,
         payload,
-        organizationId,
+        organizationId ?? undefined,
       );
 
       const payload2 = {
@@ -1893,18 +2167,40 @@ export class ProjectsService {
       await this.notificationService.createNotification(
         invitedBy,
         payload2,
-        organizationId,
+        organizationId ?? undefined,
       );
 
       return {
         success: true,
       };
     } catch (err) {
+      console.log(err)
       AppLogger.error('ProjectsService', 'Error creating project peer');
       return {
         success: false,
       };
     }
+  }
+
+  async createProjectPeerFromInviteCode(inviteCode: string, newUser: User) {
+    const invite = await this.projectPeerInviteRepository.findOne({
+      where: { invite_code: inviteCode },
+      relations: ['project'],
+    });
+
+    if (!invite || !invite.project) {
+      return {
+        success: false,
+        message: 'Invalid project invite code',
+      };
+    }
+
+    return this.createProjectPeer(
+      inviteCode,
+      newUser,
+      invite.project,
+      invite.organization_id ?? invite.project.organization_id ?? null,
+    );
   }
 
   async createProjectPeer2(
@@ -2271,32 +2567,30 @@ export class ProjectsService {
   }
 
   async sendProjectInvite(
-    userId: number,
+    user: any,
     projectId: number,
     emails: any[],
     organizationId: string,
   ) {
     try {
       // Verify the inviting user exists and has access to the organization
-      const user = await this.userRepository.findOne({
-        where: { id: userId },
-        relations: ['profile'],
-      });
-
-      if (!user) {
-        throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+      const foundUser = await this.usersService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
-      const userProfile = await this.profileRepository.findOne({
-        where: { user: user },
-      });
+      // const userProfile = await this.profileRepository.findOne({
+      //   where: { user: foundUser },
+      // });
 
-      if (!userProfile) {
-        return {
-          error: 'error',
-          message: 'Your user profile not found, please update your profile',
-        };
-      }
+      // if (!userProfile) {
+      //   return {
+      //     error: 'error',
+      //     message: 'Your user profile not found, please update your profile',
+      //   };
+      // }
+
+      const userId = foundUser.id;
 
       // Verify project exists and belongs to the organization
       const project = await this.projectRepository.findOne({
@@ -2414,14 +2708,15 @@ export class ProjectsService {
 
           if (checkUserAccount) {
             // User exists and is in organization
-            peerEmail = `You just received a project invitation from ${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view the project invitation.`;
+            peerEmail = `You just received a project invitation from ${user.firstname} ${user.lastname} via the ProjexTrackr platform. Sign in to your account to view the project invitation.`;
             eventLink = InviteLinks.projectLogin();
             peerAccount = true;
 
             // Create project peer invite for existing user
             await this.projectPeerInviteRepository.save({
-              inviter_user_id: user,
+              inviter_user_id: foundUser,
               email: userEmail,
+              invite_source: 'email',
               project: project,
               invite_code: inviteCode,
               status: 'pending',
@@ -2432,7 +2727,7 @@ export class ProjectsService {
             // Create notification
             const notification = {
               title: 'Project Invitation',
-              message: `${user.profile.firstname} ${user.profile.lastname} invited you to join the project "${project.title}"`,
+              message: `${user.firstname} ${user.lastname} invited you to join the project "${project.title}"`,
               sender: user,
               recipient: checkUserAccount,
               type: NOTIFICATION_TYPES.PROJECT_PEER_REQUEST,
@@ -2445,14 +2740,15 @@ export class ProjectsService {
             );
           } else {
             // User doesn't exist - invite them to both platform and project
-            peerEmail = `You just received a project invitation and an invite to join the ProjexTrackr platform from ${user.profile.firstname} ${user.profile.lastname}. Accept the invite to onboard and view the project.`;
+            peerEmail = `You just received a project invitation and an invite to join the ProjexTrackr platform from ${user.firstname} ${user.lastname}. Accept the invite to onboard and view the project.`;
             eventLink = InviteLinks.projectInvite(inviteCode, project.id);
             peerAccount = false;
 
             // Create project peer invite for non-existing user
             await this.projectPeerInviteRepository.save({
-              inviter_user_id: user,
+              inviter_user_id: foundUser,
               email: userEmail,
+              invite_source: 'email',
               project: project,
               invite_code: inviteCode,
               status: 'pending',
@@ -2461,18 +2757,37 @@ export class ProjectsService {
             });
           }
 
-          // Send email
-          await this.MailingService.sendPeerProject(
-            userEmail,
-            user,
-            eventLink,
-            peerAccount,
-            peerEmail,
-          );
+          let emailDelivered = true;
+
+          try {
+            await this.MailingService.sendPeerProject(
+              userEmail,
+              foundUser,
+              eventLink,
+              peerAccount,
+              peerEmail,
+            );
+          } catch (mailError) {
+            emailDelivered = false;
+            AppLogger.warn(
+              'ProjectsService',
+              'Project invite created but email delivery failed',
+              {
+                email: userEmail,
+                projectId,
+                organizationId,
+                error:
+                  mailError instanceof Error
+                    ? mailError.message
+                    : 'Unknown mail error',
+              },
+            );
+          }
 
           results.push({
             email: userEmail,
             status: 'sent',
+            emailDelivered,
           });
         } catch (emailError) {
           AppLogger.error('ProjectsService', 'Error processing invite', {
@@ -2499,6 +2814,8 @@ export class ProjectsService {
         },
       };
     } catch (err) {
+
+      console.log(err)
       AppLogger.error('ProjectsService', 'Error in sendProjectInvite');
       throw new HttpException(
         err?.message || 'An error occurred while sending project invites',
@@ -2543,12 +2860,12 @@ export class ProjectsService {
 
         if (checkUserAccount) {
           const loginLink = InviteLinks.projectLogin();
-          peerEmail = `You just received a project from a peer.${user.profile.firstname} ${user.profile.lastname} via the ProjexTrackr platform. Sign in to your account to view received project. ${loginLink})`;
+          peerEmail = `You just received a project from a peer.${user.first_name} ${user.last_name} via the ProjexTrackr platform. Sign in to your account to view received project. ${loginLink})`;
           eventLink = loginLink;
           peerAccount = true;
         } else {
           const inviteLink = InviteLinks.projectInvite(inviteCode, project.id);
-          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.profile.firstname} ${user.profile.lastname}. Accept invite and onboard to the project tracking platform to view the project. ${inviteLink}`;
+          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.first_name} ${user.last_name}. Accept invite and onboard to the project tracking platform to view the project. ${inviteLink}`;
           eventLink = inviteLink;
         }
 

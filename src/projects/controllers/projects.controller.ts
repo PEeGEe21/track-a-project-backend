@@ -318,16 +318,16 @@ export class ProjectsController {
     return this.projectService.getUserProjects(id, organizationId);
   }
 
-  @Post('/invite/:userId/:projectId')
+  @Post('/invite/:projectId')
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   getTasks(
-    @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: any,
     @Param('projectId', ParseIntPipe) projectId: number,
     @Body() { emails }: { emails: string[] }, // Destructure and rename
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.projectService.sendProjectInvite(
-      userId,
+      req.user,
       projectId,
       emails,
       organizationId,

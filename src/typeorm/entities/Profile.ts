@@ -1,4 +1,10 @@
-import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { User } from './User';
 
 @Entity({ name: 'user_profiles' })
@@ -9,21 +15,6 @@ export class Profile {
   @OneToOne(() => User, (user) => user.profile)
   @JoinColumn({ name: 'user_id' })
   user: User;
-
-  @Column({
-    default: '',
-  })
-  firstname?: string;
-
-  @Column({
-    default: '',
-  })
-  lastname?: string;
-
-  @Column({
-    default: '',
-  })
-  username?: string;
 
   @Column()
   email: string;
@@ -52,5 +43,4 @@ export class Profile {
     default: 0,
   })
   profile_created: number;
-
 }

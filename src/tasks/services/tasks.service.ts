@@ -94,12 +94,23 @@ export class TasksService {
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
       console.log(task, updateTaskDetails, 'task');
-      const data: CreateTaskParams = {
-        description: updateTaskDetails.description,
-        title: updateTaskDetails.title,
-        priority: updateTaskDetails.priority,
-        due_date: updateTaskDetails.due_date,
-      };
+      const data: CreateTaskParams = {};
+
+      if (updateTaskDetails.description !== undefined) {
+        data.description = updateTaskDetails.description;
+      }
+
+      if (updateTaskDetails.title !== undefined) {
+        data.title = updateTaskDetails.title;
+      }
+
+      if (updateTaskDetails.priority !== undefined) {
+        data.priority = updateTaskDetails.priority;
+      }
+
+      if (updateTaskDetails.due_date !== undefined) {
+        data.due_date = updateTaskDetails.due_date;
+      }
 
       let statusEntity: Status | null = null;
       if (updateTaskDetails.status) {
@@ -111,6 +122,13 @@ export class TasksService {
         }
 
         data.status = statusEntity;
+      }
+
+      if (Object.keys(data).length === 0) {
+        throw new HttpException(
+          'No update values provided',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       const updatedResult = await this.taskRepository.update(

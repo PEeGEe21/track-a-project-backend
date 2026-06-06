@@ -1,14 +1,35 @@
-import { Tag } from "src/typeorm/entities/Tag";
-import { Task } from "../../typeorm/entities/Task";
-import { User } from "../../typeorm/entities/User";
-import { Project } from "src/typeorm/entities/Project";
+import { IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateStatusDto {
+  @IsString()
   title: string;
+
+  @IsString()
   description: string;
-  priority: Boolean;
-  dueDate: Date;
-  createdAt: Date;
-  project: Project;
-  tags: Tag[];
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @IsInt()
+  tabId?: number;
+}
+
+export class UpdateStatusDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @IsInt()
+  tabId?: number;
 }

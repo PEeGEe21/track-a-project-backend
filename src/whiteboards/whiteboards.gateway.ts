@@ -49,7 +49,7 @@ interface TitleUpdatePayload {
 @Injectable()
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: config.corsAllowedOrigins,
     credentials: true,
   },
   namespace: '/whiteboard',

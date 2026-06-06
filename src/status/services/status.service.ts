@@ -64,6 +64,10 @@ export class StatusService {
         project: { id: project.id },
       },
       relations: ['tasks', 'tasks.project', 'tasks.status', 'tasks.assignees'],
+      order: {
+        tabId: 'ASC',
+        id: 'ASC',
+      },
     });
 
     const statusData = statuses.map((status) => ({
@@ -71,6 +75,7 @@ export class StatusService {
       title: status.title,
       color: status.color,
       description: status.description,
+      tabId: status.tabId,
       // other status properties
       // taskhhs: status.tasks,
       // taskIds: status.tasks.map((task) => task.id),
@@ -143,9 +148,22 @@ export class StatusService {
       if (!status)
         throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
 
+      const sanitizedUpdate = Object.fromEntries(
+        Object.entries(updateStatusDetails || {}).filter(
+          ([, value]) => value !== undefined,
+        ),
+      );
+
+      if (Object.keys(sanitizedUpdate).length === 0) {
+        throw new HttpException(
+          'No update values provided',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       const updatedResult = await this.statusRepository.update(
         { id },
-        { ...updateStatusDetails },
+        sanitizedUpdate,
       );
 
       if (updatedResult.affected > 0) {
@@ -158,6 +176,7 @@ export class StatusService {
             id: updatedStatus.id,
             title: updatedStatus.title,
             description: updatedStatus.description,
+            tabId: updatedStatus.tabId,
             tasks: updatedStatus.tasks,
           },
         };
@@ -267,6 +286,7 @@ export class StatusService {
         ...CreateStatusDetails,
         color: '#008080',
         user: foundUser,
+        tabId: CreateStatusDetails.tabId ?? 0,
       };
 
       const newStatus = this.statusRepository.create(payload);

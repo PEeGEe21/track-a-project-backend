@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { CreateStatusDto } from '../dtos/create-status.dto';
+import { CreateStatusDto, UpdateStatusDto } from '../dtos/create-status.dto';
 import { StatusService } from '../services/status.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
@@ -34,7 +34,7 @@ export class StatusController {
   @Put(':id')
   updateStatusById(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateStatusDto: CreateStatusDto,
+    @Body() updateStatusDto: UpdateStatusDto,
   ) {
     return this.statusService.updateStatus(id, updateStatusDto);
   }

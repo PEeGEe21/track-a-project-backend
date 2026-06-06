@@ -12,7 +12,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { CreateTaskDto } from '../dtos/create-task.dto';
+import { CreateTaskDto, UpdateTaskDto } from '../dtos/create-task.dto';
 import { TasksService } from '../services/tasks.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
@@ -33,7 +33,7 @@ export class TasksController {
   @Put(':id')
   updateTaskById(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateTaskDto: CreateTaskDto,
+    @Body() updateTaskDto: UpdateTaskDto,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {

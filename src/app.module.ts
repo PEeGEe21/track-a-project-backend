@@ -37,6 +37,7 @@ import { Document } from './typeorm/entities/Document';
 import { Resource } from './typeorm/entities/Resource';
 import { WhiteboardsModule } from './whiteboards/whiteboards.module';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
+import { WhiteboardSnapshot } from './typeorm/entities/WhiteboardSnapshot';
 import { ProjectActivitiesModule } from './project-activities/project-activities.module';
 import { Conversation } from './typeorm/entities/Conversation';
 import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
@@ -126,6 +127,7 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
             Document,
             Resource,
             Whiteboard,
+            WhiteboardSnapshot,
             Conversation,
             ConversationParticipant,
             Message,
@@ -174,6 +176,7 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
       Document,
       Resource,
       Whiteboard,
+      WhiteboardSnapshot,
       Conversation,
       ConversationParticipant,
       Message,

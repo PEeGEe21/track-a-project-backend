@@ -5,6 +5,7 @@ import { Profile } from '../typeorm/entities/Profile';
 import { User } from '../typeorm/entities/User';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectsController } from './controllers/projects.controller';
+import { ProjectInvitesController } from './controllers/project-invites.controller';
 import { ProjectsService } from './services/projects.service';
 import { Task } from 'src/typeorm/entities/Task';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
@@ -64,7 +65,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     // forwardRef(() => CategoriesModule),
     NotificationsModule,
   ],
-  controllers: [ProjectsController],
+  controllers: [ProjectsController, ProjectInvitesController],
   providers: [
     ProjectsService,
     ProjectsGateway,

@@ -121,10 +121,10 @@ export class SeederService {
       const password = process.env.SUPER_PASSWORD ?? 'password';
 
       const adminProfile = this.profileRepo.create({
-        firstname: first_name,
-        lastname: last_name,
-        username: username,
-        email: email,
+        // firstname: first_name,
+        // lastname: last_name,
+        // username: username,
+        // email: email,
         phonenumber: '08000000000',
         country: 'Nigeria',
         state: 'FCT',
@@ -155,13 +155,13 @@ export class SeederService {
         const email = faker.internet
           .email({ firstName, lastName })
           .toLowerCase();
+        const username = faker.internet.username({ firstName, lastName });
 
         /** Create profile first */
         const profile = this.profileRepo.create({
-          firstname: firstName,
-          lastname: lastName,
-          username: faker.internet.username({ firstName, lastName }),
-          email,
+          // firstname: firstName,
+          // lastname: lastName,
+          // email,
           phonenumber: faker.phone.number(),
           country: faker.location.country(),
           state: faker.location.state(),
@@ -175,7 +175,7 @@ export class SeederService {
         const user = this.userRepo.create({
           first_name: firstName,
           last_name: lastName,
-          username: savedProfile.username,
+          username: username,
           email,
           password: await bcrypt.hash('password', 10),
           role: UserRole.MEMBER,

@@ -311,7 +311,7 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
     peerEmail: string,
   ): Promise<string> {
     const msg = {
-      subject: `${user?.profile?.firstname} ${user?.profile?.lastname} has added you as a peer`,
+      subject: `${user?.first_name} ${user?.last_name} has added you as a peer`,
       text: peerEmail,
       template: '',
       to: addPeerDto,
@@ -344,7 +344,7 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
       eventLink,
     });
     const msg = {
-      subject: `${user?.profile?.firstname} ${user?.profile?.lastname} has added you as a peer`,
+      subject: `${user?.first_name} ${user?.last_name} has added you as a peer`,
       text: peerEmail,
       template: '',
       to: inviterEmail,

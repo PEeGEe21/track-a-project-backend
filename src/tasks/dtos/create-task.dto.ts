@@ -1,14 +1,66 @@
-import { Tag } from "src/typeorm/entities/Tag";
-import { Task } from "../../typeorm/entities/Task";
-import { User } from "../../typeorm/entities/User";
-import { Project } from "src/typeorm/entities/Project";
+import { Type } from 'class-transformer';
+import {
+  IsDate,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateTaskDto {
+  @IsString()
   title: string;
+
+  @IsString()
   description: string;
-  priority: Number;
-  dueDate: Date;
-  createdAt: Date;
-  project: Project;
-  tags: Tag[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  due_date?: Date;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  status?: number;
+
+  @IsOptional()
+  @IsString()
+  assignees?: string;
+}
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  due_date?: Date;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  status?: number;
+
+  @IsOptional()
+  @IsString()
+  assignees?: string;
 }

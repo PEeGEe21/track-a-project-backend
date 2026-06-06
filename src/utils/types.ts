@@ -37,8 +37,8 @@ export type CreateProjectParams = {
 };
 
 export type CreateTaskParams = {
-  title: string;
-  description: string;
+  title?: string;
+  description?: string;
   priority?: number;
   due_date?: Date;
   project?: Project;
@@ -48,9 +48,10 @@ export type CreateTaskParams = {
 };
 
 export type CreateStatusParams = {
-  title: string;
-  description: string;
-  createdAt: Date;
+  title?: string;
+  description?: string;
+  color?: string;
+  tabId?: number;
   tasks?: Task[];
 };
 

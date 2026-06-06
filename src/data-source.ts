@@ -20,6 +20,7 @@ import { Document } from './typeorm/entities/Document';
 import { Folder } from './typeorm/entities/Folder';
 import { Resource } from './typeorm/entities/Resource';
 import { Whiteboard } from './typeorm/entities/Whiteboard';
+import { WhiteboardSnapshot } from './typeorm/entities/WhiteboardSnapshot';
 import { Conversation } from './typeorm/entities/Conversation';
 import { ConversationParticipant } from './typeorm/entities/ConversationParticipant';
 import { Message } from './typeorm/entities/Message';
@@ -70,6 +71,7 @@ export const AppDataSource = new DataSource({
     Document,
     Resource,
     Whiteboard,
+    WhiteboardSnapshot,
     Conversation,
     ConversationParticipant,
     Message,

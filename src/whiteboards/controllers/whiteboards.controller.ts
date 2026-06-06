@@ -80,6 +80,50 @@ export class WhiteboardsController {
     return { success: true, message: 'Title updated successfully' };
   }
 
+  @Get(':boardId/snapshots')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  async getSnapshots(
+    @Headers('x-organization-id') organizationId: string,
+    @Param('boardId') boardId: string,
+    @Query('limit') limit: number,
+  ) {
+    return this.whiteboardsService.getWhiteboardSnapshots(
+      boardId,
+      organizationId,
+      limit,
+    );
+  }
+
+  @Get(':boardId/timeline')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  async getTimeline(
+    @Headers('x-organization-id') organizationId: string,
+    @Param('boardId') boardId: string,
+    @Query('limit') limit: number,
+  ) {
+    return this.whiteboardsService.getWhiteboardTimeline(
+      boardId,
+      organizationId,
+      limit,
+    );
+  }
+
+  @Post(':boardId/snapshots/:snapshotId/restore')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  async restoreSnapshot(
+    @Headers('x-organization-id') organizationId: string,
+    @Param('boardId') boardId: string,
+    @Param('snapshotId') snapshotId: string,
+    @Req() req: any,
+  ) {
+    return this.whiteboardsService.restoreSnapshot(
+      boardId,
+      snapshotId,
+      organizationId,
+      req.user,
+    );
+  }
+
   @Post()
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   create(

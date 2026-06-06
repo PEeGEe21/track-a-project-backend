@@ -28,8 +28,15 @@ export class ProjectPeerInvite {
   @JoinColumn({ name: 'project_id' })
   project: Project;
 
-  @Column({ type: 'varchar' })
-  email: string;
+  @Column({ type: 'varchar', nullable: true })
+  email: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: ['email', 'link'],
+    default: 'email',
+  })
+  invite_source: 'email' | 'link';
 
   @Column({ type: 'varchar', unique: true })
   invite_code: string;

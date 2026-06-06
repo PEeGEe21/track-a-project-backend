@@ -10,6 +10,9 @@ import { UsersService } from 'src/users/services/users.service';
 import { v4 as uuidv4 } from 'uuid';
 import { WhiteboardState } from 'src/utils/types';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
+import { WhiteboardSnapshot } from 'src/typeorm/entities/WhiteboardSnapshot';
+import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
+import { ActivityType } from 'src/utils/constants/activity';
 
 @Injectable()
 export class WhiteboardsService {
@@ -22,11 +25,14 @@ export class WhiteboardsService {
 
   constructor(
     private usersService: UsersService,
+    private projectActivitiesService: ProjectActivitiesService,
 
     @InjectRepository(Project)
     private projectRepository: Repository<Project>,
     @InjectRepository(Whiteboard)
     private whiteboardRepository: Repository<Whiteboard>,
+    @InjectRepository(WhiteboardSnapshot)
+    private whiteboardSnapshotRepository: Repository<WhiteboardSnapshot>,
   ) {}
 
   async getWhiteboardState(
@@ -103,7 +109,7 @@ export class WhiteboardsService {
 
       const whiteboard = await this.whiteboardRepository.findOne({
         where: { whiteboardId },
-        relations: ['lastModifiedBy', 'user'],
+        relations: ['project', 'lastModifiedBy', 'user'],
       });
 
       if (!whiteboard) {
@@ -115,6 +121,14 @@ export class WhiteboardsService {
       whiteboard.updated_at = new Date();
 
       await this.whiteboardRepository.save(whiteboard);
+      await this.createWhiteboardActivity(whiteboard, userFound.id, {
+        description: `Renamed whiteboard to "${title || 'Whiteboard'}"`,
+        metadata: {
+          action: 'title_updated',
+          whiteboardId: whiteboard.whiteboardId,
+          title: title || 'Whiteboard',
+        },
+      });
       this.logger.log(
         `Title updated for whiteboard ${whiteboardId} to "${title}"`,
       );
@@ -164,7 +178,7 @@ export class WhiteboardsService {
         files: typeof files === 'string' ? JSON.parse(files) : files,
       };
 
-      await this.performSave(
+      const savedWhiteboard = await this.performSave(
         organizationId,
         projectId ? Number(projectId) : null,
         state,
@@ -174,9 +188,33 @@ export class WhiteboardsService {
         description,
       );
 
+      await this.createSnapshotForWhiteboard(
+        savedWhiteboard,
+        user?.userId ? Number(user.userId) : null,
+        'manual_save',
+      );
+      await this.createWhiteboardActivity(
+        savedWhiteboard,
+        user?.userId ? Number(user.userId) : null,
+        {
+          description: `Saved whiteboard snapshot for "${
+            savedWhiteboard.title || 'Whiteboard'
+          }"`,
+          metadata: {
+            action: 'snapshot_created',
+            source: 'manual_save',
+            whiteboardId: savedWhiteboard.whiteboardId,
+          },
+        },
+      );
+
       return {
         success: true,
         message: 'Whiteboard Saved Successfully',
+        data: {
+          id: savedWhiteboard.id,
+          whiteboardId: savedWhiteboard.whiteboardId,
+        },
       };
     } catch (error) {
       throw new HttpException(
@@ -201,8 +239,9 @@ export class WhiteboardsService {
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
     }
 
-    // Use '0' or userId as fallback key in your map (so NaN never appears)
-    const key = projectId ?? `user-${userId}`;
+    // Debounce per board first so multiple whiteboards in one project do not
+    // overwrite each other's pending save state.
+    const key = whiteboardId || projectId || `user-${userId}`;
     this.pendingStates.set(key, { state, userId });
 
     if (this.saveDebounceTimers.has(key)) {
@@ -236,7 +275,7 @@ export class WhiteboardsService {
     whiteboardId?: string,
     title?: string,
     description?: string,
-  ): Promise<void> {
+  ): Promise<Whiteboard> {
     try {
       const userFound = await this.usersService.getUserAccountById(
         Number(userId),
@@ -273,13 +312,20 @@ export class WhiteboardsService {
 
       if (existingWhiteboard) {
         // Update existing whiteboard
+        if (projectId) {
+          existingWhiteboard.project = { id: projectId } as Project;
+        }
+
         existingWhiteboard.elements = state.elements;
         existingWhiteboard.appState = state.appState;
         existingWhiteboard.files = state.files;
         existingWhiteboard.lastModifiedBy = userFound;
         existingWhiteboard.updated_at = new Date();
-        existingWhiteboard.title = title || 'Whiteboard';
+        existingWhiteboard.title =
+          title || existingWhiteboard.title || 'Whiteboard';
         existingWhiteboard.description = description ?? existingWhiteboard.description;
+        existingWhiteboard.organization_id =
+          existingWhiteboard.organization_id || organizationId;
 
         await this.whiteboardRepository.save(existingWhiteboard);
         this.logger.log(
@@ -287,6 +333,7 @@ export class WhiteboardsService {
             projectId ? 'project ' + projectId : 'standalone board'
           }, whiteboardId: ${existingWhiteboard.whiteboardId}`,
         );
+        return existingWhiteboard;
       } else {
         // Create new whiteboard
         const newWhiteboard = this.whiteboardRepository.create({
@@ -307,6 +354,7 @@ export class WhiteboardsService {
             projectId ? 'project ' + projectId : 'standalone board'
           }, whiteboardId: ${newWhiteboard.whiteboardId}`,
         );
+        return newWhiteboard;
       }
     } catch (error) {
       this.logger.error(
@@ -318,6 +366,190 @@ export class WhiteboardsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async getWhiteboardSnapshots(
+    boardId: string,
+    organizationId: string,
+    limit: number = 8,
+  ): Promise<any> {
+    const board = await this.whiteboardRepository.findOne({
+      where: { id: boardId, organization_id: organizationId },
+    });
+
+    if (!board) {
+      throw new HttpException('Whiteboard not found', HttpStatus.NOT_FOUND);
+    }
+
+    const snapshots = await this.whiteboardSnapshotRepository.find({
+      where: {
+        whiteboardRecordId: board.id,
+        organization_id: organizationId,
+      },
+      relations: ['createdBy'],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+
+    return {
+      success: true,
+      data: snapshots,
+    };
+  }
+
+  async restoreSnapshot(
+    boardId: string,
+    snapshotId: string,
+    organizationId: string,
+    user: any,
+  ): Promise<any> {
+    const board = await this.whiteboardRepository.findOne({
+      where: { id: boardId, organization_id: organizationId },
+      relations: ['project', 'user', 'lastModifiedBy'],
+    });
+
+    if (!board) {
+      throw new HttpException('Whiteboard not found', HttpStatus.NOT_FOUND);
+    }
+
+    const snapshot = await this.whiteboardSnapshotRepository.findOne({
+      where: {
+        id: snapshotId,
+        whiteboardRecordId: board.id,
+        organization_id: organizationId,
+      },
+    });
+
+    if (!snapshot) {
+      throw new HttpException('Snapshot not found', HttpStatus.NOT_FOUND);
+    }
+
+    const restoredBoard = await this.performSave(
+      organizationId,
+      board.project?.id ?? null,
+      {
+        elements: snapshot.elements || [],
+        appState: snapshot.appState || {},
+        files: snapshot.files || {},
+      },
+      String(user?.userId),
+      board.whiteboardId,
+      board.title,
+      board.description,
+    );
+
+    await this.createWhiteboardActivity(restoredBoard, user?.userId, {
+      description: `Restored snapshot from ${snapshot.createdAt.toISOString()}`,
+      metadata: {
+        action: 'snapshot_restored',
+        source: snapshot.source,
+        snapshotId: snapshot.id,
+        whiteboardId: restoredBoard.whiteboardId,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Snapshot restored successfully',
+      data: {
+        snapshotId: snapshot.id,
+        whiteboardId: restoredBoard.whiteboardId,
+      },
+    };
+  }
+
+  async getWhiteboardTimeline(
+    boardId: string,
+    organizationId: string,
+    limit: number = 12,
+  ): Promise<any> {
+    const board = await this.whiteboardRepository.findOne({
+      where: { id: boardId, organization_id: organizationId },
+      relations: ['project'],
+    });
+
+    if (!board) {
+      throw new HttpException('Whiteboard not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (!board.project?.id) {
+      return {
+        success: true,
+        data: [],
+      };
+    }
+
+    const activities = await this.projectActivitiesService.getProjectActivities(
+      board.project.id,
+      50,
+    );
+
+    const timeline = activities
+      .filter((activity) => activity.entityType === 'whiteboard')
+      .filter(
+        (activity) =>
+          activity.metadata?.whiteboardId === board.whiteboardId ||
+          activity.metadata?.boardId === board.id,
+      )
+      .slice(0, limit);
+
+    return {
+      success: true,
+      data: timeline,
+    };
+  }
+
+  private async createSnapshotForWhiteboard(
+    board: Whiteboard,
+    userId: number | null,
+    source: string,
+  ): Promise<WhiteboardSnapshot> {
+    const snapshot = this.whiteboardSnapshotRepository.create({
+      whiteboardRecordId: board.id,
+      whiteboardId: board.whiteboardId,
+      projectId: board.project?.id ?? null,
+      createdById: userId,
+      title: board.title || 'Whiteboard',
+      description: board.description || null,
+      thumbnail: board.thumbnail || null,
+      elements: board.elements || [],
+      appState: board.appState || {},
+      files: board.files || {},
+      source,
+      organization_id: board.organization_id,
+    });
+
+    return await this.whiteboardSnapshotRepository.save(snapshot);
+  }
+
+  private async createWhiteboardActivity(
+    board: Whiteboard,
+    userId: number | null,
+    {
+      description,
+      metadata,
+    }: {
+      description: string;
+      metadata?: Record<string, any>;
+    },
+  ): Promise<void> {
+    if (!board.project?.id || !userId || !board.organization_id) {
+      return;
+    }
+
+    await this.projectActivitiesService.createActivity({
+      organization_id: board.organization_id,
+      projectId: board.project.id,
+      userId,
+      activityType: ActivityType.PROJECT_UPDATED,
+      description,
+      entityType: 'whiteboard',
+      metadata: {
+        boardId: board.id,
+        whiteboardId: board.whiteboardId,
+        ...metadata,
+      },
+    });
   }
 
   private async performSave2(
@@ -617,6 +849,7 @@ export class WhiteboardsService {
         success: true,
       };
     } catch (error) {
+      console.log(error)
       this.logger.error('Error fetching user whiteboards:', error);
       throw new HttpException(
         error.message || 'Error fetching user whiteboards',

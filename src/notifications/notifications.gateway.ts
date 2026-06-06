@@ -16,7 +16,7 @@ import { config } from 'src/config';
 // IMPORTANT: No namespace is specified in the decorator
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: config.corsAllowedOrigins,
     credentials: true,
   },
   namespace: '/notification',

@@ -681,13 +681,16 @@ export class AuthService {
       // await this.verifyOtp(userdetails.otp, userdetails.phoneNumber);
       const user: any = await this.createUser(userdetails);
 
-      // if (userdetails?.inviteCode) {
-      //   await this.usersService.createUserPeer(userdetails?.inviteCode, user);
-      // }
+      if (userdetails?.inviteCode) {
+        await this.projectsService.createProjectPeerFromInviteCode(
+          userdetails.inviteCode,
+          user,
+        );
+      }
 
       const userprofilepayload = {
         user: user,
-        email: user.email,
+        // email: user.email,
         profile_created: 1,
         // phoneNumber: user.phoneNumber,
       };
