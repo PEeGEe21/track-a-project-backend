@@ -52,16 +52,18 @@ export class WhiteboardsController {
     );
   }
 
-  @Get()
+  @Get('state')
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   async getWhiteboardState(
     @Headers('x-organization-id') organizationId: string,
     @Query('projectId') projectId: string,
+    @Query('whiteboardId') whiteboardId: string,
     @Req() req: any,
   ) {
     return await this.whiteboardsService.getWhiteboardState(
       organizationId,
-      Number(projectId),
+      projectId ? Number(projectId) : null,
+      whiteboardId || undefined,
     );
   }
 

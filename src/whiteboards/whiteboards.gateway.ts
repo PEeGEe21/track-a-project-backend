@@ -32,6 +32,7 @@ interface WhiteboardUpdatePayload {
 
 interface CursorUpdatePayload {
   projectId: string;
+  whiteboardId?: string;
   userId: string;
   userName: string;
   pointer: { x: number; y: number };
@@ -60,7 +61,19 @@ export class WhiteboardsGateway
   server: Server;
 
   private readonly logger = new Logger(WhiteboardsGateway.name);
-  private activeUsers = new Map<string, Set<string>>(); // projectId -> Set of userIds
+  private activeUsers = new Map<string, Set<string>>(); // roomId -> Set of userIds
+
+  private getRoomId(projectId?: string, whiteboardId?: string, userId?: string) {
+    if (whiteboardId) {
+      return `whiteboard-${whiteboardId}`;
+    }
+
+    if (projectId) {
+      return `project-${projectId}`;
+    }
+
+    return `user-${userId}`;
+  }
 
   constructor(
     private readonly whiteboardsService: WhiteboardsService,
@@ -92,14 +105,14 @@ export class WhiteboardsGateway
   }
 
   async handleDisconnect(client: Socket) {
-    const { userId, projectId } = client.data;
+    const { userId, roomId } = client.data;
 
-    if (projectId && userId) {
-      const users = this.activeUsers.get(projectId);
+    if (roomId && userId) {
+      const users = this.activeUsers.get(roomId);
       if (users) {
         users.delete(userId);
         if (users.size === 0) {
-          this.activeUsers.delete(projectId);
+          this.activeUsers.delete(roomId);
         }
       }
     }
@@ -124,16 +137,15 @@ export class WhiteboardsGateway
     const { projectId, userId, userName, whiteboardId, organizationId } = data;
 
     // Create room ID
-    const roomId = projectId ? `project-${projectId}` : `user-${userId}`;
+    const roomId = this.getRoomId(projectId, whiteboardId, userId);
     await client.join(roomId);
+    client.data.roomId = roomId;
 
     // Track active users for project-based rooms
-    if (projectId) {
-      if (!this.activeUsers.has(projectId)) {
-        this.activeUsers.set(projectId, new Set());
-      }
-      this.activeUsers.get(projectId).add(userId);
+    if (!this.activeUsers.has(roomId)) {
+      this.activeUsers.set(roomId, new Set());
     }
+    this.activeUsers.get(roomId).add(userId);
 
     this.logger.log(
       `User ${userName} joined ${
@@ -148,6 +160,7 @@ export class WhiteboardsGateway
       initialState = await this.whiteboardsService.getWhiteboardState(
         organizationId,
         Number(projectId),
+        whiteboardId,
       );
     } else {
       // Standalone whiteboard (per-user)
@@ -171,7 +184,7 @@ export class WhiteboardsGateway
       client.to(roomId).emit('whiteboard:user-joined', {
         userId,
         userName,
-        activeUsers: Array.from(this.activeUsers.get(projectId)),
+        activeUsers: Array.from(this.activeUsers.get(roomId)),
       });
     }
   }
@@ -182,11 +195,12 @@ export class WhiteboardsGateway
     @MessageBody() data: { projectId: string; userId: string; organizationId: string },
   ) {
     await this.websocketRateLimiter.assertWithinLimit(client, 'whiteboard:leave');
-    const { projectId, userId, organizationId } = data;
+    const { projectId, userId } = data;
+    const roomId = client.data.roomId || this.getRoomId(projectId, undefined, userId);
 
-    await client.leave(`project-${projectId}`);
+    await client.leave(roomId);
 
-    const users = this.activeUsers.get(projectId);
+    const users = this.activeUsers.get(roomId);
     if (users) {
       users.delete(userId);
     }
@@ -194,7 +208,7 @@ export class WhiteboardsGateway
     this.logger.log(`User ${userId} left whiteboard for project ${projectId}`);
 
     // Notify other users
-    client.to(`project-${projectId}`).emit('whiteboard:user-left', {
+    client.to(roomId).emit('whiteboard:user-left', {
       userId,
       activeUsers: users ? Array.from(users) : [],
     });
@@ -215,7 +229,7 @@ export class WhiteboardsGateway
     );
     const { projectId, userId, state, whiteboardId, title, organizationId } = payload;
 
-    const roomId = projectId ? `project-${projectId}` : `user-${userId}`;
+    const roomId = this.getRoomId(projectId, whiteboardId, userId);
 
     client.to(roomId).emit('whiteboard:update', { ...state, title });
 
@@ -270,9 +284,7 @@ export class WhiteboardsGateway
     );
     const { projectId, whiteboardId, userId, title } = payload;
 
-    const roomId = projectId
-      ? `project-${projectId}`
-      : `whiteboard-${whiteboardId}`;
+    const roomId = this.getRoomId(projectId, whiteboardId, userId);
 
     await this.whiteboardsService.updateWhiteboardTitle(
       whiteboardId,
@@ -300,10 +312,12 @@ export class WhiteboardsGateway
         ttlMs: config.rateLimit.websocketBurstWindowMs,
       },
     );
-    const { projectId, userId, userName, pointer } = payload;
+    const { projectId, whiteboardId, userId, userName, pointer } = payload;
 
     // Broadcast cursor position to other users (excluding sender)
-    client.to(`project-${projectId}`).emit('whiteboard:cursor-update', {
+    const roomId = this.getRoomId(projectId, whiteboardId, userId);
+
+    client.to(roomId).emit('whiteboard:cursor-update', {
       userId,
       userName,
       pointer,

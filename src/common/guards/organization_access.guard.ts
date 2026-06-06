@@ -20,6 +20,12 @@ export class OrganizationAccessGuard implements CanActivate {
     const user = request.user;
     const orgId = request.headers['x-organization-id'];
 
+    // console.log("path:", request.path);
+    // console.log("method:", request.method);
+    // console.log("auth:", request.headers.authorization);
+    // console.log("user:", request.user);
+    // console.log("orgId:", request.headers["x-organization-id"]);
+
     if (!user) throw new ForbiddenException('No user found');
 
     // Super admin bypass

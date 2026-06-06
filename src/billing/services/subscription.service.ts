@@ -15,6 +15,7 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { PriceInterval } from 'src/utils/constants/priceIntervalEnums';
 import { ProjectStatus } from 'src/utils/constants/project';
 import { SubscriptionStatus } from 'src/utils/constants/subscriptionStatusEnums';
+import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 import { Repository } from 'typeorm';
 
 @Injectable()
@@ -38,6 +39,47 @@ export class SubscriptionService {
     @InjectRepository(Project)
     private projectRepo: Repository<Project>,
   ) {}
+
+  private mapPlanCodeToSubscriptionTier(planCode: string): SubscriptionTier {
+    switch (planCode) {
+      case 'free':
+        return SubscriptionTier.FREE;
+      case 'basic':
+        return SubscriptionTier.BASIC;
+      case 'pro':
+      case 'professional':
+        return SubscriptionTier.PROFESSIONAL;
+      case 'enterprise':
+        return SubscriptionTier.ENTERPRISE;
+      default:
+        return SubscriptionTier.FREE;
+    }
+  }
+
+  private async syncOrganizationBillingSnapshot(params: {
+    orgId: string;
+    activeSubscriptionId: string;
+    planCode: string;
+    maxUsers: number;
+    maxProjects: number;
+  }) {
+    const organization = await this.orgRepo.findOne({
+      where: { id: params.orgId },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    organization.active_subscription_id = params.activeSubscriptionId;
+    organization.subscription_tier = this.mapPlanCodeToSubscriptionTier(
+      params.planCode,
+    );
+    organization.max_users = params.maxUsers;
+    organization.max_projects = params.maxProjects;
+
+    await this.orgRepo.save(organization);
+  }
 
   async createInitialFreeSubscription(orgId: string): Promise<Subscription> {
     const freePlan = await this.planRepo.findOne({ where: { code: 'free' } });
@@ -64,9 +106,12 @@ export class SubscriptionService {
 
     const saved = await this.subscriptionRepo.save(sub);
 
-    // Link to organization
-    await this.orgRepo.update(orgId, {
-      active_subscription_id: saved.id,
+    await this.syncOrganizationBillingSnapshot({
+      orgId,
+      activeSubscriptionId: saved.id,
+      planCode: 'free',
+      maxUsers: saved.max_users,
+      maxProjects: saved.max_projects,
     });
 
     return saved;
@@ -108,7 +153,13 @@ export class SubscriptionService {
 
     const saved = await this.subscriptionRepo.save(sub);
 
-    await this.orgRepo.update(orgId, { active_subscription_id: saved.id });
+    await this.syncOrganizationBillingSnapshot({
+      orgId,
+      activeSubscriptionId: saved.id,
+      planCode,
+      maxUsers: saved.max_users,
+      maxProjects: saved.max_projects,
+    });
 
     return saved;
   }
@@ -127,8 +178,12 @@ export class SubscriptionService {
       });
 
       if (fallback) {
-        await this.orgRepo.update(orgId, {
-          active_subscription_id: fallback.id,
+        await this.syncOrganizationBillingSnapshot({
+          orgId,
+          activeSubscriptionId: fallback.id,
+          planCode: fallback.price?.plan?.code ?? 'free',
+          maxUsers: fallback.max_users,
+          maxProjects: fallback.max_projects,
         });
         return fallback;
       }
@@ -149,8 +204,12 @@ export class SubscriptionService {
       });
 
       if (fallback) {
-        await this.orgRepo.update(orgId, {
-          active_subscription_id: fallback.id,
+        await this.syncOrganizationBillingSnapshot({
+          orgId,
+          activeSubscriptionId: fallback.id,
+          planCode: fallback.price?.plan?.code ?? 'free',
+          maxUsers: fallback.max_users,
+          maxProjects: fallback.max_projects,
         });
         return fallback;
       }
@@ -167,13 +226,24 @@ export class SubscriptionService {
       });
 
       if (fallback) {
-        // Auto-fix pointer (optional – be careful in production)
-        await this.orgRepo.update(orgId, {
-          active_subscription_id: fallback.id,
+        await this.syncOrganizationBillingSnapshot({
+          orgId,
+          activeSubscriptionId: fallback.id,
+          planCode: fallback.price?.plan?.code ?? 'free',
+          maxUsers: fallback.max_users,
+          maxProjects: fallback.max_projects,
         });
         return fallback;
       }
     }
+
+    await this.syncOrganizationBillingSnapshot({
+      orgId,
+      activeSubscriptionId: sub.id,
+      planCode: sub.price?.plan?.code ?? 'free',
+      maxUsers: sub.max_users,
+      maxProjects: sub.max_projects,
+    });
 
     return sub;
   }
@@ -183,6 +253,18 @@ export class SubscriptionService {
     newPlanCode: string,
   ): Promise<Subscription> {
     const currentSub = await this.getActiveSubscription(orgId);
+
+    if (newPlanCode === 'free') {
+      const freeSub = await this.createInitialFreeSubscription(orgId);
+
+      await this.subscriptionRepo.update(currentSub.id, {
+        cancel_at_period_end: true,
+        canceled_at: new Date(),
+        status: SubscriptionStatus.CANCELED,
+      });
+
+      return freeSub;
+    }
 
     const newPlan = await this.planRepo.findOne({
       where: { code: newPlanCode },
@@ -240,8 +322,12 @@ export class SubscriptionService {
     });
 
     // Switch pointer
-    await this.orgRepo.update(orgId, {
-      active_subscription_id: savedNew.id,
+    await this.syncOrganizationBillingSnapshot({
+      orgId,
+      activeSubscriptionId: savedNew.id,
+      planCode: newPlanCode,
+      maxUsers: savedNew.max_users,
+      maxProjects: savedNew.max_projects,
     });
 
     return savedNew;

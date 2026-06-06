@@ -37,24 +37,6 @@ export class WhiteboardsService {
     try {
       let whiteboard = null;
 
-      // Try project-based lookup first (only if valid projectId)
-      // if (projectId && !isNaN(projectId)) {
-      //   this.logger.debug(`Looking up whiteboard for project ID: ${projectId}`);
-      //   whiteboard = await this.whiteboardRepository.findOne({
-      //     where: { project: { id: projectId } },
-      //   });
-      // }
-
-      // // If not found and a whiteboardId was provided, try by whiteboardId
-      // if (!whiteboard && whiteboardId) {
-      //   this.logger.debug(
-      //     `Looking up whiteboard for whiteboardId: ${whiteboardId}`,
-      //   );
-      //   whiteboard = await this.whiteboardRepository.findOne({
-      //     where: { whiteboardId },
-      //   });
-      // }
-
       // Build query with organization filter
       const qb = TenantQueryHelper.createOrganizationQuery(
         this.whiteboardRepository,
@@ -62,13 +44,18 @@ export class WhiteboardsService {
         'whiteboard',
       );
 
-      if (projectId && !isNaN(projectId)) {
-        qb.andWhere('whiteboard.project_id = :projectId', { projectId });
-        whiteboard = await qb.getOne();
-      } else if (whiteboardId) {
+      if (whiteboardId) {
         qb.andWhere('whiteboard.whiteboardId = :whiteboardId', {
           whiteboardId,
         });
+
+        if (projectId && !isNaN(projectId)) {
+          qb.andWhere('whiteboard.project_id = :projectId', { projectId });
+        }
+
+        whiteboard = await qb.getOne();
+      } else if (projectId && !isNaN(projectId)) {
+        qb.andWhere('whiteboard.project_id = :projectId', { projectId });
         whiteboard = await qb.getOne();
       }
 
@@ -145,7 +132,15 @@ export class WhiteboardsService {
 
   async create(uploadFileDto, user: any, organizationId: string): Promise<any> {
     try {
-      const { projectId, elements, appState, files, whiteboardId } =
+      const {
+        projectId,
+        elements,
+        appState,
+        files,
+        whiteboardId,
+        title,
+        description,
+      } =
         uploadFileDto;
 
       if (projectId) {
@@ -162,17 +157,21 @@ export class WhiteboardsService {
       }
 
       const state = {
-        elements,
-        appState,
-        files,
+        elements:
+          typeof elements === 'string' ? JSON.parse(elements) : elements,
+        appState:
+          typeof appState === 'string' ? JSON.parse(appState) : appState,
+        files: typeof files === 'string' ? JSON.parse(files) : files,
       };
 
       await this.performSave(
         organizationId,
-        projectId,
+        projectId ? Number(projectId) : null,
         state,
         user?.userId,
         whiteboardId,
+        title,
+        description,
       );
 
       return {
@@ -236,6 +235,7 @@ export class WhiteboardsService {
     userId: string,
     whiteboardId?: string,
     title?: string,
+    description?: string,
   ): Promise<void> {
     try {
       const userFound = await this.usersService.getUserAccountById(
@@ -255,8 +255,8 @@ export class WhiteboardsService {
         });
       }
 
-      // If not found by whiteboardId and projectId is provided, try finding by projectId
-      if (!existingWhiteboard && projectId) {
+      // Legacy fallback for flows that still save project boards without a whiteboardId.
+      if (!existingWhiteboard && projectId && !whiteboardId) {
         existingWhiteboard = await this.whiteboardRepository.findOne({
           where: { project: { id: projectId } },
           relations: ['project', 'lastModifiedBy', 'user'],
@@ -279,6 +279,7 @@ export class WhiteboardsService {
         existingWhiteboard.lastModifiedBy = userFound;
         existingWhiteboard.updated_at = new Date();
         existingWhiteboard.title = title || 'Whiteboard';
+        existingWhiteboard.description = description ?? existingWhiteboard.description;
 
         await this.whiteboardRepository.save(existingWhiteboard);
         this.logger.log(
@@ -297,6 +298,7 @@ export class WhiteboardsService {
           lastModifiedBy: userFound,
           user: userFound,
           title: title || 'Whiteboard',
+          description: description || null,
           organization_id: organizationId,
         });
         await this.whiteboardRepository.save(newWhiteboard);
@@ -422,17 +424,9 @@ export class WhiteboardsService {
     projectId?: number,
   ): Promise<void> {
     try {
-      let whiteboard;
-
-      if (projectId) {
-        whiteboard = await this.whiteboardRepository.findOne({
-          where: { project: { id: projectId } },
-        });
-      } else {
-        whiteboard = await this.whiteboardRepository.findOne({
-          where: { whiteboardId },
-        });
-      }
+      const whiteboard = await this.whiteboardRepository.findOne({
+        where: { whiteboardId },
+      });
 
       if (whiteboard) {
         whiteboard.thumbnail = thumbnail; // Make sure you have a 'thumbnail' column (LONGTEXT)

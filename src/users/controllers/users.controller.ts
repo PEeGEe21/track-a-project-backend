@@ -53,8 +53,12 @@ export class UsersController {
   }
 
   @Get('/dashboard')
-  @UseGuards(JwtAuthGuard)
-  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  @UseGuards(
+    JwtAuthGuard,
+    OrganizationAccessGuard,
+    RolesGuard,
+    SubscriptionGuard,
+  )
   getUserDashboardData(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
@@ -71,8 +75,12 @@ export class UsersController {
     return this.userService.markUserOnboardingComplete(req.user, id);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  @UseGuards(
+    JwtAuthGuard,
+    OrganizationAccessGuard,
+    RolesGuard,
+    SubscriptionGuard,
+  )
   @Post('/send-peer-invite')
   @Throttle({
     default: {
