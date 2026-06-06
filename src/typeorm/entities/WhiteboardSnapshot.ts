@@ -37,7 +37,7 @@ export class WhiteboardSnapshot {
   @JoinColumn({ name: 'created_by' })
   createdBy: User | null;
 
-  @Column({ name: 'created_by', type: 'int', nullable: true })
+  @Column({ name: 'created_by', type: 'bigint', nullable: true })
   createdById: number | null;
 
   @Column({ nullable: true })
