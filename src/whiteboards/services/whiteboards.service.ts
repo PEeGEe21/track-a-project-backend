@@ -357,6 +357,7 @@ export class WhiteboardsService {
         return newWhiteboard;
       }
     } catch (error) {
+      console.log(error, "response")
       this.logger.error(
         `Error saving whiteboard for ${projectId ?? 'standalone'}:`,
         error,

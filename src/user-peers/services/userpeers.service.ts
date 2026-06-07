@@ -259,7 +259,7 @@ export class UserpeersService {
 
       const members = await query.getMany();
 
-      console.log(members, "members")
+      // console.log(members, "members")
       const peers = members.map((uo) => {
         return {
           id: uo.user.id,
@@ -275,7 +275,7 @@ export class UserpeersService {
         };
       });
 
-      console.log(peers);
+      // console.log(peers);
 
       return {
         peers,

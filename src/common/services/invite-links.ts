@@ -10,11 +10,11 @@ export class InviteLinks {
   }
 
   static orgJoin(invitationToken: string): string {
-    return `${config.frontendUrl}/signup/join-org?invite=${invitationToken}`;
+    return `${config.frontendUrl}/auth/signup/join-org?invite=${invitationToken}`;
   }
 
   static orgSignup(invitationToken: string): string {
-    return `${config.frontendUrl}/signup?invite=${invitationToken}`;
+    return `${config.frontendUrl}/auth/signup?invite=${invitationToken}`;
   }
 
   static projectLogin(): string {
@@ -22,6 +22,6 @@ export class InviteLinks {
   }
 
   static projectInvite(inviteCode: string, projectId: string | number): string {
-    return `${config.peerLinkMain || config.frontendUrl}/peerinvites/${inviteCode}/${projectId}`;
+    return `${config.frontendUrl}/auth/project-invite/${inviteCode}/${projectId}`;
   }
 }

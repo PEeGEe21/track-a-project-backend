@@ -1568,6 +1568,7 @@ export class UsersService {
         },
       };
     } catch (err) {
+      console.log(err)
       AppLogger.error('UsersService', 'Error in getUserDashboardData');
       throw new UnauthorizedException('Could not fetch user dashboard data');
     }
@@ -1623,6 +1624,10 @@ export class UsersService {
     // Get all project IDs (owned + peer)
     const projectIds = await this.getAllUserProjectIds(userId);
 
+    if (!projectIds.length) {
+      return [];
+    }
+
     const statusCountsRaw = await this.projectRepository
       .createQueryBuilder('project')
       .select('project.status', 'status')
@@ -1648,6 +1653,10 @@ export class UsersService {
    */
   private async getTasksByProject(userId: number): Promise<any> {
     const projectIds = await this.getAllUserProjectIds(userId);
+
+    if (!projectIds.length) {
+      return [];
+    }
 
     // Get top 6 projects by task count with their statuses
     const topProjects = await this.projectRepository
@@ -1803,6 +1812,10 @@ export class UsersService {
   private async getRecentActivities(userId: number): Promise<any[]> {
     const projectIds = await this.getAllUserProjectIds(userId);
 
+    if (!projectIds.length) {
+      return [];
+    }
+
     const activities = await this.projectActivityRepository.find({
       where: { projectId: In(projectIds) },
       relations: ['user', 'project'],
@@ -1837,6 +1850,10 @@ export class UsersService {
   private async getActiveProjectsCount(userId: number): Promise<number> {
     const projectIds = await this.getAllUserProjectIds(userId);
 
+    if (!projectIds.length) {
+      return 0;
+    }
+
     return await this.projectRepository.count({
       where: {
         id: In(projectIds),
@@ -1850,6 +1867,15 @@ export class UsersService {
    */
   private async getCompletionStats(userId: number): Promise<any> {
     const projectIds = await this.getAllUserProjectIds(userId);
+
+    if (!projectIds.length) {
+      return {
+        totalTasks: 0,
+        completedTasks: 0,
+        completionRate: 0,
+        pendingTasks: 0,
+      };
+    }
 
     const totalTasks = await this.taskRepository.count({
       where: { project: { id: In(projectIds) } },
@@ -1880,6 +1906,10 @@ export class UsersService {
     const projectIds = await this.getAllUserProjectIds(userId);
     const now = new Date();
 
+    if (!projectIds.length) {
+      return 0;
+    }
+
     return await this.taskRepository
       .createQueryBuilder('task')
       .leftJoin('task.status', 'status')
@@ -1897,6 +1927,10 @@ export class UsersService {
     const now = new Date();
     const sevenDaysLater = addDays(now, 7);
 
+    if (!projectIds.length) {
+      return 0;
+    }
+
     return await this.taskRepository
       .createQueryBuilder('task')
       .leftJoin('task.status', 'status')
@@ -1913,6 +1947,10 @@ export class UsersService {
   private async getActivePeers(userId: number): Promise<number> {
     const projectIds = await this.getAllUserProjectIds(userId);
     const sevenDaysAgo = addDays(new Date(), -7);
+
+    if (!projectIds.length) {
+      return 0;
+    }
 
     const activeUserIds = await this.projectActivityRepository
       .createQueryBuilder('pa')
@@ -1957,6 +1995,10 @@ export class UsersService {
     const now = new Date();
     const thirtyDaysAgo = addDays(now, -30);
     const sixtyDaysAgo = addDays(now, -60);
+
+    if (!projectIds.length) {
+      return 0;
+    }
 
     const currentPeriod = await this.taskRepository.count({
       where: {
@@ -2064,6 +2106,21 @@ export class UsersService {
     const now = new Date();
     const sevenDaysAgo = addDays(now, -7);
 
+    if (!projectIds.length) {
+      const chartData = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = addDays(now, -i);
+        chartData.push({
+          day: moment(date).format('ddd'),
+          date: moment(date).format('YYYY-MM-DD'),
+          completed: 0,
+          created: 0,
+        });
+      }
+
+      return chartData;
+    }
+
     // Get tasks completed in last 7 days
     const completedTasksRaw = await this.taskRepository
       .createQueryBuilder('task')
@@ -2123,6 +2180,22 @@ export class UsersService {
     const now = new Date();
     const thirtyDaysAgo = addDays(now, -30);
 
+    if (!projectIds.length) {
+      const heatmapData = [];
+      for (let i = 29; i >= 0; i--) {
+        const date = addDays(now, -i);
+        heatmapData.push({
+          date: moment(date).format('YYYY-MM-DD'),
+          day: moment(date).format('ddd'),
+          dayOfWeek: moment(date).day(),
+          count: 0,
+          intensity: 0,
+        });
+      }
+
+      return heatmapData;
+    }
+
     // Get all activities grouped by date
     const activitiesRaw = await this.projectActivityRepository
       .createQueryBuilder('pa')
@@ -2178,6 +2251,10 @@ export class UsersService {
   private async getTopCollaborators(userId: number): Promise<any[]> {
     const projectIds = await this.getAllUserProjectIds(userId);
     const thirtyDaysAgo = addDays(new Date(), -30);
+
+    if (!projectIds.length) {
+      return [];
+    }
 
     // Get activity counts per user
     const collaboratorsRaw = await this.projectActivityRepository

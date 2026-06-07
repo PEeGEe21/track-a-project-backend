@@ -56,8 +56,8 @@ export class UsersController {
   @UseGuards(
     JwtAuthGuard,
     OrganizationAccessGuard,
-    RolesGuard,
-    SubscriptionGuard,
+    // RolesGuard,
+    // SubscriptionGuard,
   )
   getUserDashboardData(
     @Req() req: any,
