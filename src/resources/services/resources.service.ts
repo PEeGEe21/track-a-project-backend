@@ -37,11 +37,11 @@ export class ResourcesService {
     private projectRepository: Repository<Project>,
     @InjectRepository(Task)
     private taskRepository: Repository<Task>,
-    @InjectRepository(User)
-    private userOrgRepository: Repository<UserOrganization>,
     @InjectRepository(UserOrganization)
-    private organizationRepository: Repository<Organization>,
+    private userOrgRepository: Repository<UserOrganization>,
     @InjectRepository(Organization)
+    private organizationRepository: Repository<Organization>,
+    @InjectRepository(User)
     private userRepository: Repository<User>,
     private firebaseStorageService: FirebaseStorageService,
     @Inject('STORAGE_SERVICE')
@@ -141,9 +141,12 @@ export class ResourcesService {
   ): Promise<any> {
     const { projectId, taskId, ...resourceData } = uploadFileDto;
 
-    const organization = await this.organizationRepository.findOneBy({
-      id: organizationId,
+    console.log(organizationId, 'organizationId');
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
     });
+
+    console.log(organization, 'organization');
 
     if (!organization) {
       throw new HttpException('Organization not found', HttpStatus.BAD_REQUEST);
@@ -256,7 +259,7 @@ export class ResourcesService {
       return {
         success: true,
         message: 'Resource Saved Successfully',
-        reource: savedResource,
+        resource: savedResource,
       };
     } catch (error) {
       throw new HttpException(

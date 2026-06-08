@@ -181,7 +181,8 @@ export class ProjectsGateway
 
     this.logger.log(`Broadcasting new comment to project_$projectId`, {
       roomSize:
-        this.server.sockets.adapter.rooms.get(`project_$projectId`)?.size || 0,
+        this.server?.sockets?.adapter?.rooms?.get(`project_$projectId`)?.size ||
+        0,
     });
 
     // Ensure the payload has a consistent format

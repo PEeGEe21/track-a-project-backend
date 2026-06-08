@@ -29,8 +29,7 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 
-@UseGuards(JwtAuthGuard)
-@UseGuards(OrganizationAccessGuard, SubscriptionGuard)
+@UseGuards(JwtAuthGuard, OrganizationAccessGuard, SubscriptionGuard)
 @Controller('resources')
 export class ResourcesController {
   constructor(

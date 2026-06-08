@@ -97,6 +97,32 @@ export class ProjectsService {
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
+  private mapProjectCommentForClient(comment: any, currentUserId: number) {
+    return {
+      id: comment.id,
+      projectId: comment.projectId,
+      authorId: comment.authorId,
+      author: comment.author
+        ? {
+            id: comment.author.id,
+            first_name: comment.author.first_name,
+            last_name: comment.author.last_name,
+            email: comment.author.email,
+            avatar: comment.author.avatar,
+            username: comment.author.username,
+          }
+        : null,
+      content: comment.content,
+      fileUrl: comment.fileUrl,
+      reactions: comment.reactions || [],
+      seenBy: comment.seenBy || [],
+      mentions: comment.mentions || [],
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      is_me: comment.authorId == currentUserId,
+    };
+  }
+
   async getProjectById(id: number, user: any): Promise<any | undefined> {
     try {
       const project = await this.projectRepository.findOne({
@@ -1091,7 +1117,7 @@ export class ProjectsService {
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-      const { content, mentions } = commentData;
+      const { content, mentions, fileUrl = null } = commentData;
 
       const taggedUserIds = mentions;
 
@@ -1101,12 +1127,30 @@ export class ProjectsService {
         author: userFound,
         authorId: userFound.id,
         content,
+        fileUrl,
         mentions: taggedUserIds,
         organization_id: organizationId,
         organization,
         is_me: true,
       });
       const newSavedMessage = await this.projectCommentRepository.save(message);
+
+      const savedComment = await this.projectCommentRepository.findOne({
+        where: { id: newSavedMessage.id },
+        relations: ['author'],
+      });
+
+      if (!savedComment) {
+        throw new HttpException(
+          'Saved comment could not be reloaded',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const clientComment = this.mapProjectCommentForClient(
+        savedComment,
+        userFound.id,
+      );
 
       delete message?.author?.password;
       delete message?.author?.logged_in;
@@ -1117,7 +1161,7 @@ export class ProjectsService {
         .to(`project_${projectId}`)
         .emit('new_comment', {
           projectId,
-          comment: message,
+          comment: clientComment,
         });
 
       // console.log(
@@ -1130,62 +1174,18 @@ export class ProjectsService {
 
       // console.log(taggedUserIds, 'taggedUserIds');
 
-      // Notify tagged users
-      for (const userId of taggedUserIds) {
-        if (userId === userFound.id) continue; // skip self
-
-        const recipient = await this.usersService.getUserAccountById(userId);
-
-        // build payload
-        const notification = {
-          title: 'You were mentioned',
-          message: `You were mentioned the project ${(project?.title).toUpperCase()}'s comment`,
-          sender: userFound,
-          recipient,
-          type: NOTIFICATION_TYPES.PROJECT_COMMENT,
-        };
-
-        const savedNotification =
-          await this.notificationService.createNotification(
-            userFound,
-            notification,
-            organizationId,
-          );
-
-        this.projectGateway.server
-          .to(`user_${userId}`)
-          .emit('mention_notification', {
-            notification: savedNotification,
-            comment: message,
-          });
-      }
-
-      const payload = {
-        organization_id: organizationId,
-        projectId: project.id,
-        userId: userFound.id,
-        activityType: ActivityType.PROJECT_COMMENT,
-        description: `${userFound.fullName} sent a comment`,
-        entityType: 'comment',
-        entityId: Number(userFound.id),
-        metadata: {
-          projectCommentAuthor: newSavedMessage.author.id ?? '',
-          content_id: newSavedMessage.id ?? '',
-          content: newSavedMessage.content ?? '',
-        },
-      };
-
-      await this.projectActivitiesService.createActivity(payload);
-
-      await this.sendNewCommentPeerNotification(
+      void this.runCommentSideEffects({
+        taggedUserIds,
         userFound,
         project,
         organizationId,
-      );
+        message: clientComment,
+        newSavedMessage,
+      });
 
       return {
         success: true,
-        comment: message,
+        comment: clientComment,
       };
     } catch (err) {
       throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
@@ -1270,6 +1270,89 @@ export class ProjectsService {
     } catch (err) {}
   }
 
+  private async runCommentSideEffects({
+    taggedUserIds,
+    userFound,
+    project,
+    organizationId,
+    message,
+    newSavedMessage,
+  }: {
+    taggedUserIds: any[];
+    userFound: User;
+    project: Project;
+    organizationId: string;
+    message: any;
+    newSavedMessage: any;
+  }) {
+    try {
+      await Promise.allSettled([
+        this.notifyTaggedUsers(
+          taggedUserIds,
+          userFound,
+          project,
+          organizationId,
+          message,
+        ),
+        this.projectActivitiesService.createActivity({
+          organization_id: organizationId,
+          projectId: project.id,
+          userId: userFound.id,
+          activityType: ActivityType.PROJECT_COMMENT,
+          description: `${userFound.fullName} sent a comment`,
+          entityType: 'comment',
+          entityId: Number(userFound.id),
+          metadata: {
+            projectCommentAuthor: newSavedMessage.author.id ?? '',
+            content_id: newSavedMessage.id ?? '',
+            content: newSavedMessage.content ?? '',
+          },
+        }),
+        this.sendNewCommentPeerNotification(userFound, project, organizationId),
+      ]);
+    } catch (err) {
+      console.error('Comment side effects failed', err);
+    }
+  }
+
+  private async notifyTaggedUsers(
+    taggedUserIds: any[],
+    userFound: User,
+    project: Project,
+    organizationId: string,
+    message: any,
+  ) {
+    await Promise.all(
+      taggedUserIds.map(async (userId) => {
+        if (userId === userFound.id) return;
+
+        const recipient = await this.usersService.getUserAccountById(userId);
+
+        const notification = {
+          title: 'You were mentioned',
+          message: `You were mentioned the project ${(project?.title).toUpperCase()}'s comment`,
+          sender: userFound,
+          recipient,
+          type: NOTIFICATION_TYPES.PROJECT_COMMENT,
+        };
+
+        const savedNotification =
+          await this.notificationService.createNotification(
+            userFound,
+            notification,
+            organizationId,
+          );
+
+        this.projectGateway.server
+          .to(`user_${userId}`)
+          .emit('mention_notification', {
+            notification: savedNotification,
+            comment: message,
+          });
+      }),
+    );
+  }
+
   async getProjectComments(user: any, projectId: number) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
@@ -1293,10 +1376,9 @@ export class ProjectsService {
 
       return {
         success: true,
-        comments: comments.map((comment) => ({
-          ...comment,
-          is_me: comment.authorId == userFound.id,
-        })),
+        comments: comments.map((comment) =>
+          this.mapProjectCommentForClient(comment, userFound.id),
+        ),
       };
     } catch (err) {
       throw new HttpException(err?.message, HttpStatus.BAD_REQUEST);
