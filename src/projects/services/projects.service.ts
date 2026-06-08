@@ -4275,7 +4275,7 @@ export class ProjectsService {
     }
 
     if (type) {
-      queryBuilder.andWhere('activity.activityType', { type });
+      queryBuilder.andWhere('activity.activityType = :type', { type });
     }
 
     queryBuilder.orderBy('activity.createdAt', 'DESC');

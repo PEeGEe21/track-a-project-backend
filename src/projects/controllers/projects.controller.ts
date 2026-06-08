@@ -107,8 +107,8 @@ export class ProjectsController {
       page,
       limit,
       search,
-      type,
       projectId,
+      type,
     );
   }
 
