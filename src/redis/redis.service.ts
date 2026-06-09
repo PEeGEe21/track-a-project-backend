@@ -29,6 +29,19 @@ export class RedisService implements OnModuleDestroy, OnApplicationShutdown {
     return this.client;
   }
 
+  async getConnectedClient(): Promise<Redis | null> {
+    const client = this.getClient();
+    if (!client) {
+      return null;
+    }
+
+    if (client.status === 'wait') {
+      await client.connect();
+    }
+
+    return client;
+  }
+
   async ping(): Promise<{
     enabled: boolean;
     configured: boolean;

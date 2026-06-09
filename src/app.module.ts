@@ -70,6 +70,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler.storage';
 import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { MessageStar } from './typeorm/entities/MessageStar';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -145,6 +146,7 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
             Invoice,
             Plan,
             AuditLog,
+            MessageStar,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -194,6 +196,7 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
       Invoice,
       Plan,
       AuditLog,
+      MessageStar,
     ]),
     UsersModule,
     ProjectsModule,

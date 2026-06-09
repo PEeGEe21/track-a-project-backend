@@ -37,6 +37,7 @@ import { Plan } from './typeorm/entities/Plan';
 import { Price } from './typeorm/entities/Price';
 import { Subscription } from './typeorm/entities/Subscription';
 import { Invoice } from './typeorm/entities/Invoice';
+import { MessageStar } from './typeorm/entities/MessageStar';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -90,6 +91,7 @@ export const AppDataSource = new DataSource({
     Price,
     Subscription,
     Invoice,
+    MessageStar,
   ],
   migrationsTransactionMode: 'each',
 });

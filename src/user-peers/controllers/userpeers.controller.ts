@@ -125,6 +125,15 @@ export class UserpeersController {
     return this.userpeersService.countPendingInvites(req.user);
   }
 
+  @Get('/profile/:id')
+  getPeerProfile(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userpeersService.getPeerProfile(req.user, +id, organizationId);
+  }
+
   @Post('/invite/accept/:id')
   acceptInvite(
     @Param('id') id: string,

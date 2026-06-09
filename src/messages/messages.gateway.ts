@@ -14,6 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
 import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rate-limiter.service';
 import { config } from 'src/config';
+import { RedisService } from 'src/redis/redis.service';
 
 @WebSocketGateway({
   cors: {
@@ -29,12 +30,14 @@ export class MessagesGateway
   @WebSocketServer()
   server: Server;
 
-  private onlineUsers: Map<number, string> = new Map(); // userId -> socketId
+  private onlineUsers: Map<number, Set<string>> = new Map(); // userId -> socketIds
   private userSockets: Map<string, number> = new Map(); // socketId -> userId
   private readonly logger = new Logger(MessagesGateway.name);
+  private readonly presenceTtlSeconds = 90;
 
   constructor(
     private readonly websocketRateLimiter: WebsocketRateLimiterService,
+    private readonly redisService: RedisService,
   ) {}
 
   afterInit(server: Server) {
@@ -50,21 +53,29 @@ export class MessagesGateway
     });
   }
 
-  handleDisconnect(@ConnectedSocket() client: Socket) {
+  async handleDisconnect(@ConnectedSocket() client: Socket) {
     const userId = this.userSockets.get(client.id);
 
     if (userId) {
-      this.onlineUsers.delete(userId);
       this.userSockets.delete(client.id);
+      const currentSockets = this.onlineUsers.get(userId);
+      if (currentSockets) {
+        currentSockets.delete(client.id);
+        if (currentSockets.size === 0) {
+          this.onlineUsers.delete(userId);
+        }
+      }
 
-      this.logger.log(`User ${userId} went offline`);
+      const stillOnline = await this.unregisterPresence(userId, client.id);
 
-      // Notify others that this user went offline
-      this.server.emit('user_status_changed', {
-        userId,
-        online: false,
-        timestamp: new Date().toISOString(),
-      });
+      if (!stillOnline) {
+        this.logger.log(`User ${userId} went offline`);
+        this.server.emit('user_status_changed', {
+          userId,
+          online: false,
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     this.logger.log(`Client disconnected from messages: ${client.id}`);
@@ -89,19 +100,25 @@ export class MessagesGateway
       `User ${userId} registered for messaging with socket ${client.id}`,
     );
 
-    // Store mappings
-    this.onlineUsers.set(userId, client.id);
+    const wasOnline = await this.isUserOnline(userId);
+
+    const socketIds = this.onlineUsers.get(userId) ?? new Set<string>();
+    socketIds.add(client.id);
+    this.onlineUsers.set(userId, socketIds);
     this.userSockets.set(client.id, userId);
 
     // Join user-specific room
     client.join(`user_${userId}`);
 
-    // Notify others that this user is online
-    this.server.emit('user_status_changed', {
-      userId,
-      online: true,
-      timestamp: new Date().toISOString(),
-    });
+    await this.registerPresence(userId, client.id);
+
+    if (!wasOnline) {
+      this.server.emit('user_status_changed', {
+        userId,
+        online: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     client.emit('register_confirm', {
       status: 'registered',
@@ -110,6 +127,25 @@ export class MessagesGateway
     });
 
     return { status: 'registered', userId };
+  }
+
+  @SubscribeMessage('heartbeat')
+  async handleHeartbeat(@ConnectedSocket() client: Socket) {
+    await this.websocketRateLimiter.assertWithinLimit(client, 'heartbeat', {
+      limit: config.rateLimit.websocketBurstMax,
+      ttlMs: config.rateLimit.websocketWindowMs,
+    });
+    const userId = this.userSockets.get(client.id);
+
+    if (userId) {
+      await this.registerPresence(userId, client.id);
+    }
+
+    return {
+      status: 'ok',
+      userId: userId ?? null,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @SubscribeMessage('join_conversation')
@@ -247,11 +283,11 @@ export class MessagesGateway
 
   // Notify specific user about new conversation
   notifyNewConversation(userId: number, conversation: any) {
-    const socketId = this.onlineUsers.get(userId);
+    const socketIds = this.onlineUsers.get(userId);
 
-    if (socketId) {
+    if (socketIds?.size) {
       this.logger.log(`Notifying user ${userId} about new conversation`);
-      this.server.to(socketId).emit('new_conversation', conversation);
+      this.server.to(`user_${userId}`).emit('new_conversation', conversation);
     } else {
       this.logger.log(
         `User ${userId} is offline, cannot notify about new conversation`,
@@ -259,14 +295,55 @@ export class MessagesGateway
     }
   }
 
+  notifyReactionAdded(conversationId: string, payload: any) {
+    this.server.to(`conversation_${conversationId}`).emit('message_reaction_added', {
+      conversationId,
+      ...payload,
+    });
+  }
+
+  notifyReactionRemoved(conversationId: string, payload: any) {
+    this.server
+      .to(`conversation_${conversationId}`)
+      .emit('message_reaction_removed', {
+        conversationId,
+        ...payload,
+      });
+  }
+
   // Check if user is online
-  isUserOnline(userId: number): boolean {
-    return this.onlineUsers.has(userId);
+  async isUserOnline(userId: number): Promise<boolean> {
+    const client = await this.redisService.getConnectedClient().catch(() => null);
+    if (client) {
+      const key = this.getPresenceKey(userId);
+      const count = await client.scard(key).catch(() => 0);
+      return count > 0;
+    }
+
+    return (this.onlineUsers.get(userId)?.size ?? 0) > 0;
   }
 
   // Get all online users
-  getOnlineUsers(): number[] {
-    return Array.from(this.onlineUsers.keys());
+  async getOnlineStatusMap(userIds: number[]): Promise<Map<number, boolean>> {
+    const statusMap = new Map<number, boolean>();
+    const uniqueIds = [...new Set(userIds)];
+    const client = await this.redisService.getConnectedClient().catch(() => null);
+
+    if (client) {
+      await Promise.all(
+        uniqueIds.map(async (userId) => {
+          const count = await client.scard(this.getPresenceKey(userId)).catch(() => 0);
+          statusMap.set(userId, count > 0);
+        }),
+      );
+      return statusMap;
+    }
+
+    uniqueIds.forEach((userId) => {
+      statusMap.set(userId, (this.onlineUsers.get(userId)?.size ?? 0) > 0);
+    });
+
+    return statusMap;
   }
 
   // messages.gateway.ts – add typing broadcast to the *sender* as well (so UI can show own typing)
@@ -286,5 +363,38 @@ export class MessagesGateway
       userId,
       isTyping: true,
     });
+  }
+
+  private getPresenceKey(userId: number) {
+    return `${config.redis.prefix}:chat:presence:user:${userId}:sockets`;
+  }
+
+  private async registerPresence(userId: number, socketId: string) {
+    const client = await this.redisService.getConnectedClient().catch(() => null);
+    if (!client) {
+      return;
+    }
+
+    const key = this.getPresenceKey(userId);
+    await client.sadd(key, socketId);
+    await client.expire(key, this.presenceTtlSeconds);
+  }
+
+  private async unregisterPresence(userId: number, socketId: string) {
+    const client = await this.redisService.getConnectedClient().catch(() => null);
+    if (!client) {
+      return (this.onlineUsers.get(userId)?.size ?? 0) > 0;
+    }
+
+    const key = this.getPresenceKey(userId);
+    await client.srem(key, socketId);
+    const remainingConnections = await client.scard(key);
+    if (remainingConnections === 0) {
+      await client.del(key);
+      return false;
+    }
+
+    await client.expire(key, this.presenceTtlSeconds);
+    return true;
   }
 }

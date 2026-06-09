@@ -30,10 +30,12 @@ import { Message } from 'src/typeorm/entities/Message';
 import { ConversationParticipant } from 'src/typeorm/entities/ConversationParticipant';
 import { MessageReaction } from 'src/typeorm/entities/MessageReaction';
 import { MessageReadReceipt } from 'src/typeorm/entities/MessageReadReceipt';
+import { MessageStar } from 'src/typeorm/entities/MessageStar';
 import { MessagesGateway } from './messages.gateway';
 import { ProjectsGateway } from 'src/projects/projects.gateway';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -42,6 +44,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     MailingModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
+    StorageModule,
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -64,6 +67,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
       ConversationParticipant,
       MessageReaction,
       MessageReadReceipt,
+      MessageStar,
       UserOrganization,
       Organization
     ]),

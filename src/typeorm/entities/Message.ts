@@ -14,11 +14,13 @@ import { User } from './User';
 import { Conversation } from './Conversation';
 import { MessageReaction } from './MessageReaction';
 import { MessageReadReceipt } from './MessageReadReceipt';
+import { MessageStar } from './MessageStar';
 import { Organization } from './Organization';
 
 @Entity({ name: 'messages' })
 @Index(['conversationId', 'created_at'])
 @Index(['senderId'])
+@Index(['senderId', 'clientMessageId'], { unique: true })
 export class Message {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -43,6 +45,9 @@ export class Message {
 
   @Column({ type: 'text', nullable: true })
   content: string;
+
+  @Column({ name: 'client_message_id', type: 'varchar', length: 64, nullable: true })
+  clientMessageId: string | null;
 
   @Column({ nullable: true })
   fileUrl: string;
@@ -76,6 +81,9 @@ export class Message {
 
   @OneToMany(() => MessageReadReceipt, (receipt) => receipt.message)
   readReceipts: MessageReadReceipt[];
+
+  @OneToMany(() => MessageStar, (star) => star.message)
+  stars: MessageStar[];
 
   @Column({ type: 'uuid', nullable: true })
   organization_id: string | null;

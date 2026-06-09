@@ -24,8 +24,8 @@ export class UserpeersService {
     private userPeerInvitesRepository: Repository<UserPeerInvite>,
     @InjectRepository(UserOrganization)
     private userOrganizationRepository: Repository<UserOrganization>,
-    // @InjectRepository(ProjectPeer)
-    // private projectPeerRepository: Repository<ProjectPeer>,
+    @InjectRepository(Project)
+    private projectRepository: Repository<Project>,
     private userService: UsersService,
   ) {}
 
@@ -285,6 +285,169 @@ export class UserpeersService {
       console.error('Error fetching organization peers:', error);
       throw new HttpException(
         'An error occurred while fetching organization members',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getPeerProfile(
+    user: any,
+    peerUserId: number,
+    organizationId: string,
+  ): Promise<any> {
+    try {
+      const foundUser = await this.userService.getUserAccountById(user.userId);
+      if (!foundUser) {
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      }
+
+      const currentUserId = foundUser.id;
+
+      const currentMembership = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: currentUserId,
+          organization_id: organizationId,
+          is_active: true,
+        },
+      });
+
+      if (!currentMembership) {
+        throw new HttpException(
+          'You are not a member of this organization',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const peerMembership = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: peerUserId,
+          organization_id: organizationId,
+          is_active: true,
+        },
+        relations: ['user'],
+      });
+
+      if (!peerMembership?.user) {
+        throw new HttpException('Peer not found', HttpStatus.NOT_FOUND);
+      }
+
+      const peerProfile = await this.userService.getUserSettings(peerUserId);
+      const profile = peerProfile?.profile ?? null;
+      const peerUser = peerMembership.user;
+
+      const sharedProjects = await this.projectRepository
+        .createQueryBuilder('project')
+        .where('project.organization_id = :organizationId', { organizationId })
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where(
+              `project.user_id = :currentUserId AND EXISTS (
+                SELECT 1
+                FROM project_peers peer_match
+                WHERE peer_match.project_id = project.id
+                  AND peer_match.user_id = :peerUserId
+                  AND peer_match.organization_id = :organizationId
+                  AND peer_match.status = :peerStatus
+                  AND peer_match.is_confirmed = true
+              )`,
+              {
+                currentUserId,
+                peerUserId,
+                organizationId,
+                peerStatus: ProjectPeerStatus.CONNECTED,
+              },
+            )
+              .orWhere(
+                `project.user_id = :peerUserId AND EXISTS (
+                  SELECT 1
+                  FROM project_peers current_match
+                  WHERE current_match.project_id = project.id
+                    AND current_match.user_id = :currentUserId
+                    AND current_match.organization_id = :organizationId
+                    AND current_match.status = :peerStatus
+                    AND current_match.is_confirmed = true
+                )`,
+                {
+                  currentUserId,
+                  peerUserId,
+                  organizationId,
+                  peerStatus: ProjectPeerStatus.CONNECTED,
+                },
+              )
+              .orWhere(
+                `EXISTS (
+                  SELECT 1
+                  FROM project_peers current_match
+                  WHERE current_match.project_id = project.id
+                    AND current_match.user_id = :currentUserId
+                    AND current_match.organization_id = :organizationId
+                    AND current_match.status = :peerStatus
+                    AND current_match.is_confirmed = true
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM project_peers peer_match
+                  WHERE peer_match.project_id = project.id
+                    AND peer_match.user_id = :peerUserId
+                    AND peer_match.organization_id = :organizationId
+                    AND peer_match.status = :peerStatus
+                    AND peer_match.is_confirmed = true
+                )`,
+                {
+                  currentUserId,
+                  peerUserId,
+                  organizationId,
+                  peerStatus: ProjectPeerStatus.CONNECTED,
+                },
+              );
+          }),
+        )
+        .orderBy('project.updated_at', 'DESC')
+        .getMany();
+
+      return {
+        success: true,
+        message: 'success',
+        data: {
+          peer: {
+            id: peerUser.id,
+            full_name: peerUser.fullName,
+            first_name: peerUser.first_name,
+            last_name: peerUser.last_name,
+            email: peerUser.email,
+            username: peerUser.username,
+            avatar: peerUser.avatar,
+            role: peerMembership.role,
+            member_since: peerMembership.created_at,
+          },
+          about: {
+            email: peerUser.email,
+            phoneNumber: profile?.phonenumber || null,
+            country: profile?.country || null,
+            state: profile?.state || null,
+            address: profile?.address || null,
+            role: peerMembership.role,
+            username: peerUser.username || null,
+          },
+          sharedProjects: sharedProjects.map((project) => ({
+            id: project.id,
+            title: project.title,
+            description: project.description,
+            status: project.status,
+            color: project.color,
+            icon: project.icon,
+            updatedAt: project.updated_at,
+          })),
+        },
+      };
+    } catch (error) {
+      console.error('Error fetching peer profile:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        'An error occurred while fetching peer profile',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

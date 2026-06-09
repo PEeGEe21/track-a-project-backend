@@ -48,8 +48,32 @@ export class ConversationParticipant {
   @Column({ default: false })
   isMuted: boolean;
 
+  @Column({ default: false })
+  isPinned: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  pinnedAt: Date;
+
+  @Column({ default: false })
+  isArchived: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  archivedAt: Date;
+
+  @Column({ default: false })
+  isDeleted: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deletedAt: Date;
+
   @Column({ type: 'timestamp', nullable: true })
   lastReadAt: Date; // Track read status per participant
+
+  @Column({ type: 'uuid', nullable: true })
+  lastReadMessageId: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  draft: string | null;
 
   @Column({ default: true })
   isActive: boolean; // false if user left the group
