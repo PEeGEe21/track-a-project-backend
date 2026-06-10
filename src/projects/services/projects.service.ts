@@ -642,14 +642,30 @@ export class ProjectsService {
       }
 
       // Get tasks with organization filtering
-      const tasks = await this.taskRepository.find({
-        where: {
-          project: { id: project.id },
-          organization_id: organizationId,
-        },
-        relations: ['tags', 'project', 'status', 'assignees'],
-        order: { created_at: 'DESC' },
-      });
+      // const tasks = await this.taskRepository.find({
+      //   where: {
+      //     project: { id: project.id },
+      //     organization_id: organizationId,
+      //   },
+      //   relations: ['tags', 'project', 'status', 'assignees', 'resources'],
+      //   order: { created_at: 'DESC' },
+      // });
+
+      const tasks = await this.taskRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.tags', 'tags')
+        .leftJoinAndSelect('task.project', 'project')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignees')
+        .leftJoinAndSelect(
+          'task.resources',
+          'resources',
+          'resources.task IS NOT NULL', // ← explicitly exclude project-level resources
+        )
+        .where('task.project_id = :projectId', { projectId: project.id })
+        .andWhere('task.organization_id = :organizationId', { organizationId })
+        .orderBy('task.created_at', 'DESC')
+        .getMany();
 
       return {
         success: 'success',
@@ -1569,7 +1585,10 @@ export class ProjectsService {
         success: true,
       };
     } catch (error) {
-      AppLogger.error('ProjectsService', 'Error fetching project peers invites');
+      AppLogger.error(
+        'ProjectsService',
+        'Error fetching project peers invites',
+      );
       throw new HttpException(
         'An Error Occurred While Fetching Project Peer Invites',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2036,7 +2055,10 @@ export class ProjectsService {
         message: response?.message,
       };
     } catch (err) {
-      AppLogger.error('ProjectsService', 'Error accepting project invite by code');
+      AppLogger.error(
+        'ProjectsService',
+        'Error accepting project invite by code',
+      );
       throw new HttpException(
         err?.message || 'Error accepting project invite',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -2256,7 +2278,7 @@ export class ProjectsService {
         success: true,
       };
     } catch (err) {
-      console.log(err)
+      console.log(err);
       AppLogger.error('ProjectsService', 'Error creating project peer');
       return {
         success: false,
@@ -2896,8 +2918,7 @@ export class ProjectsService {
         },
       };
     } catch (err) {
-
-      console.log(err)
+      console.log(err);
       AppLogger.error('ProjectsService', 'Error in sendProjectInvite');
       throw new HttpException(
         err?.message || 'An error occurred while sending project invites',

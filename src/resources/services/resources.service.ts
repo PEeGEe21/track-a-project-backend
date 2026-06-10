@@ -232,6 +232,8 @@ export class ResourcesService {
       const resource = this.resourceRepository.create({
         ...resourceData,
         type: resourceData.type || 'file',
+        mime_type: resourceData.mime_type ?? null,
+        url: fileUrl,
         file_path: fileUrl,
         ...previewData,
         project,

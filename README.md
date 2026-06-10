@@ -203,3 +203,6 @@ Run them with:
 ```bash
 npm run test:smoke
 ```
+
+## creating a migration
+npm run migration:create -- src/migrations/add_mime_type_to_resources_table

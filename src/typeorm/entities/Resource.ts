@@ -27,6 +27,9 @@ export class Resource {
   url?: string;
 
   @Column({ nullable: true })
+  mime_type?: string;
+
+  @Column({ nullable: true })
   file_path?: string;
 
   @Column({ type: 'bigint', nullable: true })

@@ -31,7 +31,7 @@ export class Project {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ type: 'longtext', nullable: true })
   description: string;
 
   @ManyToMany(() => Tag)

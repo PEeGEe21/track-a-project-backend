@@ -27,7 +27,7 @@ export class Task {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ type: 'longtext', nullable: true })
   description: string;
 
   @Column({
@@ -78,7 +78,7 @@ export class Task {
   })
   assignees?: User[];
 
-  @OneToMany(() => Resource, (resource) => resource.project)
+  @OneToMany(() => Resource, (resource) => resource.task)
   resources: Resource[];
 
   @Column({ type: 'uuid', nullable: true })

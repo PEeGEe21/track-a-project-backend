@@ -14,6 +14,10 @@ export class UploadFileDto {
   description?: string;
 
   @IsString()
+  @IsOptional()
+  mime_type?: string;
+
+  @IsString()
   projectId: string;
 
   @IsString()

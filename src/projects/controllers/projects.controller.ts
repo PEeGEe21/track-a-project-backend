@@ -210,9 +210,7 @@ export class ProjectsController {
   }
 
   @Get('/user-comments')
-  getProjectsForUser(
-    @Req() req: any,
-  ) {
+  getProjectsForUser(@Req() req: any) {
     return this.projectService.getProjectsForUser(req.user);
   }
 
@@ -281,10 +279,7 @@ export class ProjectsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProjectDto: CreateProjectDto,
   ) {
-    return this.projectService.updateProject(
-      id,
-      updateProjectDto,
-    );
+    return this.projectService.updateProject(id, updateProjectDto);
   }
 
   // @Get(':userId/projects/:projectId')
