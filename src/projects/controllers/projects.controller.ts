@@ -11,6 +11,7 @@ import {
   UseGuards,
   Req,
   Headers,
+  Res,
 } from '@nestjs/common';
 import { ProjectsService } from '../services/projects.service';
 import { CreateProjectDto } from '../dtos/create-project.dto';
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
+import { Response } from 'express';
 
 @UseGuards(JwtAuthGuard)
 @Controller('projects')
@@ -190,6 +192,28 @@ export class ProjectsController {
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.projectService.getProjectById(id, req.user);
+  }
+
+  @Get(':id/export')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  async exportProject(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+    @Res() res: Response,
+  ) {
+    const exportFile = await this.projectService.exportProjectWorkbook(
+      id,
+      req.user,
+      organizationId,
+    );
+
+    res.setHeader('Content-Type', exportFile.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${exportFile.filename}"`,
+    );
+    res.send(exportFile.content);
   }
 
   @Get('/:projectId/comments')

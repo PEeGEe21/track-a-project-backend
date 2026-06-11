@@ -47,6 +47,7 @@ import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
+import ExcelJS from 'exceljs';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -57,6 +58,12 @@ function extractMentions(message: string): string[] {
     mentions.push(match[1]); // username without @
   }
   return mentions;
+}
+
+function toPlainText(value?: string | null): string {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 @Injectable()
@@ -443,6 +450,174 @@ export class ProjectsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async exportProjectWorkbook(
+    id: number,
+    user: any,
+    organizationId: string,
+  ): Promise<{ filename: string; content: Buffer; mimeType: string }> {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id, organization_id: organizationId },
+      relations: [
+        'user',
+        'tasks',
+        'tasks.status',
+        'tasks.assignees',
+        'tasks.resources',
+        'projectPeers',
+        'projectPeers.user',
+        'resources',
+        'resources.task',
+      ],
+    });
+
+    if (!project) {
+      throw new HttpException('Project not found', HttpStatus.NOT_FOUND);
+    }
+
+    const participants = [
+      {
+        id: project.user?.id,
+        first_name: project.user?.first_name,
+        last_name: project.user?.last_name,
+        email: project.user?.email,
+        roleLabel: 'Owner',
+        joinedAt: project.created_at,
+      },
+      ...(project.projectPeers ?? []).map((peer) => ({
+        id: peer.user?.id,
+        first_name: peer.user?.first_name,
+        last_name: peer.user?.last_name,
+        email: peer.user?.email,
+        roleLabel: 'Collaborator',
+        joinedAt: peer.created_at,
+      })),
+    ].filter((participant) => participant.id);
+
+    const uniqueParticipants = Array.from(
+      new Map(participants.map((participant) => [participant.id, participant])).values(),
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ProjexPlanr';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+    workbook.company = 'ProjexPlanr';
+
+    const addSheet = (name: string, rows: Array<Array<string | number | Date>>) => {
+      const worksheet = workbook.addWorksheet(name);
+      rows.forEach((row) => worksheet.addRow(row));
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFEAF2F8' },
+      };
+      headerRow.alignment = { vertical: 'middle' };
+
+      worksheet.columns.forEach((column) => {
+        let maxLength = 12;
+        column.eachCell?.({ includeEmpty: true }, (cell) => {
+          const cellValue = cell.value == null ? '' : String(cell.value);
+          maxLength = Math.max(maxLength, Math.min(cellValue.length + 2, 48));
+        });
+        column.width = maxLength;
+      });
+
+      return worksheet;
+    };
+
+    addSheet('Project Overview', [
+      ['Field', 'Value'],
+      ['Title', project.title],
+      ['Description', toPlainText(project.description)],
+      ['Status', project.status],
+      ['Due Date', project.due_date ?? ''],
+      ['Owner', `${project.user?.first_name ?? ''} ${project.user?.last_name ?? ''}`.trim()],
+      ['Owner Email', project.user?.email ?? ''],
+      ['Tasks Count', project.tasks?.length ?? 0],
+      [
+        'Resources Count',
+        (project.resources ?? []).filter((resource) => !resource.task).length,
+      ],
+      ['Team Count', uniqueParticipants.length],
+      ['Created At', project.created_at ?? ''],
+      ['Updated At', project.updated_at ?? ''],
+    ]);
+
+    addSheet('Tasks', [
+      [
+        'Title',
+        'Description',
+        'Status',
+        'Priority',
+        'Due Date',
+        'Assignees',
+        'Created At',
+        'Updated At',
+        'Attachment Count',
+      ],
+      ...(project.tasks ?? []).map((task) => [
+        task.title ?? '',
+        toPlainText(task.description),
+        task.status?.title ?? '',
+        Number(task.priority) === 1 ? 'High' : 'Normal',
+        task.due_date ?? '',
+        (task.assignees ?? [])
+          .map(
+            (assignee) =>
+              `${assignee.first_name ?? ''} ${assignee.last_name ?? ''}`.trim() ||
+              assignee.email,
+          )
+          .join(', '),
+        task.created_at ?? '',
+        task.updated_at ?? '',
+        task.resources?.length ?? 0,
+      ]),
+    ]);
+
+    addSheet('Resources', [
+      ['Title', 'Type', 'Description', 'URL', 'Task', 'File Size', 'Created At'],
+      ...((project.resources ?? []).map((resource) => [
+        resource.title ?? '',
+        resource.type ?? '',
+        toPlainText(resource.description),
+        resource.url ?? '',
+        resource.task?.title ?? '',
+        resource.file_size ?? '',
+        resource.createdAt ?? '',
+      ]) ?? []),
+    ]);
+
+    addSheet('Team', [
+      ['Name', 'Email', 'Role', 'Joined At'],
+      ...uniqueParticipants.map((participant) => [
+        `${participant.first_name ?? ''} ${participant.last_name ?? ''}`.trim(),
+        participant.email ?? '',
+        participant.roleLabel,
+        participant.joinedAt ?? '',
+      ]),
+    ]);
+
+    const safeTitle = (project.title || `project-${project.id}`)
+      .replace(/[^a-z0-9_-]+/gi, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase();
+
+    return {
+      filename: `${safeTitle || `project-${project.id}`}-export.xlsx`,
+      content: Buffer.from(await workbook.xlsx.writeBuffer()),
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
   }
 
   async getProjectsPeer(
