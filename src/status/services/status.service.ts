@@ -270,8 +270,20 @@ export class StatusService {
           HttpStatus.BAD_REQUEST,
         );
 
+      let existingProject = null;
+
+      if (CreateStatusDetails.projectId) {
+        existingProject = await this.projectRepository.findOne({
+          where: { id: CreateStatusDetails.projectId },
+        });
+      }
+
       const existingStatus = await this.statusRepository.findOne({
-        where: { title: CreateStatusDetails.title, user: foundUser },
+        where: {
+          title: CreateStatusDetails.title,
+          user: foundUser,
+          project: existingProject,
+        },
       });
       if (existingStatus) {
         const res = {
@@ -286,6 +298,7 @@ export class StatusService {
         ...CreateStatusDetails,
         color: '#008080',
         user: foundUser,
+        project: existingProject,
         tabId: CreateStatusDetails.tabId ?? 0,
       };
 

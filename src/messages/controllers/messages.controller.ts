@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   Headers,
@@ -35,6 +36,15 @@ export class MessagesController {
     return this.messagesService.getUserConversations(req.user, organizationId);
   }
 
+  @Get('search')
+  search(
+    @Req() req,
+    @Query('q') query: string,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.messagesService.search(req.user, organizationId, query);
+  }
+
   @Post('conversations')
   startConversation(
     @Req() req,
@@ -53,11 +63,19 @@ export class MessagesController {
     @Req() req,
     @Param('id') id: string,
     @Headers('x-organization-id') organizationId: string,
+    @Query('beforeId') beforeId: string | undefined,
+    @Query('beforeCreatedAt') beforeCreatedAt: string | undefined,
+    @Query('limit') limit: string | undefined,
   ) {
     return this.messagesService.getConversationMessages(
       req.user,
       id,
       organizationId,
+      {
+        beforeId,
+        beforeCreatedAt,
+        limit,
+      },
     );
   }
 

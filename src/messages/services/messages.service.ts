@@ -153,6 +153,152 @@ export class MessagesService {
     }
   }
 
+  async search(user: any, organizationId: string, rawQuery?: string) {
+    const normalizedQuery = rawQuery?.trim();
+
+    if (!normalizedQuery || normalizedQuery.length < 2) {
+      return {
+        success: true,
+        message: 'success',
+        data: {
+          conversations: [],
+          messages: [],
+        },
+      };
+    }
+
+    const loweredQuery = normalizedQuery.toLowerCase();
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const userOrg = await this.userOrganizationRepository.findOne({
+      where: {
+        user_id: userFound.id,
+        organization_id: organizationId,
+        is_active: true,
+      },
+    });
+
+    if (!userOrg) {
+      throw new HttpException(
+        'You are not a member of this organization',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const participantRows = await this.participantRepository.find({
+      where: {
+        userId: Number(userFound.id),
+        isActive: true,
+        isDeleted: false,
+        organization_id: organizationId,
+      },
+      select: ['conversationId'],
+    });
+
+    const conversationIds = participantRows.map(
+      (participant) => participant.conversationId,
+    );
+
+    if (conversationIds.length === 0) {
+      return {
+        success: true,
+        message: 'success',
+        data: {
+          conversations: [],
+          messages: [],
+        },
+      };
+    }
+
+    const conversations = await this.conversationRepository.find({
+      where: {
+        id: In(conversationIds),
+        organization_id: organizationId,
+      },
+      order: { lastMessageAt: 'DESC' },
+    });
+
+    const conversationResponse = await this.buildConversationResponse(
+      conversations,
+      Number(userFound.id),
+      organizationId,
+    );
+
+    const matchedConversations = conversationResponse.data
+      .filter((conversation) => {
+        const searchableParts = [
+          conversation.name,
+          conversation.peer?.username,
+          conversation.peer?.email,
+          conversation.lastMessage?.content,
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+
+        return searchableParts.some((value) => value.includes(loweredQuery));
+      })
+      .slice(0, 8);
+
+    const conversationMap = new Map(
+      conversationResponse.data.map((conversation) => [
+        conversation.id,
+        conversation,
+      ]),
+    );
+
+    const matchedMessages = await this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .where('message.conversationId IN (:...conversationIds)', {
+        conversationIds,
+      })
+      .andWhere('message.organization_id = :organizationId', { organizationId })
+      .andWhere('message.isDeleted = false')
+      .andWhere('message.content IS NOT NULL')
+      .andWhere('LOWER(message.content) LIKE :query', {
+        query: `%${loweredQuery}%`,
+      })
+      .orderBy('message.created_at', 'DESC')
+      .take(12)
+      .getMany();
+
+    return {
+      success: true,
+      message: 'success',
+      data: {
+        conversations: matchedConversations,
+        messages: matchedMessages.map((message) => {
+          const conversation = conversationMap.get(message.conversationId);
+          return {
+            id: message.id,
+            conversationId: message.conversationId,
+            conversationName: conversation?.name ?? 'Conversation',
+            conversationAvatar: conversation?.avatar ?? '',
+            content: message.content ?? '',
+            snippet: this.buildSearchSnippet(
+              message.content ?? '',
+              normalizedQuery,
+            ),
+            createdAt: message.created_at,
+            time: this.formatTime(message.created_at),
+            senderId: Number(message.senderId),
+            senderName:
+              message.sender?.fullName ||
+              `${message.sender?.first_name || ''} ${
+                message.sender?.last_name || ''
+              }`.trim() ||
+              message.sender?.username ||
+              'Unknown User',
+            isMine: Number(message.senderId) === Number(userFound.id),
+          };
+        }),
+      },
+    };
+  }
+
   /**
    * Build conversation response with organization context
    */
@@ -175,7 +321,8 @@ export class MessagesService {
     // Get unique user IDs and load users
     const userIds = [...new Set(participants.map((p) => Number(p.userId)))];
     const users = await this.usersService.getUsersByIds(userIds);
-    const onlineStatusMap = await this.messagesGateway.getOnlineStatusMap(userIds);
+    const onlineStatusMap =
+      await this.messagesGateway.getOnlineStatusMap(userIds);
 
     // Create a map for quick user lookup
     const userMap = new Map(users.map((u) => [Number(u.id), u]));
@@ -414,7 +561,8 @@ export class MessagesService {
         deletedConversationParticipant.archivedAt = null;
         await this.participantRepository.save(deletedConversationParticipant);
 
-        const restoredConversation = deletedConversationParticipant.conversation;
+        const restoredConversation =
+          deletedConversationParticipant.conversation;
         const restoredResponse = await this.buildConversationResponse(
           [restoredConversation],
           userId,
@@ -590,6 +738,11 @@ export class MessagesService {
     user: any,
     conversationId: string,
     organizationId: string,
+    options?: {
+      beforeId?: string;
+      beforeCreatedAt?: string;
+      limit?: string | number;
+    },
   ) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
@@ -629,8 +782,13 @@ export class MessagesService {
         );
       }
 
-      // Get messages with organization filter
-      const rawMessages = await this.messageRepository
+      const parsedLimit = Number(options?.limit);
+      const limit =
+        Number.isFinite(parsedLimit) && parsedLimit > 0
+          ? Math.min(parsedLimit, 50)
+          : 30;
+
+      const query = this.messageRepository
         .createQueryBuilder('message')
         .leftJoinAndSelect('message.sender', 'sender')
         .leftJoinAndSelect('message.reactions', 'reactions')
@@ -645,15 +803,60 @@ export class MessagesService {
               organizationId,
             }).orWhere('message.organization_id IS NULL');
           }),
-        )
-        .orderBy('message.created_at', 'ASC')
+        );
+
+      if (options?.beforeCreatedAt) {
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('message.created_at < :beforeCreatedAt', {
+              beforeCreatedAt: options.beforeCreatedAt,
+            });
+
+            if (options.beforeId) {
+              qb.orWhere(
+                '(message.created_at = :beforeCreatedAt AND message.id < :beforeId)',
+                {
+                  beforeCreatedAt: options.beforeCreatedAt,
+                  beforeId: options.beforeId,
+                },
+              );
+            }
+          }),
+        );
+      }
+
+      const rawMessages = await query
+        .orderBy('message.created_at', 'DESC')
+        .addOrderBy('message.id', 'DESC')
+        .take(limit + 1)
         .getMany();
 
-      const messagesDto = rawMessages.map((msg) =>
+      const hasMore = rawMessages.length > limit;
+      const pageMessages = hasMore ? rawMessages.slice(0, limit) : rawMessages;
+      const orderedMessages = pageMessages.reverse();
+
+      const messagesDto = orderedMessages.map((msg) =>
         this.toMessageResponse(msg, Number(userFound.id)),
       );
 
-      return { data: messagesDto, success: true, message: 'success' };
+      const oldestMessage = orderedMessages[0];
+
+      return {
+        data: {
+          messages: messagesDto,
+          pageInfo: {
+            hasMore,
+            oldestCursor: oldestMessage
+              ? {
+                  id: oldestMessage.id,
+                  createdAt: oldestMessage.created_at,
+                }
+              : null,
+          },
+        },
+        success: true,
+        message: 'success',
+      };
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new HttpException(
@@ -798,7 +1001,9 @@ export class MessagesService {
       .orderBy('project.updated_at', 'DESC')
       .getMany();
 
-    const peerOnline = await this.messagesGateway.isUserOnline(Number(peerUser.id));
+    const peerOnline = await this.messagesGateway.isUserOnline(
+      Number(peerUser.id),
+    );
 
     return {
       success: true,
@@ -1011,10 +1216,11 @@ export class MessagesService {
           role: m.role,
         }));
 
-      const unchattedMemberIds = unchattedMembers.map((member) => Number(member.id));
-      const onlineStatusMap = await this.messagesGateway.getOnlineStatusMap(
-        unchattedMemberIds,
+      const unchattedMemberIds = unchattedMembers.map((member) =>
+        Number(member.id),
       );
+      const onlineStatusMap =
+        await this.messagesGateway.getOnlineStatusMap(unchattedMemberIds);
 
       const enrichedMembers = unchattedMembers.map((member) => ({
         ...member,
@@ -1158,7 +1364,9 @@ export class MessagesService {
         clientMessageId: payload.clientMessageId ?? null,
         fileUrl: firstAttachment?.fileUrl ?? null,
         fileType: firstAttachment?.fileType ?? null,
-        messageType: firstAttachment ? this.resolveMessageType(firstAttachment.fileType) : 'text',
+        messageType: firstAttachment
+          ? this.resolveMessageType(firstAttachment.fileType)
+          : 'text',
         replyToId: payload.replyToId ?? null,
         organization_id: organizationId,
         organization,
@@ -1218,7 +1426,7 @@ export class MessagesService {
         await this.notificationService.createNotification(
           userFound,
           notificationPayload,
-          organizationId
+          organizationId,
         );
       }
 
@@ -1329,9 +1537,7 @@ export class MessagesService {
         targetCreatedAt: targetMessage.created_at,
       })
       .andWhere(
-        participant.lastReadAt
-          ? 'message.created_at > :lastReadAt'
-          : '1 = 1',
+        participant.lastReadAt ? 'message.created_at > :lastReadAt' : '1 = 1',
         participant.lastReadAt
           ? { lastReadAt: participant.lastReadAt }
           : undefined,
@@ -1417,7 +1623,11 @@ export class MessagesService {
       throw new BadRequestException('File too large. Max size is 10MB.');
     }
 
-    const safeFileName = (requestedFileName || file.originalname || 'attachment')
+    const safeFileName = (
+      requestedFileName ||
+      file.originalname ||
+      'attachment'
+    )
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .slice(0, 180);
     const storagePath = [
@@ -1472,7 +1682,13 @@ export class MessagesService {
         id: messageId,
         organization_id: organizationId,
       },
-      relations: ['sender', 'reactions', 'readReceipts', 'replyTo', 'replyTo.sender'],
+      relations: [
+        'sender',
+        'reactions',
+        'readReceipts',
+        'replyTo',
+        'replyTo.sender',
+      ],
     });
 
     if (!message) {
@@ -1559,7 +1775,11 @@ export class MessagesService {
     };
   }
 
-  async toggleMessageStar(user: any, messageId: string, organizationId: string) {
+  async toggleMessageStar(
+    user: any,
+    messageId: string,
+    organizationId: string,
+  ) {
     const userFound = await this.usersService.getUserAccountById(user.userId);
     if (!userFound) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -1738,6 +1958,31 @@ export class MessagesService {
     }
 
     return 'file';
+  }
+
+  private buildSearchSnippet(content: string, query: string) {
+    const normalizedContent = content.trim();
+    if (!normalizedContent) {
+      return '';
+    }
+
+    const lowerContent = normalizedContent.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const matchIndex = lowerContent.indexOf(lowerQuery);
+
+    if (matchIndex === -1) {
+      return normalizedContent.slice(0, 120);
+    }
+
+    const start = Math.max(0, matchIndex - 40);
+    const end = Math.min(
+      normalizedContent.length,
+      matchIndex + query.length + 60,
+    );
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < normalizedContent.length ? '…' : '';
+
+    return `${prefix}${normalizedContent.slice(start, end)}${suffix}`;
   }
 
   private formatTime(date: Date): string {

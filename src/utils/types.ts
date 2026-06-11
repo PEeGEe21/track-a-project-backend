@@ -50,6 +50,7 @@ export type CreateTaskParams = {
 export type CreateStatusParams = {
   title?: string;
   description?: string;
+  projectId?: number;
   color?: string;
   tabId?: number;
   tasks?: Task[];
