@@ -15,6 +15,10 @@ export class CreateTaskDto {
   description: string;
 
   @IsOptional()
+  @IsString()
+  description_html?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -43,6 +47,10 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  description_html?: string;
 
   @IsOptional()
   @Type(() => Number)

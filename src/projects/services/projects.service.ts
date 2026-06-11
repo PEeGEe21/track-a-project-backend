@@ -44,6 +44,7 @@ import { ProjectActivitiesService } from 'src/project-activities/services/projec
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
+import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
 
@@ -361,10 +362,18 @@ export class ProjectsService {
       if (!project)
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
-      const data = {
+      const richDescription = normalizeRichTextDescription({
         description: updateProjectDetails.description,
+        description_html: updateProjectDetails.description_html,
+      });
+      const data: Partial<Project> = {
         title: updateProjectDetails.title,
       };
+
+      if (richDescription) {
+        data.description = richDescription.description;
+        data.description_html = richDescription.description_html;
+      }
 
       const updatedResult = await this.projectRepository.update(
         { id },
@@ -390,6 +399,7 @@ export class ProjectsService {
           id: updatedProject.id,
           title: updatedProject.title,
           description: updatedProject.description,
+          description_html: updatedProject.description_html,
         },
       };
     } catch (error) {}
@@ -750,9 +760,14 @@ export class ProjectsService {
       const categories = await this.getCategoriesByIds(categoryIds);
 
       // Build project payload
+      const richDescription = normalizeRichTextDescription({
+        description: createProjectDetails.description,
+        description_html: createProjectDetails.description_html,
+      });
       const payload = {
         title: createProjectDetails.title,
-        description: createProjectDetails.description,
+        description: richDescription?.description ?? '',
+        description_html: richDescription?.description_html ?? null,
         due_date: moment.utc(createProjectDetails.deadline).toDate(),
         color: createProjectDetails.color,
         icon: createProjectDetails.icon,

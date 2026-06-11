@@ -31,6 +31,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
 import { Resource } from 'src/typeorm/entities/Resource';
 import { MulterFile } from 'src/types/multer.types';
 import { StorageService } from 'src/types/storage.interface';
+import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 
 @Injectable()
 export class TasksService {
@@ -103,9 +104,14 @@ export class TasksService {
 
       console.log(task, updateTaskDetails, 'task');
       const data: CreateTaskParams = {};
+      const richDescription = normalizeRichTextDescription({
+        description: updateTaskDetails.description,
+        description_html: updateTaskDetails.description_html,
+      });
 
-      if (updateTaskDetails.description !== undefined) {
-        data.description = updateTaskDetails.description;
+      if (richDescription) {
+        data.description = richDescription.description;
+        data.description_html = richDescription.description_html;
       }
 
       if (updateTaskDetails.title !== undefined) {
@@ -235,6 +241,7 @@ export class TasksService {
           id: updatedTask.id,
           title: updatedTask.title,
           description: updatedTask.description,
+          description_html: updatedTask.description_html,
           priority: updatedTask.priority,
           dueDate: updatedTask.due_date,
           status: updatedTask.status,
@@ -318,8 +325,17 @@ export class TasksService {
           throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
         }
 
-        if (updateTaskDetails.description !== undefined) {
-          task.description = updateTaskDetails.description;
+        if (
+          updateTaskDetails.description !== undefined ||
+          updateTaskDetails.description_html !== undefined
+        ) {
+          const normalizedDescription = normalizeRichTextDescription({
+            description: updateTaskDetails.description,
+            description_html: updateTaskDetails.description_html,
+          });
+          task.description = normalizedDescription?.description ?? '';
+          task.description_html =
+            normalizedDescription?.description_html ?? null;
         }
 
         if (updateTaskDetails.title !== undefined) {
@@ -508,6 +524,7 @@ export class TasksService {
           id: taskResult.updatedTask.id,
           title: taskResult.updatedTask.title,
           description: taskResult.updatedTask.description,
+          description_html: taskResult.updatedTask.description_html,
           priority: taskResult.updatedTask.priority,
           dueDate: taskResult.updatedTask.due_date,
           status: taskResult.updatedTask.status,
@@ -999,6 +1016,10 @@ export class TasksService {
 
       const { title, description, status, priority, due_date, assignees } =
         payload; // Destructure
+      const richDescription = normalizeRichTextDescription({
+        description,
+        description_html: payload?.description_html,
+      });
 
       const project = await this.projectRepository.findOneBy({ id });
       if (!project)
@@ -1032,7 +1053,8 @@ export class TasksService {
 
       const newTask = this.taskRepository.create({
         title,
-        description,
+        description: richDescription?.description ?? '',
+        description_html: richDescription?.description_html ?? null,
         status: statusEntity ?? undefined,
         project,
         priority,
@@ -1076,6 +1098,7 @@ export class TasksService {
           id: savedTask.id,
           title: savedTask.title,
           description: savedTask.description,
+          description_html: savedTask.description_html,
           priority: savedTask.priority,
           due_date: savedTask.due_date,
         },

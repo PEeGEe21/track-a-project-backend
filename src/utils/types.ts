@@ -33,12 +33,14 @@ export type CreateUserProfileParams = {
 export type CreateProjectParams = {
   title: string;
   description: string;
+  description_html?: string | null;
   tasks?: Task[];
 };
 
 export type CreateTaskParams = {
   title?: string;
   description?: string;
+  description_html?: string | null;
   priority?: number;
   due_date?: Date;
   project?: Project;

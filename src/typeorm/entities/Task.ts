@@ -30,6 +30,9 @@ export class Task {
   @Column({ type: 'longtext', nullable: true })
   description: string;
 
+  @Column({ type: 'longtext', nullable: true })
+  description_html: string | null;
+
   @Column({
     default: 0,
   })

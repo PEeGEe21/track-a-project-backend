@@ -34,6 +34,9 @@ export class Project {
   @Column({ type: 'longtext', nullable: true })
   description: string;
 
+  @Column({ type: 'longtext', nullable: true })
+  description_html: string | null;
+
   @ManyToMany(() => Tag)
   @JoinTable()
   tags?: Tag[];
