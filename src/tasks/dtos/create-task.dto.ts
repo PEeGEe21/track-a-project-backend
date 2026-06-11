@@ -63,4 +63,8 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsString()
   assignees?: string;
+
+  @IsOptional()
+  @IsString()
+  removeResourceIds?: string;
 }

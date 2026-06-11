@@ -1,6 +1,7 @@
 import {
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -27,6 +28,9 @@ import { NotificationsService } from 'src/notifications/services/notifications.s
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { Resource } from 'src/typeorm/entities/Resource';
+import { MulterFile } from 'src/types/multer.types';
+import { StorageService } from 'src/types/storage.interface';
 
 @Injectable()
 export class TasksService {
@@ -34,6 +38,8 @@ export class TasksService {
     private dataSource: DataSource,
     private notificationService: NotificationsService,
     private projectActivitiesService: ProjectActivitiesService,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
 
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Profile) private profileRepository: Repository<Profile>,
@@ -43,6 +49,8 @@ export class TasksService {
     @InjectRepository(Status) private statusRepository: Repository<Status>,
     @InjectRepository(Organization)
     private organizationRepository: Repository<Organization>,
+    @InjectRepository(Resource)
+    private resourceRepository: Repository<Resource>,
   ) {}
 
   async findOne(id: number): Promise<Task> {
@@ -198,7 +206,7 @@ export class TasksService {
               userFound,
               JSON.stringify(raw),
               updatedTask,
-              organizationId
+              organizationId,
             );
           }
         } else {
@@ -237,6 +245,386 @@ export class TasksService {
     }
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
+  }
+
+  async updateTaskWithAttachments(
+    id: number,
+    updateTaskDetails: any,
+    files: MulterFile[],
+    user: any,
+    organizationId: string,
+  ) {
+    const uploadedFiles: Array<{
+      originalname: string;
+      size: number;
+      mimetype?: string;
+      filePath: string;
+      fileUrl: string;
+    }> = [];
+
+    try {
+      const existingTask = await this.taskRepository.findOne({
+        where: { id },
+        relations: ['project'],
+      });
+      if (!existingTask) {
+        throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
+      }
+
+      for (const file of files ?? []) {
+        const maxSize = 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+          throw new HttpException(
+            'File too large. Max size is 10MB',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        const filePath = this.storageService.generateFilePath(
+          Number(existingTask.project.id),
+          Number(existingTask.id),
+          file.originalname,
+        );
+        const fileUrl = await this.storageService.uploadFile(file, filePath);
+
+        uploadedFiles.push({
+          originalname: file.originalname,
+          size: file.size,
+          mimetype: file.mimetype ?? undefined,
+          filePath,
+          fileUrl,
+        });
+      }
+
+      const taskResult = await this.dataSource.transaction(async (manager) => {
+        const userFound = await manager.getRepository(User).findOneBy({
+          id: user.userId,
+        });
+        if (!userFound) {
+          throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+        }
+
+        const task = await manager.getRepository(Task).findOne({
+          where: { id },
+          relations: [
+            'project',
+            'status',
+            'assignees',
+            'resources',
+            'project.user',
+          ],
+        });
+        if (!task) {
+          throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
+        }
+
+        if (updateTaskDetails.description !== undefined) {
+          task.description = updateTaskDetails.description;
+        }
+
+        if (updateTaskDetails.title !== undefined) {
+          task.title = updateTaskDetails.title;
+        }
+
+        if (updateTaskDetails.priority !== undefined) {
+          task.priority = Number(updateTaskDetails.priority);
+        }
+
+        if (updateTaskDetails.due_date !== undefined) {
+          task.due_date = updateTaskDetails.due_date;
+        }
+
+        if (updateTaskDetails.status) {
+          const statusEntity = await manager.getRepository(Status).findOne({
+            where: { id: Number(updateTaskDetails.status) },
+          });
+          if (!statusEntity) {
+            throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
+          }
+
+          task.status = statusEntity;
+        }
+
+        let addedAssignees: User[] = [];
+        if (
+          Object.prototype.hasOwnProperty.call(updateTaskDetails, 'assignees')
+        ) {
+          const assigneeEmails = this.parseAssigneeList(
+            updateTaskDetails.assignees,
+          );
+
+          if (assigneeEmails.length === 0) {
+            task.assignees = [];
+          } else {
+            const foundUsers = await manager.getRepository(User).find({
+              where: assigneeEmails.map((email) => ({ email })),
+            });
+
+            const foundByEmail = new Map(
+              foundUsers.map((foundUser) => [
+                foundUser.email.trim().toLowerCase(),
+                foundUser,
+              ]),
+            );
+
+            const nextAssignees = assigneeEmails
+              .map((email) => foundByEmail.get(email))
+              .filter((foundUser): foundUser is User => Boolean(foundUser));
+
+            const previousIds = new Set(
+              (task.assignees ?? []).map((u) => u.id),
+            );
+            addedAssignees = nextAssignees.filter(
+              (assignee) => !previousIds.has(assignee.id),
+            );
+            task.assignees = nextAssignees;
+          }
+        }
+
+        const removeResourceIds = this.parseResourceIdList(
+          updateTaskDetails.removeResourceIds,
+        );
+
+        const resourcesToRemove =
+          removeResourceIds.length > 0
+            ? await manager.getRepository(Resource).find({
+                where: removeResourceIds.map((resourceId) => ({
+                  id: resourceId,
+                })),
+                relations: ['project', 'createdBy', 'task'],
+              })
+            : [];
+
+        const removableResources = resourcesToRemove.filter(
+          (resource) => Number(resource.task?.id) === Number(task.id),
+        );
+
+        const createdResources: Resource[] = [];
+        for (const uploadedFile of uploadedFiles) {
+          const resource = manager.getRepository(Resource).create({
+            title: uploadedFile.originalname,
+            type: 'file',
+            mime_type: uploadedFile.mimetype ?? null,
+            url: uploadedFile.fileUrl,
+            file_path: uploadedFile.filePath,
+            file_size: uploadedFile.size,
+            project: task.project,
+            task,
+            createdBy: userFound,
+            organization_id: organizationId,
+          });
+
+          createdResources.push(
+            await manager.getRepository(Resource).save(resource),
+          );
+        }
+
+        await manager.getRepository(Task).save(task);
+
+        if (removableResources.length > 0) {
+          await manager.getRepository(Resource).remove(removableResources);
+        }
+
+        const updatedTask = await manager.getRepository(Task).findOne({
+          where: { id: task.id },
+          relations: ['status', 'project', 'assignees', 'resources'],
+        });
+
+        return {
+          userFound,
+          task,
+          updatedTask,
+          addedAssignees,
+          removableResources,
+          createdResources,
+        };
+      });
+
+      for (const assignee of taskResult.addedAssignees) {
+        await this.notificationService.createNotification(
+          taskResult.userFound,
+          {
+            recipient: assignee,
+            sender: taskResult.userFound,
+            title: 'Task Assignment',
+            message: `${taskResult.userFound.fullName} assigned the task ${taskResult.task.title} to you.`,
+            type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
+          },
+          organizationId,
+        );
+      }
+
+      for (const resource of taskResult.removableResources) {
+        if (resource.file_path) {
+          await this.storageService.deleteFile(resource.file_path);
+        }
+
+        await this.projectActivitiesService.createActivity({
+          organization_id: resource.organization_id,
+          projectId: resource.project.id,
+          userId: taskResult.userFound.id,
+          activityType: ActivityType.RESOURCE_DELETED,
+          description: `${taskResult.userFound.fullName} deleted a resource: ${
+            resource.title ?? ''
+          }`,
+          entityType: 'resource',
+          entityId: resource.id,
+          metadata: { resourceTitle: resource.title ?? '' },
+        });
+      }
+
+      for (const resource of taskResult.createdResources) {
+        await this.projectActivitiesService.createActivity({
+          organization_id: organizationId,
+          projectId: taskResult.task.project.id,
+          userId: taskResult.userFound.id,
+          activityType: ActivityType.RESOURCE_ADDED,
+          description: `${taskResult.userFound.fullName} added a resource: ${
+            resource.title ?? ''
+          }`,
+          entityType: 'resource',
+          entityId: resource.id,
+          metadata: { resourceTitle: resource.title ?? '' },
+        });
+      }
+
+      await this.projectActivitiesService.createActivity({
+        organization_id: organizationId,
+        projectId: taskResult.task.project.id,
+        userId: taskResult.userFound.id,
+        activityType: ActivityType.TASK_UPDATED,
+        description: `${taskResult.userFound.fullName} updated a task: ${
+          taskResult.task.title ?? ''
+        }`,
+        entityType: 'task',
+        entityId: taskResult.task.id,
+        metadata: { taskTitle: taskResult.task.title ?? '' },
+      });
+
+      return {
+        success: 'success',
+        message: 'Task updated successfully',
+        data: {
+          id: taskResult.updatedTask.id,
+          title: taskResult.updatedTask.title,
+          description: taskResult.updatedTask.description,
+          priority: taskResult.updatedTask.priority,
+          dueDate: taskResult.updatedTask.due_date,
+          status: taskResult.updatedTask.status,
+          resources: taskResult.updatedTask.resources,
+        },
+      };
+    } catch (error) {
+      for (const uploadedFile of uploadedFiles) {
+        try {
+          await this.storageService.deleteFile(uploadedFile.filePath);
+        } catch {
+          // ignore cleanup failure
+        }
+      }
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        error?.message || 'Failed to update task with attachments',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  private parseAssigneeList(raw: unknown): string[] {
+    if (raw === null || raw === undefined) {
+      return [];
+    }
+
+    let values: unknown[] = [];
+
+    if (Array.isArray(raw)) {
+      values = raw;
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed === '[]') {
+        return [];
+      }
+
+      if (trimmed.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (!Array.isArray(parsed)) {
+            throw new Error();
+          }
+          values = parsed;
+        } catch {
+          throw new HttpException(
+            'Invalid assignees payload',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      } else if (trimmed.includes(',')) {
+        values = trimmed.split(',');
+      } else {
+        values = [trimmed];
+      }
+    } else {
+      throw new HttpException(
+        'Invalid assignees payload',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    return values
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry;
+        }
+
+        if (entry && typeof entry === 'object' && 'email' in entry) {
+          return String((entry as { email?: unknown }).email ?? '');
+        }
+
+        return String(entry ?? '');
+      })
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => emailRegex.test(value));
+  }
+
+  private parseResourceIdList(raw: unknown): number[] {
+    if (raw === null || raw === undefined || raw === '') {
+      return [];
+    }
+
+    if (Array.isArray(raw)) {
+      return raw
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    }
+
+    if (typeof raw !== 'string') {
+      throw new HttpException(
+        'Invalid removeResourceIds payload',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error();
+      }
+
+      return parsed
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+    } catch {
+      throw new HttpException(
+        'Invalid removeResourceIds payload',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   async updateTaskStatus(
@@ -659,7 +1047,12 @@ export class TasksService {
 
       // Attach assignees by emails if provided
       if (assignees && typeof assignees === 'string' && assignees.length > 0) {
-        await this.addAssigneeToTask(userFound, assignees, newTask, organizationId);
+        await this.addAssigneeToTask(
+          userFound,
+          assignees,
+          newTask,
+          organizationId,
+        );
       }
 
       await this.projectActivitiesService.createActivity({
@@ -702,24 +1095,67 @@ export class TasksService {
     task: Task,
     organizationId: string,
   ): Promise<any> {
-    try {
-      const emailList: string[] = Array.isArray(emails)
-        ? (emails as unknown as string[])
-        : JSON.parse(emails);
+    const parseEmailList = (raw: unknown): string[] => {
+      if (Array.isArray(raw)) {
+        return raw.map((entry) => String(entry ?? ''));
+      }
 
+      if (typeof raw !== 'string') {
+        throw new HttpException(
+          'Invalid assignees payload',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return [];
+      }
+
+      if (trimmed.startsWith('[')) {
+        const parsed = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+          throw new HttpException(
+            'Invalid assignees payload',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+
+        return parsed.map((entry) => {
+          if (typeof entry === 'string') {
+            return entry;
+          }
+
+          if (entry && typeof entry === 'object' && 'email' in entry) {
+            return String((entry as { email?: unknown }).email ?? '');
+          }
+
+          return String(entry ?? '');
+        });
+      }
+
+      if (trimmed.includes(',')) {
+        return trimmed.split(',');
+      }
+
+      return [trimmed];
+    };
+
+    try {
+      const emailList = parseEmailList(emails);
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const validEmails = emailList
         .map((e) => String(e).trim().toLowerCase())
         .filter((e) => emailRegex.test(e));
 
-      if (validEmails.length === 0) return;
+      if (validEmails.length === 0) {
+        return { success: true };
+      }
 
-      // Load users by emails
       const foundUsers = await this.userRepository.find({
         where: validEmails.map((email) => ({ email })),
       });
 
-      // Attach found users as assignees (avoid duplicates)
       const existingAssignees = task.assignees ?? [];
       const existingIds = new Set(existingAssignees.map((u) => u.id));
       const toAdd = foundUsers.filter((u) => !existingIds.has(u.id));
@@ -740,13 +1176,18 @@ export class TasksService {
           organizationId,
         );
       }
+
       return {
         success: true,
       };
     } catch (err) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
       throw new HttpException(
-        'Invalid assignees payload',
-        HttpStatus.BAD_REQUEST,
+        err?.message || 'Failed to assign task',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

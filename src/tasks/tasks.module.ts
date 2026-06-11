@@ -19,6 +19,8 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Resource } from 'src/typeorm/entities/Resource';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -34,11 +36,13 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       UserNotificationPreference,
       ProjectActivity,
       Organization,
-      UserOrganization
+      UserOrganization,
+      Resource,
     ]),
     forwardRef(() => UsersModule),
     NotificationsModule,
-    ProjectActivitiesModule
+    ProjectActivitiesModule,
+    StorageModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, NotificationsService, NotificationsGateway],

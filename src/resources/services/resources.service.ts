@@ -178,6 +178,7 @@ export class ResourcesService {
     }
 
     let fileUrl = '';
+    let storedFilePath: string | null = null;
     let previewData = {};
     try {
       if (file && typeof file !== undefined) {
@@ -197,6 +198,7 @@ export class ResourcesService {
           file.originalname,
         );
         fileUrl = await this.storageService.uploadFile(file, filePath);
+        storedFilePath = filePath;
 
         // Generate file path and upload to Firebase
         // const filePath = this.firebaseStorageService.generateFilePath(
@@ -234,7 +236,7 @@ export class ResourcesService {
         type: resourceData.type || 'file',
         mime_type: resourceData.mime_type ?? null,
         url: fileUrl,
-        file_path: fileUrl,
+        file_path: storedFilePath,
         ...previewData,
         project,
         task,

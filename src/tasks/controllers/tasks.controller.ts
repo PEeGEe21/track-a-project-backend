@@ -11,10 +11,14 @@ import {
   Put,
   Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateTaskDto, UpdateTaskDto } from '../dtos/create-task.dto';
 import { TasksService } from '../services/tasks.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { MulterFile } from 'src/types/multer.types';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
@@ -40,6 +44,24 @@ export class TasksController {
     return this.taskService.updateTask(
       id,
       updateTaskDto,
+      req.user,
+      organizationId,
+    );
+  }
+
+  @Put(':id/with-attachments')
+  @UseInterceptors(FilesInterceptor('attachments'))
+  updateTaskWithAttachments(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateTaskDto: UpdateTaskDto,
+    @UploadedFiles() files: MulterFile[],
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.taskService.updateTaskWithAttachments(
+      id,
+      updateTaskDto,
+      files ?? [],
       req.user,
       organizationId,
     );

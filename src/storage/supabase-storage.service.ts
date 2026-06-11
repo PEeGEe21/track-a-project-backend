@@ -116,7 +116,7 @@ export class SupabaseStorageService implements StorageService {
 
       const { error } = await this.supabase.storage
         .from(this.bucketName)
-        .remove([filePath]);
+        .remove([this.normalizeStorageKey(filePath)]);
 
       if (error) {
         throw new HttpException(
@@ -145,7 +145,7 @@ export class SupabaseStorageService implements StorageService {
 
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
-        .createSignedUrl(filePath, expiresIn);
+        .createSignedUrl(this.normalizeStorageKey(filePath), expiresIn);
 
       if (error) {
         throw new HttpException(
@@ -172,7 +172,7 @@ export class SupabaseStorageService implements StorageService {
 
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
-        .download(filePath);
+        .download(this.normalizeStorageKey(filePath));
 
       if (error) {
         throw new HttpException(
@@ -229,7 +229,7 @@ export class SupabaseStorageService implements StorageService {
 
       const { error } = await this.supabase.storage
         .from(this.bucketName)
-        .move(fromPath, toPath);
+        .move(this.normalizeStorageKey(fromPath), this.normalizeStorageKey(toPath));
 
       if (error) {
         throw new HttpException(
@@ -270,10 +270,12 @@ export class SupabaseStorageService implements StorageService {
     try {
       this.assertEnabled();
 
+      const normalizedPath = this.normalizeStorageKey(filePath);
+
       const { data, error } = await this.supabase.storage
         .from(this.bucketName)
-        .list(filePath.split('/').slice(0, -1).join('/'), {
-          search: filePath.split('/').pop(),
+        .list(normalizedPath.split('/').slice(0, -1).join('/'), {
+          search: normalizedPath.split('/').pop(),
         });
 
       if (error || !data || data.length === 0) {
@@ -296,5 +298,36 @@ export class SupabaseStorageService implements StorageService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private normalizeStorageKey(filePath: string): string {
+    const trimmed = String(filePath || '').trim();
+    if (!trimmed) {
+      return trimmed;
+    }
+
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return trimmed.replace(/^\/+/, '');
+    }
+
+    try {
+      const url = new URL(trimmed);
+      const marker = `/storage/v1/object/public/${this.bucketName}/`;
+      const markerIndex = url.pathname.indexOf(marker);
+
+      if (markerIndex >= 0) {
+        return url.pathname.slice(markerIndex + marker.length).replace(/^\/+/, '');
+      }
+
+      const bucketMarker = `/${this.bucketName}/`;
+      const bucketIndex = url.pathname.indexOf(bucketMarker);
+      if (bucketIndex >= 0) {
+        return url.pathname.slice(bucketIndex + bucketMarker.length).replace(/^\/+/, '');
+      }
+    } catch {
+      return trimmed.replace(/^\/+/, '');
+    }
+
+    return trimmed.replace(/^\/+/, '');
   }
 }

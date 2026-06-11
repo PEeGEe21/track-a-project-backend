@@ -450,6 +450,7 @@ export class ProjectsService {
       // Verify project exists and belongs to organization
       const project = await this.projectRepository.findOne({
         where: { id, organization_id: organizationId },
+        relations: ['user'],
       });
 
       if (!project) {
@@ -492,11 +493,55 @@ export class ProjectsService {
         );
       }
 
-      const project_peers = await queryBuilder.getMany();
+      const projectPeers = await queryBuilder.getMany();
+
+      const ownerParticipant = project.user
+        ? {
+            id: `owner-${project.user.id}`,
+            user: {
+              id: project.user.id,
+              first_name: project.user.first_name,
+              last_name: project.user.last_name,
+              email: project.user.email,
+              avatar: project.user.avatar,
+            },
+            isOwner: true,
+            roleLabel: 'Owner',
+          }
+        : null;
+
+      const collaborators = projectPeers.map((peer) => ({
+        ...peer,
+        isOwner: false,
+        roleLabel: 'Collaborator',
+      }));
+
+      const participants = [ownerParticipant, ...collaborators].filter(
+        Boolean,
+      ) as Array<{
+        id: string | number;
+        user: {
+          id: number;
+          first_name?: string;
+          last_name?: string;
+          email?: string;
+          avatar?: string;
+        };
+        isOwner: boolean;
+        roleLabel: string;
+      }>;
+
+      const dedupedParticipants = participants.filter(
+        (participant, index, list) =>
+          list.findIndex(
+            (candidate) =>
+              String(candidate.user?.id) === String(participant.user?.id),
+          ) === index,
+      );
 
       return {
         success: true,
-        data: project_peers,
+        data: dedupedParticipants,
       };
     } catch (err) {
       AppLogger.error('ProjectsService', 'Error fetching project peers');
