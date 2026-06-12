@@ -47,7 +47,8 @@ import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
-import ExcelJS from 'exceljs';
+import * as ExcelJS from 'exceljs';
+import { UpdateProjectDto } from '../dtos/update-project.dto';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -363,7 +364,7 @@ export class ProjectsService {
     }
   }
 
-  async updateProject(id: number, updateProjectDetails: CreateProjectParams) {
+  async updateProject(id: number, updateProjectDetails: UpdateProjectDto) {
     try {
       const project = await this.projectRepository.findOneBy({ id });
       if (!project)
@@ -373,13 +374,40 @@ export class ProjectsService {
         description: updateProjectDetails.description,
         description_html: updateProjectDetails.description_html,
       });
-      const data: Partial<Project> = {
-        title: updateProjectDetails.title,
-      };
+      const data: Partial<Project> = {};
+
+      if (typeof updateProjectDetails.title !== 'undefined') {
+        data.title = updateProjectDetails.title;
+      }
 
       if (richDescription) {
         data.description = richDescription.description;
         data.description_html = richDescription.description_html;
+      }
+
+      if (typeof updateProjectDetails.color !== 'undefined') {
+        data.color = updateProjectDetails.color;
+      }
+
+      if (typeof updateProjectDetails.icon !== 'undefined') {
+        data.icon = updateProjectDetails.icon;
+      }
+
+      if (typeof updateProjectDetails.status !== 'undefined') {
+        data.status = updateProjectDetails.status;
+      }
+
+      if (typeof updateProjectDetails.due_date !== 'undefined') {
+        data.due_date = updateProjectDetails.due_date
+          ? new Date(updateProjectDetails.due_date)
+          : null;
+      }
+
+      if (Object.keys(data).length === 0) {
+        return {
+          error: 'error',
+          message: 'No valid project fields were provided',
+        };
       }
 
       const updatedResult = await this.projectRepository.update(
@@ -407,9 +435,20 @@ export class ProjectsService {
           title: updatedProject.title,
           description: updatedProject.description,
           description_html: updatedProject.description_html,
+          color: updatedProject.color,
+          icon: updatedProject.icon,
+          status: updatedProject.status,
+          due_date: updatedProject.due_date,
         },
       };
-    } catch (error) {}
+    } catch (error) {
+      throw error instanceof HttpException
+        ? error
+        : new HttpException(
+            'Error updating project',
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+    }
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
   }
@@ -501,7 +540,9 @@ export class ProjectsService {
     ].filter((participant) => participant.id);
 
     const uniqueParticipants = Array.from(
-      new Map(participants.map((participant) => [participant.id, participant])).values(),
+      new Map(
+        participants.map((participant) => [participant.id, participant]),
+      ).values(),
     );
 
     const workbook = new ExcelJS.Workbook();
@@ -510,7 +551,10 @@ export class ProjectsService {
     workbook.modified = new Date();
     workbook.company = 'ProjexPlanr';
 
-    const addSheet = (name: string, rows: Array<Array<string | number | Date>>) => {
+    const addSheet = (
+      name: string,
+      rows: Array<Array<string | number | Date>>,
+    ) => {
       const worksheet = workbook.addWorksheet(name);
       rows.forEach((row) => worksheet.addRow(row));
       const headerRow = worksheet.getRow(1);
@@ -540,7 +584,12 @@ export class ProjectsService {
       ['Description', toPlainText(project.description)],
       ['Status', project.status],
       ['Due Date', project.due_date ?? ''],
-      ['Owner', `${project.user?.first_name ?? ''} ${project.user?.last_name ?? ''}`.trim()],
+      [
+        'Owner',
+        `${project.user?.first_name ?? ''} ${
+          project.user?.last_name ?? ''
+        }`.trim(),
+      ],
       ['Owner Email', project.user?.email ?? ''],
       ['Tasks Count', project.tasks?.length ?? 0],
       [
@@ -573,8 +622,9 @@ export class ProjectsService {
         (task.assignees ?? [])
           .map(
             (assignee) =>
-              `${assignee.first_name ?? ''} ${assignee.last_name ?? ''}`.trim() ||
-              assignee.email,
+              `${assignee.first_name ?? ''} ${
+                assignee.last_name ?? ''
+              }`.trim() || assignee.email,
           )
           .join(', '),
         task.created_at ?? '',
@@ -584,7 +634,15 @@ export class ProjectsService {
     ]);
 
     addSheet('Resources', [
-      ['Title', 'Type', 'Description', 'URL', 'Task', 'File Size', 'Created At'],
+      [
+        'Title',
+        'Type',
+        'Description',
+        'URL',
+        'Task',
+        'File Size',
+        'Created At',
+      ],
       ...((project.resources ?? []).map((resource) => [
         resource.title ?? '',
         resource.type ?? '',

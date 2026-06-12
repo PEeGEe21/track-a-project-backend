@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { ProjectsService } from '../services/projects.service';
 import { CreateProjectDto } from '../dtos/create-project.dto';
+import { UpdateProjectDto } from '../dtos/update-project.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
@@ -301,7 +302,7 @@ export class ProjectsController {
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   updateProjectById(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateProjectDto: CreateProjectDto,
+    @Body() updateProjectDto: UpdateProjectDto,
   ) {
     return this.projectService.updateProject(id, updateProjectDto);
   }
