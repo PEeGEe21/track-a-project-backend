@@ -39,6 +39,9 @@ const envVarsSchema = joi
     CORS_ALLOWED_ORIGINS: joi.string().optional(),
     PEER_LINK_MAIN: joi.string().uri().optional(),
     APP_URL: joi.string().uri().optional(),
+    LIVEKIT_URL: joi.string().uri().optional(),
+    LIVEKIT_API_KEY: joi.string().optional(),
+    LIVEKIT_API_SECRET: joi.string().optional(),
     REDIS_ENABLED: joi
       .boolean()
       .truthy('TRUE')
@@ -177,6 +180,19 @@ if (envVars.STORAGE_DRIVER === 'minio') {
   }
 }
 
+const hasAnyLivekitConfig = Boolean(
+  envVars.LIVEKIT_URL || envVars.LIVEKIT_API_KEY || envVars.LIVEKIT_API_SECRET,
+);
+
+if (
+  hasAnyLivekitConfig &&
+  (!envVars.LIVEKIT_URL || !envVars.LIVEKIT_API_KEY || !envVars.LIVEKIT_API_SECRET)
+) {
+  throw new Error(
+    'Config validation error: LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must all be set together',
+  );
+}
+
 export const config = {
   env: envVars.NODE_ENV,
   url: envVars.APP_URL,
@@ -240,6 +256,14 @@ export const config = {
   frontendUrl: envVars.FRONTEND_URL,
   groupInviteUrl: envVars.GROUP_INVITE_URL,
   peerLinkMain: envVars.PEER_LINK_MAIN,
+  livekit: {
+    url: envVars.LIVEKIT_URL ?? null,
+    apiKey: envVars.LIVEKIT_API_KEY ?? null,
+    apiSecret: envVars.LIVEKIT_API_SECRET ?? null,
+    enabled: Boolean(
+      envVars.LIVEKIT_URL && envVars.LIVEKIT_API_KEY && envVars.LIVEKIT_API_SECRET,
+    ),
+  },
   storage: {
     driver: envVars.STORAGE_DRIVER,
     supabaseUrl: envVars.SUPABASE_URL,

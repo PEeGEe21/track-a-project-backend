@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  forwardRef,
   HttpException,
   HttpStatus,
   Inject,
@@ -36,6 +37,7 @@ export class MessagesService {
   constructor(
     private usersService: UsersService,
     private notificationService: NotificationsService,
+    @Inject(forwardRef(() => MessagesGateway))
     private messagesGateway: MessagesGateway,
     @Inject('STORAGE_SERVICE')
     private readonly storageService: StorageService,
@@ -1872,6 +1874,146 @@ export class MessagesService {
         isStarred: true,
       },
     };
+  }
+
+  async getDirectCallContext(
+    userId: number,
+    conversationId: string,
+  ): Promise<{
+    conversation: Conversation;
+    organizationId: string;
+    peerUserId: number;
+    peerName: string;
+    peerAvatar: string | null;
+    callerName: string;
+    callerAvatar: string | null;
+  }> {
+    const participants = await this.participantRepository.find({
+      where: {
+        conversationId,
+        isActive: true,
+      },
+      relations: ['conversation', 'user'],
+    });
+
+    const currentParticipant = participants.find(
+      (participant) => Number(participant.userId) === Number(userId),
+    );
+
+    if (!currentParticipant?.conversation) {
+      throw new BadRequestException('You are not part of this conversation');
+    }
+
+    const conversation = currentParticipant.conversation;
+    if (conversation.type !== 'direct') {
+      throw new BadRequestException(
+        'Calls are currently supported for direct conversations only.',
+      );
+    }
+
+    if (!conversation.organization_id) {
+      throw new BadRequestException(
+        'Conversation organization context is missing for this call.',
+      );
+    }
+
+    const peerParticipant = participants.find(
+      (participant) => Number(participant.userId) !== Number(userId),
+    );
+
+    if (!peerParticipant?.user) {
+      throw new NotFoundException('Peer was not found for this conversation');
+    }
+
+    const caller = currentParticipant.user
+      ? currentParticipant.user
+      : await this.usersService.getUserAccountById(userId);
+
+    return {
+      conversation,
+      organizationId: conversation.organization_id,
+      peerUserId: Number(peerParticipant.userId),
+      peerName:
+        peerParticipant.user.fullName ||
+        `${peerParticipant.user.first_name || ''} ${
+          peerParticipant.user.last_name || ''
+        }`.trim() ||
+        peerParticipant.user.username ||
+        peerParticipant.user.email ||
+        'Workspace member',
+      peerAvatar: peerParticipant.user.avatar ?? null,
+      callerName:
+        caller?.fullName ||
+        `${caller?.first_name || ''} ${caller?.last_name || ''}`.trim() ||
+        caller?.username ||
+        caller?.email ||
+        'Workspace member',
+      callerAvatar: caller?.avatar ?? null,
+    };
+  }
+
+  async createSystemConversationMessage({
+    conversationId,
+    organizationId,
+    senderId,
+    content,
+  }: {
+    conversationId: string;
+    organizationId: string;
+    senderId: number;
+    content: string;
+  }) {
+    const sender = await this.usersService.getUserAccountById(senderId);
+    if (!sender) {
+      throw new NotFoundException('Call event sender was not found');
+    }
+
+    const conversation = await this.conversationRepository.findOne({
+      where: {
+        id: conversationId,
+        organization_id: organizationId,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found for call event');
+    }
+
+    const organization = await this.organizationRepository.findOne({
+      where: { id: organizationId },
+    });
+
+    const message = this.messageRepository.create({
+      senderId,
+      sender,
+      conversationId,
+      conversation,
+      content,
+      messageType: 'system',
+      organization_id: organizationId,
+      organization,
+    });
+
+    const savedMessage = await this.messageRepository.save(message);
+
+    await this.conversationRepository.update(conversationId, {
+      lastMessageAt: new Date(),
+    });
+
+    const dto = this.toMessageResponse(
+      {
+        ...savedMessage,
+        sender,
+        reactions: [],
+        readReceipts: [],
+        stars: [],
+        replyTo: null,
+      } as Message,
+      senderId,
+    );
+
+    this.messagesGateway.notifyNewMessage(conversationId, dto);
+    return dto;
   }
 
   private toMessageResponse(message: Message, currentUserId: number) {
