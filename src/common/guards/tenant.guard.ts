@@ -16,7 +16,7 @@ export class TenantGuard implements CanActivate {
     }
 
     // All other users must have an organization
-    if (!request.user?.organization_id) {
+    if (!request.user?.currentOrganizationId && !request.user?.organization_id) {
       throw new ForbiddenException('No organization context');
     }
 

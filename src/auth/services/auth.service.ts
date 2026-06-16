@@ -1078,7 +1078,13 @@ export class AuthService {
   //   };
   // }
 
-  async getTokens(userId: number, email: string, role: string = 'member') {
+  async getTokens(
+    userId: number,
+    email: string,
+    role: string = 'member',
+    currentOrganizationId?: string | null,
+    organizationRole?: string | null,
+  ) {
     try {
       const userOrganizations =
         (await this.usersService.getUserOrganizationsById(userId)) ?? [];
@@ -1088,9 +1094,12 @@ export class AuthService {
         email,
         role: role,
         portal: role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
+        currentOrganizationId: currentOrganizationId ?? null,
+        organizationRole: organizationRole ?? null,
         userOrganizations: userOrganizations.map((uo) => ({
           organization_id: uo.organization_id,
           subscription_tier: uo.organization?.subscription_tier ?? null,
+          role: uo.role ?? null,
         })),
       };
 
@@ -1126,11 +1135,35 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_TOKEN_SECRET,
       });
 
-      const tokens = await this.getTokens(
-        payload.sub,
-        payload.email,
-        payload.role,
-      );
+      if (payload.currentOrganizationId) {
+        const user = await this.getUserAccountById(payload.sub);
+        const membership = await this.userOrganizationRepository.findOne({
+          where: {
+            user_id: payload.sub,
+            organization_id: payload.currentOrganizationId,
+            is_active: true,
+          },
+          relations: ['organization'],
+        });
+
+        if (!membership || !membership.organization?.is_active) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
+
+        const tokens = await this.generateToken(
+          user,
+          membership.organization,
+          membership.role,
+        );
+
+        return {
+          success: 'success',
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+        };
+      }
+
+      const tokens = await this.getTokens(payload.sub, payload.email, payload.role);
       return {
         success: 'success',
         accessToken: tokens.accessToken,

@@ -36,6 +36,12 @@ export class OrganizationAccessGuard implements CanActivate {
       throw new ForbiddenException('Organization header is missing');
     }
 
+    if (user.currentOrganizationId && user.currentOrganizationId !== orgId) {
+      throw new ForbiddenException(
+        'Organization header does not match the active organization',
+      );
+    }
+
     // Check if user belongs to the organization
     if (!user.userOrganizations?.some((uo) => uo.organization_id === orgId)) {
       throw new ForbiddenException('User does not belong to this organization');
