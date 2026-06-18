@@ -12,8 +12,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateNotificationDto } from '../dto/create-notification.dto';
 import { Notification } from 'src/typeorm/entities/Notification';
-import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
-import { NOTIFICATION_DEFAULT_PREFERENCES } from 'src/utils/constants/notifications';
 import { NotificationsGateway } from '../notifications.gateway';
 import { UsersService } from 'src/users/services/users.service';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
@@ -22,6 +20,11 @@ import { Queue, Worker } from 'bullmq';
 import { RedisService } from 'src/redis/redis.service';
 import { config } from 'src/config';
 import { AppLogger } from 'src/common/logging/app-logger';
+import { NotificationPreferencesService } from './notification-preferences.service';
+import { PushSubscriptionsService } from './push-subscriptions.service';
+import * as webpush from 'web-push';
+import * as https from 'https';
+import * as dns from 'dns';
 
 interface NotificationJobPayload {
   organizationId: string;
@@ -33,25 +36,52 @@ interface NotificationJobPayload {
   metadata?: Record<string, any>;
 }
 
+interface PushDeliveryResult {
+  configured: boolean;
+  subscriptionCount: number;
+  deliveredCount: number;
+  removedCount: number;
+  errors: Array<{
+    endpointHash: string;
+    statusCode?: number;
+    message: string;
+  }>;
+}
+
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private queue: Queue<NotificationJobPayload> | null = null;
   private worker: Worker<NotificationJobPayload> | null = null;
+  private readonly ipv4OnlyAgent = new https.Agent({
+    family: 4,
+  });
 
   constructor(
     @Inject(forwardRef(() => UsersService)) private usersService: UsersService,
     private notificationsGateway: NotificationsGateway,
     private redisService: RedisService,
+    private notificationPreferencesService: NotificationPreferencesService,
+    private pushSubscriptionsService: PushSubscriptionsService,
 
     @InjectRepository(Notification)
     private notificationsRepository: Repository<Notification>,
-    @InjectRepository(UserNotificationPreference)
-    private notificationPrefRepo: Repository<UserNotificationPreference>,
     @InjectRepository(Organization)
     private orgRepository: Repository<Organization>,
   ) {}
 
   async onModuleInit() {
+    if (
+      config.webPush.publicKey &&
+      config.webPush.privateKey &&
+      config.webPush.subject
+    ) {
+      webpush.setVapidDetails(
+        config.webPush.subject,
+        config.webPush.publicKey,
+        config.webPush.privateKey,
+      );
+    }
+
     if (config.queue.driver !== 'redis') {
       return;
     }
@@ -244,6 +274,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   ) {
     try {
       const payload = this.toJobPayload(createNotificationDto, organizationId);
+      const deliveryPlan = await this.getDeliveryPlan(payload);
+
+      if (!deliveryPlan.in_app && !deliveryPlan.push) {
+        return {
+          success: true,
+          queued: false,
+          skipped: true,
+          message: 'Notification suppressed by user preferences',
+        };
+      }
 
       if (config.queue.driver === 'redis' && this.queue) {
         await this.queue.add('deliver-notification', payload, {
@@ -276,6 +316,149 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private async getDeliveryPlan(payload: NotificationJobPayload) {
+    const effectivePreference =
+      await this.notificationPreferencesService.getEffectivePreferenceForType(
+        payload.recipientId,
+        payload.type,
+        payload.organizationId,
+      );
+
+    return {
+      in_app: effectivePreference.in_app,
+      email: effectivePreference.email,
+      push: effectivePreference.push,
+    };
+  }
+
+  private buildPushPayload(payload: NotificationJobPayload) {
+    const path =
+      typeof payload.metadata?.path === 'string' && payload.metadata.path.trim()
+        ? payload.metadata.path.trim()
+        : '/notifications';
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const destinationUrl = `${config.feBaseUrl.replace(
+      /\/+$/,
+      '',
+    )}${normalizedPath}`;
+
+    return {
+      title: payload.title,
+      body: payload.message ?? 'You have a new notification',
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag: `trackr-${payload.type}-${payload.recipientId}`,
+      data: {
+        url: destinationUrl,
+        type: payload.type,
+        metadata: payload.metadata ?? null,
+        organizationId: payload.organizationId,
+      },
+    };
+  }
+
+  private async sendPushNotifications(
+    payload: NotificationJobPayload,
+  ): Promise<PushDeliveryResult> {
+    if (
+      !config.webPush.publicKey ||
+      !config.webPush.privateKey ||
+      !config.webPush.subject
+    ) {
+      return {
+        configured: false,
+        subscriptionCount: 0,
+        deliveredCount: 0,
+        removedCount: 0,
+        errors: [],
+      };
+    }
+
+    const subscriptions =
+      await this.pushSubscriptionsService.getSubscriptionsForUser(
+        payload.recipientId,
+      );
+
+    if (!subscriptions.length) {
+      return {
+        configured: true,
+        subscriptionCount: 0,
+        deliveredCount: 0,
+        removedCount: 0,
+        errors: [],
+      };
+    }
+
+    const pushPayload = JSON.stringify(this.buildPushPayload(payload));
+    let deliveredCount = 0;
+    let removedCount = 0;
+    const errors: PushDeliveryResult['errors'] = [];
+
+    await Promise.all(
+      subscriptions.map(async (subscription) => {
+        try {
+          await webpush.sendNotification(
+            {
+              endpoint: subscription.endpoint,
+              expirationTime: subscription.expiration_time,
+              keys: {
+                p256dh: subscription.p256dh,
+                auth: subscription.auth,
+              },
+            },
+            pushPayload,
+            {
+              agent: this.ipv4OnlyAgent,
+            },
+          );
+          deliveredCount += 1;
+        } catch (error: any) {
+          console.log(error);
+          const statusCode = error?.statusCode ?? error?.status;
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : 'Failed to send push notification';
+          const responseBody =
+            typeof error?.body === 'string' ? error.body : undefined;
+
+          if (statusCode === 404 || statusCode === 410) {
+            await this.pushSubscriptionsService.removeByEndpointHash(
+              subscription.endpoint_hash,
+            );
+            removedCount += 1;
+            return;
+          }
+
+          errors.push({
+            endpointHash: subscription.endpoint_hash,
+            statusCode,
+            message: errorMessage,
+          });
+          AppLogger.error(
+            'NotificationsService',
+            'Failed to send push notification',
+            {
+              recipientId: payload.recipientId,
+              endpointHash: subscription.endpoint_hash,
+              statusCode,
+              message: errorMessage,
+              responseBody,
+            },
+          );
+        }
+      }),
+    );
+
+    return {
+      configured: true,
+      subscriptionCount: subscriptions.length,
+      deliveredCount,
+      removedCount,
+      errors,
+    };
   }
 
   async markAsRead(user: any, id: number) {
@@ -385,33 +568,77 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createNotificationDirect(payload: NotificationJobPayload) {
-    const organization = await this.orgRepository.findOne({
-      where: { id: payload.organizationId },
-    });
+    const deliveryPlan = await this.getDeliveryPlan(payload);
+    if (!deliveryPlan.in_app && !deliveryPlan.push) {
+      return null;
+    }
 
-    const notification = this.notificationsRepository.create({
-      recipient: { id: payload.recipientId } as any,
-      sender: payload.senderId ? ({ id: payload.senderId } as any) : null,
-      title: payload.title,
-      message: payload.message,
-      type: payload.type,
-      metadata: payload.metadata,
-      is_read: false,
-      created_at: new Date(),
-      organization_id: payload.organizationId,
-      organization,
-    });
+    let savedNotification: Notification | null = null;
 
-    const savedNotification = await this.notificationsRepository.save(
-      notification,
-    );
+    if (deliveryPlan.in_app) {
+      const organization = await this.orgRepository.findOne({
+        where: { id: payload.organizationId },
+      });
 
-    this.notificationsGateway.sendNotificationToUser(
-      String(payload.recipientId),
-      savedNotification,
-    );
+      const notification = this.notificationsRepository.create({
+        recipient: { id: payload.recipientId } as any,
+        sender: payload.senderId ? ({ id: payload.senderId } as any) : null,
+        title: payload.title,
+        message: payload.message,
+        type: payload.type,
+        metadata: payload.metadata,
+        is_read: false,
+        created_at: new Date(),
+        organization_id: payload.organizationId,
+        organization,
+      });
+
+      savedNotification = await this.notificationsRepository.save(notification);
+
+      this.notificationsGateway.sendNotificationToUser(
+        String(payload.recipientId),
+        savedNotification,
+      );
+    }
+
+    if (deliveryPlan.push) {
+      await this.sendPushNotifications(payload);
+    }
 
     return savedNotification;
+  }
+
+  async sendTestPush(user: any, organizationId?: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const targetOrganizationId =
+      organizationId || user.currentOrganizationId || '';
+
+    const result = await this.sendPushNotifications({
+      organizationId: targetOrganizationId,
+      recipientId: userFound.id,
+      senderId: null,
+      title: 'Trackr test notification',
+      message:
+        'If you see this in your system notification bar, push delivery is working.',
+      type: 'push_test',
+      metadata: {
+        path: '/notifications',
+        source: 'manual_test',
+      },
+    });
+
+    return {
+      success: true,
+      message:
+        result.deliveredCount > 0
+          ? 'Test push notification sent'
+          : 'Test push request completed',
+      data: result,
+    };
   }
 
   //   async createNotification(dto: CreateNotificationDto) {

@@ -49,23 +49,41 @@ const envVarsSchema = joi
       .falsy('FALSE')
       .falsy('false')
       .default(false),
-    REDIS_URL: joi.string().pattern(/^rediss?:\/\//).optional(),
+    REDIS_URL: joi
+      .string()
+      .pattern(/^rediss?:\/\//)
+      .optional(),
     REDIS_PREFIX: joi.string().default('trackr'),
     RATE_LIMIT_DRIVER: joi
       .string()
       .allow(...['memory', 'redis'])
       .default('memory'),
-    QUEUE_DRIVER: joi.string().allow(...['inline', 'redis']).default('inline'),
+    QUEUE_DRIVER: joi
+      .string()
+      .allow(...['inline', 'redis'])
+      .default('inline'),
     RATE_LIMIT_DEFAULT_MAX: joi.number().integer().min(1).default(120),
-    RATE_LIMIT_DEFAULT_WINDOW_MS: joi.number().integer().min(1000).default(60000),
+    RATE_LIMIT_DEFAULT_WINDOW_MS: joi
+      .number()
+      .integer()
+      .min(1000)
+      .default(60000),
     RATE_LIMIT_AUTH_MAX: joi.number().integer().min(1).default(10),
     RATE_LIMIT_AUTH_WINDOW_MS: joi.number().integer().min(1000).default(900000),
     RATE_LIMIT_INVITE_MAX: joi.number().integer().min(1).default(10),
-    RATE_LIMIT_INVITE_WINDOW_MS: joi.number().integer().min(1000).default(600000),
+    RATE_LIMIT_INVITE_WINDOW_MS: joi
+      .number()
+      .integer()
+      .min(1000)
+      .default(600000),
     WS_RATE_LIMIT_MAX: joi.number().integer().min(1).default(60),
     WS_RATE_LIMIT_WINDOW_MS: joi.number().integer().min(1000).default(60000),
     WS_RATE_LIMIT_BURST_MAX: joi.number().integer().min(1).default(180),
-    WS_RATE_LIMIT_BURST_WINDOW_MS: joi.number().integer().min(1000).default(10000),
+    WS_RATE_LIMIT_BURST_WINDOW_MS: joi
+      .number()
+      .integer()
+      .min(1000)
+      .default(10000),
 
     // database config
     // MONGODB_URI: joi.string().required(),
@@ -102,7 +120,13 @@ const envVarsSchema = joi
     PASSWORD_RECOVERY_TTL: joi.number().required().default(72),
     PASSWORD_RECOVERY_EMAIL: joi.string().email().required(),
     PASSWORD_RECOVERY_URL: joi.string().uri().required(),
-    STORAGE_DRIVER: joi.string().allow(...['supabase', 'minio']).default('supabase'),
+    STORAGE_DRIVER: joi
+      .string()
+      .allow(...['supabase', 'minio'])
+      .default('supabase'),
+    WEB_PUSH_PUBLIC_KEY: joi.string().optional(),
+    WEB_PUSH_PRIVATE_KEY: joi.string().optional(),
+    WEB_PUSH_SUBJECT: joi.string().optional(),
     SUPABASE_URL: joi.string().uri().optional(),
     SUPABASE_BUCKET_NAME: joi.string().optional(),
     SUPABASE_KEY: joi.string().optional(),
@@ -140,7 +164,9 @@ if (error) {
 }
 
 if (envVars.REDIS_ENABLED && !envVars.REDIS_URL) {
-  throw new Error('Config validation error: REDIS_URL is required when REDIS_ENABLED=true');
+  throw new Error(
+    'Config validation error: REDIS_URL is required when REDIS_ENABLED=true',
+  );
 }
 
 if (envVars.RATE_LIMIT_DRIVER === 'redis' && !envVars.REDIS_ENABLED) {
@@ -184,12 +210,31 @@ const hasAnyLivekitConfig = Boolean(
   envVars.LIVEKIT_URL || envVars.LIVEKIT_API_KEY || envVars.LIVEKIT_API_SECRET,
 );
 
+const hasAnyWebPushConfig = Boolean(
+  envVars.WEB_PUSH_PUBLIC_KEY ||
+    envVars.WEB_PUSH_PRIVATE_KEY ||
+    envVars.WEB_PUSH_SUBJECT,
+);
+
 if (
   hasAnyLivekitConfig &&
-  (!envVars.LIVEKIT_URL || !envVars.LIVEKIT_API_KEY || !envVars.LIVEKIT_API_SECRET)
+  (!envVars.LIVEKIT_URL ||
+    !envVars.LIVEKIT_API_KEY ||
+    !envVars.LIVEKIT_API_SECRET)
 ) {
   throw new Error(
     'Config validation error: LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must all be set together',
+  );
+}
+
+if (
+  hasAnyWebPushConfig &&
+  (!envVars.WEB_PUSH_PUBLIC_KEY ||
+    !envVars.WEB_PUSH_PRIVATE_KEY ||
+    !envVars.WEB_PUSH_SUBJECT)
+) {
+  throw new Error(
+    'Config validation error: WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY, and WEB_PUSH_SUBJECT must all be set together',
   );
 }
 
@@ -205,15 +250,22 @@ export const config = {
   feBaseUrl: envVars.FRONTEND_URL,
   adminFrontendUrl: envVars.ADMIN_FRONTEND_URL,
   corsAllowedOrigins: Array.from(
-    new Set([
-      envVars.FRONTEND_URL,
-      envVars.ADMIN_FRONTEND_URL,
-      ...parseOrigins(envVars.CORS_ALLOWED_ORIGINS),
-    ].filter(Boolean)),
+    new Set(
+      [
+        envVars.FRONTEND_URL,
+        envVars.ADMIN_FRONTEND_URL,
+        ...parseOrigins(envVars.CORS_ALLOWED_ORIGINS),
+      ].filter(Boolean),
+    ),
   ),
   accountVerificationTtl: envVars.ACCOUNT_VERIFICATION_TTL,
   accountVerificationUrl: envVars.ACCOUNT_VERIFICATION_URL,
   verifyHash: envVars.VERIFY_HASH_HOOK,
+  webPush: {
+    publicKey: envVars.WEB_PUSH_PUBLIC_KEY ?? null,
+    privateKey: envVars.WEB_PUSH_PRIVATE_KEY ?? null,
+    subject: envVars.WEB_PUSH_SUBJECT ?? null,
+  },
   db: {
     // uri: envVars.MONGODB_URI,
     host: envVars.DATABASE_HOST,
@@ -261,7 +313,9 @@ export const config = {
     apiKey: envVars.LIVEKIT_API_KEY ?? null,
     apiSecret: envVars.LIVEKIT_API_SECRET ?? null,
     enabled: Boolean(
-      envVars.LIVEKIT_URL && envVars.LIVEKIT_API_KEY && envVars.LIVEKIT_API_SECRET,
+      envVars.LIVEKIT_URL &&
+        envVars.LIVEKIT_API_KEY &&
+        envVars.LIVEKIT_API_SECRET,
     ),
   },
   storage: {

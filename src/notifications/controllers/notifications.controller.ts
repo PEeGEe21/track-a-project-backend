@@ -16,11 +16,18 @@ import {
 import { NotificationsService } from '../services/notifications.service';
 import { CreateNotificationDto } from '../dto/create-notification.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { ValidationPipe } from '@nestjs/common';
+import { PushSubscriptionsService } from '../services/push-subscriptions.service';
+import { RegisterPushSubscriptionDto } from '../dto/register-push-subscription.dto';
+import { RemovePushSubscriptionDto } from '../dto/remove-push-subscription.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly pushSubscriptionsService: PushSubscriptionsService,
+  ) {}
 
   @Get('/')
   findAllUserNotifications(
@@ -84,6 +91,65 @@ export class NotificationsController {
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.notificationsService.remove(req.user, +id);
+  }
+
+  @Get('/push/config')
+  getPushConfig() {
+    return {
+      success: true,
+      data: this.pushSubscriptionsService.getClientConfig(),
+    };
+  }
+
+  @Post('/push/subscriptions')
+  registerPushSubscription(
+    @Body(new ValidationPipe({ whitelist: true, transform: true }))
+    dto: RegisterPushSubscriptionDto,
+    @Req() req: any,
+  ) {
+    return this.pushSubscriptionsService
+      .registerForUser(req.user.userId, dto)
+      .then((subscription) => ({
+        success: true,
+        message: 'Push subscription registered successfully',
+        data: subscription,
+      }));
+  }
+
+  @Delete('/push/subscriptions')
+  removePushSubscription(
+    @Body(new ValidationPipe({ whitelist: true, transform: true }))
+    dto: RemovePushSubscriptionDto,
+    @Req() req: any,
+  ) {
+    return this.pushSubscriptionsService
+      .removeForUser(req.user.userId, dto.endpoint)
+      .then(() => ({
+        success: true,
+        message: 'Push subscription removed successfully',
+      }));
+  }
+
+  @Post('/push/test')
+  sendTestPush(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data: {
+      configured: boolean;
+      subscriptionCount: number;
+      deliveredCount: number;
+      removedCount: number;
+      errors: Array<{
+        endpointHash: string;
+        statusCode?: number;
+        message: string;
+      }>;
+    };
+  }> {
+    return this.notificationsService.sendTestPush(req.user, organizationId);
   }
 
   // @Post()

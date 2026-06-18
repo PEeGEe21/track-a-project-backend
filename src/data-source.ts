@@ -38,6 +38,7 @@ import { Price } from './typeorm/entities/Price';
 import { Subscription } from './typeorm/entities/Subscription';
 import { Invoice } from './typeorm/entities/Invoice';
 import { MessageStar } from './typeorm/entities/MessageStar';
+import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -92,6 +93,7 @@ export const AppDataSource = new DataSource({
     Subscription,
     Invoice,
     MessageStar,
+    UserPushSubscription,
   ],
   migrationsTransactionMode: 'each',
 });

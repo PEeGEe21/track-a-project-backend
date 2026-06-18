@@ -47,6 +47,8 @@ import { FindUsersQueryDto } from '../dtos/FindUsersQuery.dto';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
 import { StorageService } from 'src/types/storage.interface';
+import { NotificationPreferencesService } from 'src/notifications/services/notification-preferences.service';
+import { UpdateUserNotificationPreferencesDto } from '../dtos/UpdateUserNotificationPreferences.dto';
 
 @Injectable()
 export class UsersService {
@@ -69,6 +71,7 @@ export class UsersService {
     private jwtService: JwtService,
     private MailingService: MailingService,
     private notificationService: NotificationsService,
+    private notificationPreferencesService: NotificationPreferencesService,
     @Inject('STORAGE_SERVICE')
     private storageService: StorageService,
   ) {}
@@ -183,7 +186,10 @@ export class UsersService {
     }
   }
 
-  async getUserSettings(id: number): Promise<any | undefined> {
+  async getUserSettings(
+    id: number,
+    organizationId?: string | null,
+  ): Promise<any | undefined> {
     try {
       const user = await this.userRepository.findOne({
         where: {
@@ -207,9 +213,16 @@ export class UsersService {
         delete userProfileDetails.user.password;
       }
 
+      const notificationPreferences =
+        await this.notificationPreferencesService.getEffectivePreferences(
+          id,
+          organizationId,
+        );
+
       return {
         profile: userProfileDetails ?? null,
         user: user,
+        notification_preferences: notificationPreferences,
         success: 'success',
       };
     } catch (err) {
@@ -295,6 +308,34 @@ export class UsersService {
     }
 
     return { message: 'Onboarding completed successfully' };
+  }
+
+  async updateUserNotificationPreferences(
+    authUser: AuthUser,
+    userId: number,
+    dto: UpdateUserNotificationPreferencesDto,
+    organizationId?: string | null,
+  ) {
+    if (+authUser?.userId !== userId) {
+      throw new UnauthorizedException(
+        'You are not allowed to update these notification preferences',
+      );
+    }
+
+    await this.getUserAccountById(userId);
+
+    const notificationPreferences =
+      await this.notificationPreferencesService.updatePreferences(
+        userId,
+        dto.preferences,
+        organizationId,
+      );
+
+    return {
+      success: 'success',
+      message: 'Notification preferences updated successfully',
+      data: notificationPreferences,
+    };
   }
 
   async getUserAccountPassword(email: string): Promise<string | undefined> {

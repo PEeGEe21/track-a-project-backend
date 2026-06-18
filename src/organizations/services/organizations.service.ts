@@ -92,7 +92,8 @@ export class OrganizationsService {
         { adminRole: OrganizationRole.ORG_ADMIN },
       )
       .leftJoinAndSelect('adminRelation.user', 'admin')
-      .loadRelationCountAndMap('org.userCount', 'org.user_organizations');
+      .loadRelationCountAndMap('org.userCount', 'org.user_organizations')
+      .loadRelationCountAndMap('org.projectCount', 'org.projects');
 
     if (search) {
       qb.andWhere(
@@ -138,6 +139,7 @@ export class OrganizationsService {
     const qb = this.organizationRepository
       .createQueryBuilder('org')
       .loadRelationCountAndMap('org.userCount', 'org.user_organizations')
+      .loadRelationCountAndMap('org.projectCount', 'org.projects')
       .leftJoinAndSelect('org.user_organizations', 'userOrg')
       .leftJoinAndSelect('userOrg.user', 'user')
       .where('org.id = :id', { id });

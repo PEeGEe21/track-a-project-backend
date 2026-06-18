@@ -35,6 +35,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { config } from 'src/config';
 import { memoryStorage } from 'multer';
+import { UpdateUserNotificationPreferencesDto } from '../dtos/UpdateUserNotificationPreferences.dto';
 
 @Controller('users')
 export class UsersController {
@@ -192,7 +193,28 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id/settings')
-  getUserSettings(@Param('id', ParseIntPipe) id: number) {
-    return this.userService.getUserSettings(id);
+  getUserSettings(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userService.getUserSettings(id, organizationId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/settings/notification-preferences')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  updateUserNotificationPreferences(
+    @Param('id', ParseIntPipe) id: number,
+    @Body()
+    updateUserNotificationPreferencesDto: UpdateUserNotificationPreferencesDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.userService.updateUserNotificationPreferences(
+      req.user,
+      id,
+      updateUserNotificationPreferencesDto,
+      organizationId,
+    );
   }
 }

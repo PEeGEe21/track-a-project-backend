@@ -25,6 +25,9 @@ import { ProjectComment } from 'src/typeorm/entities/ProjectComment';
 import { Note } from 'src/typeorm/entities/Note';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { NotificationPreferencesService } from './services/notification-preferences.service';
+import { UserPushSubscription } from 'src/typeorm/entities/UserPushSubscription';
+import { PushSubscriptionsService } from './services/push-subscriptions.service';
 
 @Module({
   imports: [
@@ -47,13 +50,23 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
       ProjectComment,
       Notification,
       UserNotificationPreference,
+      UserPushSubscription,
       Organization,
       UserOrganization,
       Note
     ]),
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsGateway, NotificationsService],
-  exports: [NotificationsService],
+  providers: [
+    NotificationsGateway,
+    NotificationsService,
+    NotificationPreferencesService,
+    PushSubscriptionsService,
+  ],
+  exports: [
+    NotificationsService,
+    NotificationPreferencesService,
+    PushSubscriptionsService,
+  ],
 })
 export class NotificationsModule {}

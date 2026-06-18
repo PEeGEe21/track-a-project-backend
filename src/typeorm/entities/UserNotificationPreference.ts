@@ -32,6 +32,9 @@ export class UserNotificationPreference {
   @Column({ type: 'boolean', default: false })
   push: boolean;
 
+  @Column({ type: 'boolean', default: true })
+  sound: boolean;
+
   @Column({ type: 'uuid', nullable: true })
   organization_id: string | null;
 

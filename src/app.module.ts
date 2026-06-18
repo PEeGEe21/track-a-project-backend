@@ -71,6 +71,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler.storage';
 import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { MessageStar } from './typeorm/entities/MessageStar';
+import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -147,6 +148,7 @@ import { MessageStar } from './typeorm/entities/MessageStar';
             Plan,
             AuditLog,
             MessageStar,
+            UserPushSubscription,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -197,6 +199,7 @@ import { MessageStar } from './typeorm/entities/MessageStar';
       Plan,
       AuditLog,
       MessageStar,
+      UserPushSubscription,
     ]),
     UsersModule,
     ProjectsModule,
