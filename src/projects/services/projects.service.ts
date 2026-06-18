@@ -1694,6 +1694,183 @@ export class ProjectsService {
     }
   }
 
+  async getProjectCallContext(user: any, projectId: number) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['user', 'projectPeers', 'projectPeers.user'],
+    });
+
+    if (!project) {
+      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const participants = [
+      project.user
+        ? {
+            userId: Number(project.user.id),
+            name:
+              toPlainText(
+                `${project.user.first_name || ''} ${project.user.last_name || ''}`,
+              ) ||
+              toPlainText(project.user.email) ||
+              'Project owner',
+            avatar: project.user.avatar ?? null,
+          }
+        : null,
+      ...(project.projectPeers || [])
+        .filter(
+          (peer) =>
+            peer?.user &&
+            peer.status === ProjectPeerStatus.CONNECTED &&
+            peer.is_confirmed !== false,
+        )
+        .map((peer) => ({
+          userId: Number(peer.user.id),
+          name:
+            toPlainText(
+              `${peer.user.first_name || ''} ${peer.user.last_name || ''}`,
+            ) ||
+            toPlainText(peer.user.email) ||
+            'Project collaborator',
+          avatar: peer.user.avatar ?? null,
+        })),
+    ]
+      .filter(Boolean)
+      .filter(
+        (participant, index, list) =>
+          list.findIndex(
+            (candidate) => candidate.userId === participant.userId,
+          ) === index,
+      );
+
+    const caller = participants.find(
+      (participant) => participant.userId === Number(userFound.id),
+    );
+
+    if (!caller) {
+      throw new HttpException(
+        'Only project collaborators can start or join project calls.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const recipients = participants.filter(
+      (participant) => participant.userId !== caller.userId,
+    );
+
+    if (recipients.length === 0) {
+      throw new HttpException(
+        'Project call requires at least one other collaborator.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return {
+      projectId: Number(project.id),
+      projectName: project.title || 'Project room',
+      organizationId: project.organization_id,
+      caller,
+      recipients,
+      participants,
+    };
+  }
+
+  async isProjectCollaborator(userId: number | string, projectId: number) {
+    const normalizedUserId = Number(userId);
+    if (!normalizedUserId) {
+      return false;
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['user', 'projectPeers', 'projectPeers.user'],
+    });
+
+    if (!project) {
+      return false;
+    }
+
+    if (Number(project.user?.id) === normalizedUserId) {
+      return true;
+    }
+
+    return (project.projectPeers || []).some(
+      (peer) =>
+        Number(peer.user?.id) === normalizedUserId &&
+        peer.status === ProjectPeerStatus.CONNECTED &&
+        peer.is_confirmed !== false,
+    );
+  }
+
+  async createSystemProjectComment({
+    projectId,
+    actorUserId,
+    content,
+    organizationId,
+  }: {
+    projectId: number;
+    actorUserId: number;
+    content: string;
+    organizationId: string | null;
+  }) {
+    const actor = await this.usersService.getUserAccountById(actorUserId);
+    if (!actor) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['user'],
+    });
+    if (!project) {
+      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const organization = organizationId
+      ? await this.orgRepository.findOne({ where: { id: organizationId } })
+      : null;
+
+    const message = this.projectCommentRepository.create({
+      projectId,
+      project,
+      author: actor,
+      authorId: actor.id,
+      content,
+      fileUrl: null,
+      mentions: [],
+      organization_id: organizationId,
+      organization,
+      is_me: false,
+    });
+
+    const savedMessage = await this.projectCommentRepository.save(message);
+    const savedComment = await this.projectCommentRepository.findOne({
+      where: { id: savedMessage.id },
+      relations: ['author'],
+    });
+
+    if (!savedComment) {
+      throw new HttpException(
+        'Saved project comment could not be reloaded',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const clientComment = this.mapProjectCommentForClient(savedComment, actor.id);
+
+    this.projectGateway.server.to(`project_${projectId}`).emit('new_comment', {
+      projectId,
+      comment: clientComment,
+    });
+
+    return clientComment;
+  }
+
   async addReaction(user: any, messageId: string, emoji: string) {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
