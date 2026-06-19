@@ -102,7 +102,6 @@ export class TasksService {
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
-      console.log(task, updateTaskDetails, 'task');
       const data: CreateTaskParams = {};
       const richDescription = normalizeRichTextDescription({
         description: updateTaskDetails.description,

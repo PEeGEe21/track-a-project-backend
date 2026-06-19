@@ -1,18 +1,13 @@
 import { Type } from 'class-transformer';
-import {
-  IsDate,
-  IsInt,
-  IsOptional,
-  IsString,
-  Min,
-} from 'class-validator';
+import { IsDate, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateTaskDto {
   @IsString()
   title: string;
 
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
 
   @IsOptional()
   @IsString()
