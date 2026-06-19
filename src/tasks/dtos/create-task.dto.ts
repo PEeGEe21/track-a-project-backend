@@ -1,5 +1,13 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsDate, IsInt, IsOptional, IsString, Min } from 'class-validator';
+
+const transformDueDate = ({ value }) => {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+
+  return value instanceof Date ? value : new Date(value);
+};
 
 export class CreateTaskDto {
   @IsString()
@@ -20,9 +28,10 @@ export class CreateTaskDto {
   priority?: number;
 
   @IsOptional()
+  @Transform(transformDueDate)
   @Type(() => Date)
   @IsDate()
-  due_date?: Date;
+  due_date?: Date | null;
 
   @IsOptional()
   @Type(() => Number)
@@ -54,9 +63,10 @@ export class UpdateTaskDto {
   priority?: number;
 
   @IsOptional()
+  @Transform(transformDueDate)
   @Type(() => Date)
   @IsDate()
-  due_date?: Date;
+  due_date?: Date | null;
 
   @IsOptional()
   @Type(() => Number)

@@ -54,6 +54,23 @@ export class TasksService {
     private resourceRepository: Repository<Resource>,
   ) {}
 
+  private normalizeDueDateInput(value: unknown): Date | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null || value === '') {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    const parsedDate = new Date(String(value));
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  }
+
   async findOne(id: number): Promise<Task> {
     const task = await this.taskRepository.findOne({
       where: { id },
@@ -121,8 +138,11 @@ export class TasksService {
         data.priority = updateTaskDetails.priority;
       }
 
-      if (updateTaskDetails.due_date !== undefined) {
-        data.due_date = updateTaskDetails.due_date;
+      const normalizedDueDate = this.normalizeDueDateInput(
+        updateTaskDetails.due_date,
+      );
+      if (normalizedDueDate !== undefined) {
+        data.due_date = normalizedDueDate;
       }
 
       let statusEntity: Status | null = null;
@@ -345,8 +365,11 @@ export class TasksService {
           task.priority = Number(updateTaskDetails.priority);
         }
 
-        if (updateTaskDetails.due_date !== undefined) {
-          task.due_date = updateTaskDetails.due_date;
+        const normalizedDueDate = this.normalizeDueDateInput(
+          updateTaskDetails.due_date,
+        );
+        if (normalizedDueDate !== undefined) {
+          task.due_date = normalizedDueDate;
         }
 
         if (updateTaskDetails.status) {
@@ -1050,6 +1073,8 @@ export class TasksService {
         }
       }
 
+      const normalizedDueDate = this.normalizeDueDateInput(due_date);
+
       const newTask = this.taskRepository.create({
         title,
         description: richDescription?.description ?? '',
@@ -1057,7 +1082,7 @@ export class TasksService {
         status: statusEntity ?? undefined,
         project,
         priority,
-        due_date,
+        due_date: normalizedDueDate ?? null,
         organization,
         organization_id: organization.id,
       });

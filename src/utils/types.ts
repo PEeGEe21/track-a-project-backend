@@ -42,7 +42,7 @@ export type CreateTaskParams = {
   description?: string;
   description_html?: string | null;
   priority?: number;
-  due_date?: Date;
+  due_date?: Date | null;
   project?: Project;
   status?: Status;
   tags?: Tag[];

@@ -49,8 +49,8 @@ export class Task {
   @JoinTable()
   categories?: Category[];
 
-  @Column()
-  due_date: Date = new Date();
+  @Column({ type: 'datetime', nullable: true })
+  due_date: Date | null;
 
   @ManyToOne(() => Project, (project) => project.tasks)
   @JoinColumn({ name: 'project_id' })

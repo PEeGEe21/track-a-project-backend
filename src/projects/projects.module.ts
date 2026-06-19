@@ -32,6 +32,7 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     ConfigModule,
     CategoriesModule,
     ProjectActivitiesModule,
+    StorageModule,
     // forwardRef(() => CategoriesModule),
     NotificationsModule,
   ],

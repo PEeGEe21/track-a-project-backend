@@ -49,6 +49,7 @@ import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
 import * as ExcelJS from 'exceljs';
 import { UpdateProjectDto } from '../dtos/update-project.dto';
+import { StorageService } from 'src/types/storage.interface';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -75,6 +76,8 @@ export class ProjectsService {
     private notificationService: NotificationsService,
     private projectActivitiesService: ProjectActivitiesService,
     private projectGateway: ProjectsGateway,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
     // @Inject(forwardRef(() => ProjectsGateway)) private projectGateway: ProjectsGateway, // Use forwardRef here
     @InjectEntityManager() private entityManager: EntityManager,
 
@@ -106,7 +109,19 @@ export class ProjectsService {
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
-  private mapProjectCommentForClient(comment: any, currentUserId: number) {
+  private async resolveProjectCommentFileUrl(comment: any): Promise<string | null> {
+    if (!comment?.fileUrl) {
+      return null;
+    }
+
+    try {
+      return await this.storageService.getSignedUrl(comment.fileUrl, 3600);
+    } catch {
+      return comment.fileUrl;
+    }
+  }
+
+  private async mapProjectCommentForClient(comment: any, currentUserId: number) {
     return {
       id: comment.id,
       projectId: comment.projectId,
@@ -122,7 +137,7 @@ export class ProjectsService {
           }
         : null,
       content: comment.content,
-      fileUrl: comment.fileUrl,
+      fileUrl: await this.resolveProjectCommentFileUrl(comment),
       reactions: comment.reactions || [],
       seenBy: comment.seenBy || [],
       mentions: comment.mentions || [],
@@ -1456,7 +1471,7 @@ export class ProjectsService {
         );
       }
 
-      const clientComment = this.mapProjectCommentForClient(
+      const clientComment = await this.mapProjectCommentForClient(
         savedComment,
         userFound.id,
       );
@@ -1685,8 +1700,10 @@ export class ProjectsService {
 
       return {
         success: true,
-        comments: comments.map((comment) =>
-          this.mapProjectCommentForClient(comment, userFound.id),
+        comments: await Promise.all(
+          comments.map((comment) =>
+            this.mapProjectCommentForClient(comment, userFound.id),
+          ),
         ),
       };
     } catch (err) {
@@ -1861,7 +1878,10 @@ export class ProjectsService {
       );
     }
 
-    const clientComment = this.mapProjectCommentForClient(savedComment, actor.id);
+    const clientComment = await this.mapProjectCommentForClient(
+      savedComment,
+      actor.id,
+    );
 
     this.projectGateway.server.to(`project_${projectId}`).emit('new_comment', {
       projectId,
