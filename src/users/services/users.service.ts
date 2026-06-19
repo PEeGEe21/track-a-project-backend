@@ -293,7 +293,7 @@ export class UsersService {
     user,
     userId: number,
   ): Promise<{ message: string }> {
-    if (+user?.id !== userId) {
+    if (+user?.userId !== userId) {
       throw new UnauthorizedException(
         'You are not allowed to update this onboarding status',
       );
