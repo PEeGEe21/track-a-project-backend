@@ -76,6 +76,12 @@ const envVarsSchema = joi
       .integer()
       .min(1000)
       .default(600000),
+    RATE_LIMIT_INGESTION_MAX: joi.number().integer().min(1).default(100),
+    RATE_LIMIT_INGESTION_WINDOW_MS: joi
+      .number()
+      .integer()
+      .min(1000)
+      .default(60000),
     WS_RATE_LIMIT_MAX: joi.number().integer().min(1).default(60),
     WS_RATE_LIMIT_WINDOW_MS: joi.number().integer().min(1000).default(60000),
     WS_RATE_LIMIT_BURST_MAX: joi.number().integer().min(1).default(180),
@@ -140,6 +146,7 @@ const envVarsSchema = joi
     S3_FORCE_PATH_STYLE: joi.string().optional(),
     S3_BUCKET_PUBLIC_READ: joi.string().optional(),
     S3_SIGNED_URL_TTL_SECONDS: joi.number().integer().min(60).default(3600),
+    INGESTION_MAX_BODY_KB: joi.number().integer().min(1).default(50),
     // TWILIO_ACCOUNT_SID: joi.string().required(),
     // TWILIO_AUTH_TOKEN: joi.string().required(),
     // CLOUDINARY_API_KEY: joi.string().required(),
@@ -343,6 +350,8 @@ export const config = {
     authWindowMs: envVars.RATE_LIMIT_AUTH_WINDOW_MS,
     inviteMax: envVars.RATE_LIMIT_INVITE_MAX,
     inviteWindowMs: envVars.RATE_LIMIT_INVITE_WINDOW_MS,
+    ingestionMax: envVars.RATE_LIMIT_INGESTION_MAX,
+    ingestionWindowMs: envVars.RATE_LIMIT_INGESTION_WINDOW_MS,
     websocketMax: envVars.WS_RATE_LIMIT_MAX,
     websocketWindowMs: envVars.WS_RATE_LIMIT_WINDOW_MS,
     websocketBurstMax: envVars.WS_RATE_LIMIT_BURST_MAX,
@@ -350,6 +359,10 @@ export const config = {
   },
   queue: {
     driver: envVars.QUEUE_DRIVER,
+  },
+  ingestion: {
+    maxBodyKb: envVars.INGESTION_MAX_BODY_KB,
+    maxBodyBytes: envVars.INGESTION_MAX_BODY_KB * 1024,
   },
   boldMetrics: {
     clientId: envVars.BOLD_METRICS_CLIENT_ID,

@@ -75,6 +75,13 @@ export class Project {
   @OneToMany(() => Status, (status) => status.project)
   statuses: Status[];
 
+  @Column({ nullable: true })
+  default_ingestion_status_id: number | null;
+
+  @ManyToOne(() => Status, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'default_ingestion_status_id' })
+  defaultIngestionStatus: Status | null;
+
   //   @ManyToOne(() => User, (user) => user.posts)
   //   post_user: User;
   // @ManyToMany(() => ProjectPeer, (projectPeer) => projectPeer.project)

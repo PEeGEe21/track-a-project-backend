@@ -85,6 +85,9 @@ Important optional values:
 - `REDIS_PREFIX`
 - `RATE_LIMIT_DRIVER`
 - `QUEUE_DRIVER`
+- `RATE_LIMIT_INGESTION_MAX`
+- `RATE_LIMIT_INGESTION_WINDOW_MS`
+- `INGESTION_MAX_BODY_KB`
 
 Secret ownership:
 
@@ -120,8 +123,15 @@ HTTP throttling is now enforced with `@nestjs/throttler`.
 
 - Sensitive auth routes use tighter per-route limits.
 - Invite and invitation-validation routes are throttled separately.
+- Ingestion requests are throttled per ingestion API key.
 - The default storage driver is in-memory.
 - Set `RATE_LIMIT_DRIVER=redis` with `REDIS_ENABLED=true` to move throttling to Redis for multi-instance deployments.
+
+Ingestion-specific knobs:
+
+- `RATE_LIMIT_INGESTION_MAX=100`
+- `RATE_LIMIT_INGESTION_WINDOW_MS=60000`
+- `INGESTION_MAX_BODY_KB=50`
 
 Realtime gateway events also use backend-side websocket throttling for registration, typing, whiteboard updates, project comments, and similar burst-heavy events.
 
@@ -139,6 +149,66 @@ Installed packages:
 - `@nestjs/throttler`
 - `ioredis`
 - `bullmq`
+
+## Ingestion
+
+The backend now includes a project-scoped ingestion API for machine-created tasks.
+
+Authenticated project settings routes:
+
+- `GET /api/projects/:projectId/ingest-keys`
+- `POST /api/projects/:projectId/ingest-keys/live`
+- `POST /api/projects/:projectId/ingest-keys/test`
+- `DELETE /api/projects/:projectId/ingest-keys/:keyId`
+- `PUT /api/projects/:projectId/default-ingestion-status`
+
+Behavior notes:
+
+- A project must have `default_ingestion_status_id` configured before a live or test ingestion key can be generated.
+- Live keys create or reopen tasks through `POST /api/v1/ingest/tasks`.
+- Test keys validate payloads and throttling but do not write tasks or ingested-event rows.
+- Duplicate ingestion events are deduped by `(project_id, dedupe_key)`.
+- Duplicate events tied to terminal tasks reopen them into the project default ingestion status.
+
+Public ingestion route:
+
+- `POST /api/v1/ingest/tasks`
+
+Expected auth header:
+
+```http
+Authorization: Bearer trk_live_xxx
+```
+
+or
+
+```http
+Authorization: Bearer trk_test_xxx
+```
+
+Minimal example payload:
+
+```json
+{
+  "source": "sdk",
+  "title": "Build failed in production",
+  "severity": "high",
+  "priority": 0,
+  "dedupeKey": "ci:prod:build-failed",
+  "metadata": {
+    "service": "worker",
+    "environment": "production"
+  }
+}
+```
+
+`severity` and `priority` are separate fields. `severity` captures incident impact (`low` to `critical`), while `priority` remains the task's normal workflow priority and defaults to `0` if omitted.
+
+Response shape:
+
+- `201` with `{ "status": "created", "taskId": <id>, "occurrenceCount": 1 }` for new live ingests
+- `200` with `{ "status": "deduped", "taskId": <id>, "occurrenceCount": <n> }` for duplicate live ingests
+- `200` with `{ "status": "validated", "test": true }` for test keys
 
 ## Database Strategy
 

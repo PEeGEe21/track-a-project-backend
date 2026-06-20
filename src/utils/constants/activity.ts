@@ -2,9 +2,11 @@
 export enum ActivityType {
     PROJECT_COMMENT = 'comment',
     TASK_CREATED = 'task_created', // done
+    TASK_INGESTED = 'task_ingested',
     TASK_UPDATED = 'task_updated', // done
     TASK_COMPLETED = 'task_completed',
     TASK_DELETED = 'task_deleted', // done
+    TASK_REOPENED_BY_INGESTION = 'task_reopened_by_ingestion',
     PEER_ADDED = 'peer_added',
     PEER_REMOVED = 'peer_removed',
     RESOURCE_ADDED = 'resource_added', // done

@@ -5,8 +5,16 @@ This backend now uses Redis for throttling and queue support when enabled. Treat
 ## Current Redis Uses
 
 - HTTP throttling storage when `RATE_LIMIT_DRIVER=redis`
+- ingestion-key throttling via `trackr:throttle:ingest:key:<ingestKeyId>` when ingestion is enabled
 - WebSocket event throttling support
 - BullMQ queue transport for mail and notifications when `QUEUE_DRIVER=redis`
+
+Ingestion throttling details:
+
+- key pattern: `<REDIS_PREFIX>:throttle:ingest:key:<ingestKeyId>`
+- owning module: `ingestion`
+- TTL: `RATE_LIMIT_INGESTION_WINDOW_MS` default `60000`
+- fallback behavior: falls back to in-memory throttling through the shared throttler storage when Redis is unavailable
 
 ## Current Non-Uses
 

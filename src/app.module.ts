@@ -72,6 +72,9 @@ import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler.stora
 import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { MessageStar } from './typeorm/entities/MessageStar';
 import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
+import { IngestApiKey } from './typeorm/entities/IngestApiKey';
+import { IngestedEvent } from './typeorm/entities/IngestedEvent';
+import { IngestionModule } from './ingestion/ingestion.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -149,6 +152,8 @@ import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
             AuditLog,
             MessageStar,
             UserPushSubscription,
+            IngestApiKey,
+            IngestedEvent,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -200,6 +205,8 @@ import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
       AuditLog,
       MessageStar,
       UserPushSubscription,
+      IngestApiKey,
+      IngestedEvent,
     ]),
     UsersModule,
     ProjectsModule,
@@ -223,6 +230,7 @@ import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
     BillingModule,
     AdminModule,
     HealthModule,
+    IngestionModule,
   ],
   controllers: [AppController],
   providers: [

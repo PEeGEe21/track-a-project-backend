@@ -38,6 +38,9 @@ export class Task {
   })
   priority: number;
 
+  @Column({ length: 32, nullable: true })
+  severity: string | null;
+
   @Column({ default: 0 })
   position: number;
 

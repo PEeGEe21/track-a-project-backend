@@ -21,6 +21,8 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 import { Response } from 'express';
+import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
+import { UpdateDefaultIngestionStatusDto } from '../dtos/update-default-ingestion-status.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('projects')
@@ -182,6 +184,86 @@ export class ProjectsController {
       projectId,
       organizationId,
       query,
+    );
+  }
+
+  @Get(':projectId/ingest-keys')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  listIngestKeys(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.listIngestKeysForProject(
+      req.user,
+      projectId,
+      organizationId,
+    );
+  }
+
+  @Post(':projectId/ingest-keys/live')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  createLiveIngestKey(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: CreateIngestKeyDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.createIngestKeyForProject(
+      req.user,
+      projectId,
+      organizationId,
+      'live',
+      dto,
+    );
+  }
+
+  @Post(':projectId/ingest-keys/test')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  createTestIngestKey(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: CreateIngestKeyDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.createIngestKeyForProject(
+      req.user,
+      projectId,
+      organizationId,
+      'test',
+      dto,
+    );
+  }
+
+  @Delete(':projectId/ingest-keys/:keyId')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  revokeIngestKey(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('keyId', ParseIntPipe) keyId: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.revokeIngestKeyForProject(
+      req.user,
+      projectId,
+      keyId,
+      organizationId,
+    );
+  }
+
+  @Put(':projectId/default-ingestion-status')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  updateDefaultIngestionStatus(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Body() dto: UpdateDefaultIngestionStatusDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.updateDefaultIngestionStatus(
+      req.user,
+      projectId,
+      organizationId,
+      dto.default_ingestion_status_id,
     );
   }
 

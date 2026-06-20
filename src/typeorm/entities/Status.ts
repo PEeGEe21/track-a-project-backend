@@ -35,6 +35,9 @@ export class Status {
   @Column({ default: false })
   isDefault: boolean;
 
+  @Column({ default: false })
+  isTerminal: boolean;
+
   @OneToMany(() => Task, (task) => task.status)
   tasks: Task[];
 

@@ -50,6 +50,9 @@ import { InviteLinks } from 'src/common/services/invite-links';
 import * as ExcelJS from 'exceljs';
 import { UpdateProjectDto } from '../dtos/update-project.dto';
 import { StorageService } from 'src/types/storage.interface';
+import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
+import { IngestionKeyService } from 'src/ingestion/services/ingestion-key.service';
+import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -78,6 +81,7 @@ export class ProjectsService {
     private projectGateway: ProjectsGateway,
     @Inject('STORAGE_SERVICE')
     private storageService: StorageService,
+    private ingestionKeyService: IngestionKeyService,
     // @Inject(forwardRef(() => ProjectsGateway)) private projectGateway: ProjectsGateway, // Use forwardRef here
     @InjectEntityManager() private entityManager: EntityManager,
 
@@ -105,11 +109,15 @@ export class ProjectsService {
     private projectActivityRepository: Repository<ProjectActivity>,
     @InjectRepository(Organization)
     private orgRepository: Repository<Organization>,
+    @InjectRepository(IngestApiKey)
+    private ingestApiKeyRepository: Repository<IngestApiKey>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
-  private async resolveProjectCommentFileUrl(comment: any): Promise<string | null> {
+  private async resolveProjectCommentFileUrl(
+    comment: any,
+  ): Promise<string | null> {
     if (!comment?.fileUrl) {
       return null;
     }
@@ -121,7 +129,10 @@ export class ProjectsService {
     }
   }
 
-  private async mapProjectCommentForClient(comment: any, currentUserId: number) {
+  private async mapProjectCommentForClient(
+    comment: any,
+    currentUserId: number,
+  ) {
     return {
       id: comment.id,
       projectId: comment.projectId,
@@ -144,6 +155,60 @@ export class ProjectsService {
       created_at: comment.created_at,
       updated_at: comment.updated_at,
       is_me: comment.authorId == currentUserId,
+    };
+  }
+
+  private async getProjectForIngestionSettings(
+    user: any,
+    projectId: number,
+    organizationId: string,
+  ): Promise<{ project: Project; foundUser: User }> {
+    const foundUser = await this.usersService.getUserAccountById(user.userId);
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user', 'defaultIngestionStatus'],
+    });
+
+    if (!project) {
+      throw new HttpException(
+        'Project not found in this organization',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const isOwner = Number(project.user?.id) === Number(foundUser.id);
+    const isProjectPeer = await this.projectPeerRepository.exists({
+      where: {
+        project: { id: projectId },
+        user: { id: foundUser.id },
+        organization_id: organizationId,
+      },
+    });
+
+    if (user.role !== 'super_admin' && !isOwner && !isProjectPeer) {
+      throw new HttpException(
+        'You do not have permission to manage this project',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return { project, foundUser };
+  }
+
+  private mapIngestKeyForClient(key: IngestApiKey) {
+    return {
+      id: key.id,
+      label: key.label,
+      keyPrefix: key.keyPrefix,
+      mode: this.ingestionKeyService.isTestKey(key.keyPrefix) ? 'test' : 'live',
+      revokedAt: key.revoked_at,
+      lastUsedAt: key.last_used_at,
+      createdAt: key.created_at,
+      updatedAt: key.updated_at,
     };
   }
 
@@ -466,6 +531,155 @@ export class ProjectsService {
     }
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
+  }
+
+  async listIngestKeysForProject(
+    user: any,
+    projectId: number,
+    organizationId: string,
+  ) {
+    await this.getProjectForIngestionSettings(user, projectId, organizationId);
+
+    const keys = await this.ingestApiKeyRepository.find({
+      where: {
+        projectId,
+        organization_id: organizationId,
+      },
+      order: {
+        created_at: 'DESC',
+      },
+    });
+
+    return {
+      success: true,
+      data: keys.map((key) => this.mapIngestKeyForClient(key)),
+    };
+  }
+
+  async createIngestKeyForProject(
+    user: any,
+    projectId: number,
+    organizationId: string,
+    mode: 'live' | 'test',
+    dto: CreateIngestKeyDto,
+  ) {
+    const { project } = await this.getProjectForIngestionSettings(
+      user,
+      projectId,
+      organizationId,
+    );
+
+    if (!project.default_ingestion_status_id) {
+      throw new HttpException(
+        'Set a default ingestion status before generating an API key',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const rawKey = this.ingestionKeyService.generateRawKey(mode);
+    const entity = this.ingestApiKeyRepository.create({
+      projectId: project.id,
+      project,
+      organization_id: organizationId,
+      keyHash: this.ingestionKeyService.hashKey(rawKey),
+      keyPrefix: this.ingestionKeyService.getKeyPrefix(rawKey),
+      label: this.ingestionKeyService.buildLabel(dto?.label, mode),
+      revoked_at: null,
+      last_used_at: null,
+    });
+
+    const savedKey = await this.ingestApiKeyRepository.save(entity);
+
+    return {
+      success: true,
+      message: `${
+        mode === 'test' ? 'Test' : 'Live'
+      } ingestion key created successfully`,
+      data: {
+        ...this.mapIngestKeyForClient(savedKey),
+        apiKey: rawKey,
+      },
+    };
+  }
+
+  async revokeIngestKeyForProject(
+    user: any,
+    projectId: number,
+    keyId: number,
+    organizationId: string,
+  ) {
+    await this.getProjectForIngestionSettings(user, projectId, organizationId);
+
+    const key = await this.ingestApiKeyRepository.findOne({
+      where: {
+        id: keyId,
+        projectId,
+        organization_id: organizationId,
+      },
+    });
+
+    if (!key) {
+      throw new HttpException('Ingestion key not found', HttpStatus.NOT_FOUND);
+    }
+
+    if (!key.revoked_at) {
+      key.revoked_at = new Date();
+      await this.ingestApiKeyRepository.save(key);
+    }
+
+    return {
+      success: true,
+      message: 'Ingestion key revoked successfully',
+      data: this.mapIngestKeyForClient(key),
+    };
+  }
+
+  async updateDefaultIngestionStatus(
+    user: any,
+    projectId: number,
+    organizationId: string,
+    defaultIngestionStatusId: number,
+  ) {
+    const { project } = await this.getProjectForIngestionSettings(
+      user,
+      projectId,
+      organizationId,
+    );
+
+    const status = await this.statusRepository.findOne({
+      where: {
+        id: defaultIngestionStatusId,
+        project: { id: projectId },
+        organization_id: organizationId,
+      },
+      relations: ['project'],
+    });
+
+    if (!status) {
+      throw new HttpException(
+        'Selected ingestion status does not belong to this project',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    project.default_ingestion_status_id = status.id;
+    project.defaultIngestionStatus = status;
+    await this.projectRepository.save(project);
+
+    return {
+      success: true,
+      message: 'Default ingestion status updated successfully',
+      data: {
+        projectId: project.id,
+        default_ingestion_status_id: status.id,
+        default_ingestion_status: {
+          id: status.id,
+          title: status.title,
+          color: status.color,
+          isTerminal: status.isTerminal,
+        },
+      },
+    };
   }
 
   async deleteProject(
@@ -1732,7 +1946,9 @@ export class ProjectsService {
             userId: Number(project.user.id),
             name:
               toPlainText(
-                `${project.user.first_name || ''} ${project.user.last_name || ''}`,
+                `${project.user.first_name || ''} ${
+                  project.user.last_name || ''
+                }`,
               ) ||
               toPlainText(project.user.email) ||
               'Project owner',

@@ -513,11 +513,14 @@ Document:
   "title": "required",
   "description": "optional",
   "severity": "low | medium | high | critical",
+  "priority": "optional numeric task priority",
   "dedupeKey": "optional",
   "metadata": {},
   "occurredAt": "optional ISO string"
 }
 ```
+
+`severity` should remain distinct from task `priority`. Ingestion must store severity directly on the task and should not translate severity levels into priority values.
 
 ### Responses
 
