@@ -21,7 +21,7 @@ export class UserNotificationPreference {
   user: User;
 
   @Column({ type: 'varchar' })
-  notification_type: string; // e.g., 'invite', 'project_update'
+  notification_type: string; // e.g., 'invite', 'project_update', 'deadline_reminder'
 
   @Column({ type: 'boolean', default: true })
   in_app: boolean;

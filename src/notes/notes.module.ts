@@ -21,9 +21,7 @@ import { AuthModule } from 'src/auth/auth.module';
 import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from 'src/users/users.module';
 import { MailingModule } from 'src/utils/mailing/mailing.module';
-import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { NotificationsModule } from 'src/notifications/notifications.module';
-import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
@@ -59,11 +57,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     ]),
   ],
   controllers: [NotesController],
-  providers: [
-    NotesService,
-    NotificationsService,
-    NotificationsGateway,
-  ],
+  providers: [NotesService],
   exports: [NotesService],
 })
 export class NotesModule {}

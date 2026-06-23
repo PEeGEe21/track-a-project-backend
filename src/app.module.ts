@@ -74,6 +74,8 @@ import { MessageStar } from './typeorm/entities/MessageStar';
 import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
 import { IngestApiKey } from './typeorm/entities/IngestApiKey';
 import { IngestedEvent } from './typeorm/entities/IngestedEvent';
+import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
+import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
 @Module({
   imports: [
@@ -154,6 +156,8 @@ import { IngestionModule } from './ingestion/ingestion.module';
             UserPushSubscription,
             IngestApiKey,
             IngestedEvent,
+            TaskDeadlineReminder,
+            OrganizationSettings,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -207,6 +211,8 @@ import { IngestionModule } from './ingestion/ingestion.module';
       UserPushSubscription,
       IngestApiKey,
       IngestedEvent,
+      TaskDeadlineReminder,
+      OrganizationSettings,
     ]),
     UsersModule,
     ProjectsModule,

@@ -292,6 +292,62 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async sendNotificationEmail({
+    email,
+    firstName,
+    title,
+    message,
+    actionUrl,
+    actionLabel,
+  }: {
+    email: string;
+    firstName?: string | null;
+    title: string;
+    message: string;
+    actionUrl?: string | null;
+    actionLabel?: string | null;
+  }): Promise<string> {
+    const displayName = firstName?.trim() || 'there';
+    const actionMarkup =
+      actionUrl && actionLabel
+        ? `
+          <div style="margin-top:24px;">
+            <a
+              href="${actionUrl}"
+              style="display:inline-block; padding:12px 18px; border-radius:999px; background:#0F766E; color:#FFFFFF; text-decoration:none; font-weight:600;"
+            >
+              ${actionLabel}
+            </a>
+          </div>
+        `
+        : '';
+
+    const html = `
+      <div style="background:#F8FAFC; padding:32px 16px; font-family:Arial, sans-serif; color:#102A43;">
+        <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; overflow:hidden;">
+          <div style="padding:24px 28px; background:linear-gradient(135deg,#083344 0%,#0F766E 55%,#2563EB 140%); color:#FFFFFF;">
+            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">Trackr Notification</p>
+            <h2 style="margin:12px 0 0; font-size:28px; line-height:1.2;">${title}</h2>
+          </div>
+          <div style="padding:28px;">
+            <p style="margin:0 0 12px; font-size:16px; line-height:1.7;">Hi ${displayName},</p>
+            <p style="margin:0; font-size:16px; line-height:1.7; color:#334E68;">
+              ${message}
+            </p>
+            ${actionMarkup}
+          </div>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: email,
+      subject: title,
+      text: message,
+      html,
+    });
+  }
+
   private async compileTemplate2(templateName: string, context: any) {
     const templatePath = path.join(
       __dirname,

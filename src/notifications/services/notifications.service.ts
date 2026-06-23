@@ -22,9 +22,10 @@ import { config } from 'src/config';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { PushSubscriptionsService } from './push-subscriptions.service';
+import { MailingService } from 'src/utils/mailing/mailing.service';
+import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import * as webpush from 'web-push';
 import * as https from 'https';
-import * as dns from 'dns';
 
 interface NotificationJobPayload {
   organizationId: string;
@@ -48,6 +49,12 @@ interface PushDeliveryResult {
   }>;
 }
 
+interface DeliveryExecutionResult {
+  notification: Notification | null;
+  push: PushDeliveryResult | null;
+  emailed: boolean;
+}
+
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private queue: Queue<NotificationJobPayload> | null = null;
@@ -62,6 +69,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     private redisService: RedisService,
     private notificationPreferencesService: NotificationPreferencesService,
     private pushSubscriptionsService: PushSubscriptionsService,
+    private mailingService: MailingService,
 
     @InjectRepository(Notification)
     private notificationsRepository: Repository<Notification>,
@@ -272,11 +280,54 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     createNotificationDto: CreateNotificationDto,
     organizationId: string,
   ) {
+    return this.enqueueNotification(createNotificationDto, organizationId);
+  }
+
+  async deliverNotificationNow(
+    createNotificationDto: CreateNotificationDto,
+    organizationId: string,
+  ) {
+    const payload = this.toJobPayload(createNotificationDto, organizationId);
+    const deliveryPlan = await this.getDeliveryPlan(payload);
+    const shouldSendEmail =
+      deliveryPlan.email &&
+      payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+
+    if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
+      return {
+        success: true,
+        skipped: true,
+        message: 'Notification suppressed by user preferences',
+        data: {
+          notification: null,
+          push: null,
+          emailed: false,
+        } satisfies DeliveryExecutionResult,
+      };
+    }
+
+    const result = await this.createNotificationDirect(payload);
+
+    return {
+      success: true,
+      skipped: false,
+      message: 'Notification delivered directly',
+      data: result,
+    };
+  }
+
+  async enqueueNotification(
+    createNotificationDto: CreateNotificationDto,
+    organizationId: string,
+  ) {
     try {
       const payload = this.toJobPayload(createNotificationDto, organizationId);
       const deliveryPlan = await this.getDeliveryPlan(payload);
+      const shouldSendEmail =
+        deliveryPlan.email &&
+        payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
 
-      if (!deliveryPlan.in_app && !deliveryPlan.push) {
+      if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
         return {
           success: true,
           queued: false,
@@ -288,6 +339,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       if (config.queue.driver === 'redis' && this.queue) {
         await this.queue.add('deliver-notification', payload, {
           attempts: 3,
+          jobId:
+            typeof payload.metadata?.deliveryKey === 'string'
+              ? payload.metadata.deliveryKey
+              : undefined,
           removeOnComplete: 100,
           removeOnFail: 100,
         });
@@ -567,13 +622,24 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async createNotificationDirect(payload: NotificationJobPayload) {
+  private async createNotificationDirect(
+    payload: NotificationJobPayload,
+  ): Promise<DeliveryExecutionResult> {
     const deliveryPlan = await this.getDeliveryPlan(payload);
-    if (!deliveryPlan.in_app && !deliveryPlan.push) {
-      return null;
+    const shouldSendEmail =
+      deliveryPlan.email && payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+
+    if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
+      return {
+        notification: null,
+        push: null,
+        emailed: false,
+      };
     }
 
     let savedNotification: Notification | null = null;
+    let pushResult: PushDeliveryResult | null = null;
+    let emailed = false;
 
     if (deliveryPlan.in_app) {
       const organization = await this.orgRepository.findOne({
@@ -602,10 +668,46 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (deliveryPlan.push) {
-      await this.sendPushNotifications(payload);
+      pushResult = await this.sendPushNotifications(payload);
     }
 
-    return savedNotification;
+    if (shouldSendEmail) {
+      await this.sendNotificationEmail(payload);
+      emailed = true;
+    }
+
+    return {
+      notification: savedNotification,
+      push: pushResult,
+      emailed,
+    };
+  }
+
+  private async sendNotificationEmail(payload: NotificationJobPayload) {
+    const recipient = await this.usersService.getUserAccountById(payload.recipientId);
+    if (!recipient?.email) {
+      return;
+    }
+
+    const path =
+      typeof payload.metadata?.path === 'string' && payload.metadata.path.trim()
+        ? payload.metadata.path.trim()
+        : '/notifications';
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const actionUrl = `${config.feBaseUrl.replace(
+      /\/+$/,
+      '',
+    )}${normalizedPath}`;
+
+    await this.mailingService.sendNotificationEmail({
+      email: recipient.email,
+      firstName: recipient.first_name,
+      title: payload.title,
+      message: payload.message ?? 'You have a new notification in Trackr.',
+      actionUrl,
+      actionLabel:
+        payload.type === 'deadline_reminder' ? 'Open task' : 'View notification',
+    });
   }
 
   async sendTestPush(user: any, organizationId?: string) {

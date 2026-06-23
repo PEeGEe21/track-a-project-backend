@@ -103,6 +103,13 @@ export class OrganizationsController {
     return this.organizationsService.update(id, updateOrgDto, file);
   }
 
+  @UseGuards(JwtAuthGuard, OrganizationAccessGuard, RolesGuard)
+  @Roles('org_admin')
+  @Post(':id/deadline-reminders/test')
+  triggerDeadlineReminderTest(@Param('id') id: string, @Req() req: any) {
+    return this.organizationsService.triggerDeadlineReminderTest(req.user, id);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.organizationsService.remove(+id);

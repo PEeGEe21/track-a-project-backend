@@ -32,6 +32,7 @@ import { Post } from 'src/typeorm/entities/Post';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { BillingModule } from 'src/billing/billing.module';
 import { Subscription } from 'src/typeorm/entities/Subscription';
+import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { Subscription } from 'src/typeorm/entities/Subscription';
       OrganizationMenu,
       GlobalMenu,
       Organization,
+      OrganizationSettings,
       OrganizationInvitation,
       Subscription,
     ]),

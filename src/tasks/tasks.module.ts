@@ -10,8 +10,6 @@ import { Task } from 'src/typeorm/entities/Task';
 import { Status } from 'src/typeorm/entities/Status';
 import { Note } from 'src/typeorm/entities/Note';
 import { NotificationsModule } from 'src/notifications/notifications.module';
-import { NotificationsService } from 'src/notifications/services/notifications.service';
-import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UsersModule } from 'src/users/users.module';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
@@ -45,7 +43,7 @@ import { StorageModule } from 'src/storage/storage.module';
     StorageModule,
   ],
   controllers: [TasksController],
-  providers: [TasksService, NotificationsService, NotificationsGateway],
+  providers: [TasksService],
   exports: [TasksService],
 })
 export class TasksModule {}

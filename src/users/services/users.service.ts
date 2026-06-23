@@ -1955,7 +1955,7 @@ export class UsersService {
       .createQueryBuilder('task')
       .leftJoin('task.status', 'status')
       .where('task.project_id IN (:...projectIds)', { projectIds })
-      .andWhere('LOWER(status.title) = :status', { status: 'done' })
+      .andWhere('status.isTerminal = :isTerminal', { isTerminal: true })
       .getCount();
 
     const completionRate =
@@ -1985,7 +1985,9 @@ export class UsersService {
       .leftJoin('task.status', 'status')
       .where('task.project_id IN (:...projectIds)', { projectIds })
       .andWhere('task.due_date < :now', { now })
-      .andWhere('LOWER(status.title) != :done', { done: 'done' })
+      .andWhere('(status.id IS NULL OR status.isTerminal = :isTerminal)', {
+        isTerminal: false,
+      })
       .getCount();
   }
 
@@ -2007,7 +2009,9 @@ export class UsersService {
       .where('task.project_id IN (:...projectIds)', { projectIds })
       .andWhere('task.due_date >= :now', { now })
       .andWhere('task.due_date <= :sevenDaysLater', { sevenDaysLater })
-      .andWhere('LOWER(status.title) != :done', { done: 'done' })
+      .andWhere('(status.id IS NULL OR status.isTerminal = :isTerminal)', {
+        isTerminal: false,
+      })
       .getCount();
   }
 
@@ -2198,7 +2202,7 @@ export class UsersService {
       .select('DATE(task.updated_at)', 'date')
       .addSelect('COUNT(task.id)', 'count')
       .where('task.project_id IN (:...projectIds)', { projectIds })
-      .andWhere('LOWER(status.title) = :done', { done: 'done' })
+      .andWhere('status.isTerminal = :isTerminal', { isTerminal: true })
       .andWhere('task.updated_at >= :sevenDaysAgo', { sevenDaysAgo })
       .groupBy('DATE(task.updated_at)')
       .getRawMany();

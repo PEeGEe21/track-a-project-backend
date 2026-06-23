@@ -56,6 +56,7 @@ export type CreateStatusParams = {
   projectId?: number;
   color?: string;
   tabId?: number;
+  isTerminal?: boolean;
   tasks?: Task[];
 };
 

@@ -18,6 +18,14 @@ const transformDueDate = ({ value }) => {
   return value instanceof Date ? value : new Date(value);
 };
 
+const transformSeverity = ({ value }) => {
+  if (value === '' || value === null || value === undefined) {
+    return null;
+  }
+
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+};
+
 export class CreateTaskDto {
   @IsString()
   title: string;
@@ -37,9 +45,10 @@ export class CreateTaskDto {
   priority?: number;
 
   @IsOptional()
+  @Transform(transformSeverity)
   @IsString()
   @IsIn(TASK_SEVERITY_VALUES)
-  severity?: string;
+  severity?: string | null;
 
   @IsOptional()
   @Transform(transformDueDate)
@@ -77,9 +86,10 @@ export class UpdateTaskDto {
   priority?: number;
 
   @IsOptional()
+  @Transform(transformSeverity)
   @IsString()
   @IsIn(TASK_SEVERITY_VALUES)
-  severity?: string;
+  severity?: string | null;
 
   @IsOptional()
   @Transform(transformDueDate)

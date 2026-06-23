@@ -37,4 +37,20 @@ export class UpdateOrganizationDto {
   @IsOptional()
   @IsEnum(SubscriptionTier)
   subscription_tier: SubscriptionTier;
+
+  @IsOptional()
+  @IsBoolean()
+  deadline_reminders_enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  deadline_reminder_days_before?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deadline_reminder_hour?: number;
+
+  @IsOptional()
+  @IsNumber()
+  deadline_reminder_minute?: number;
 }

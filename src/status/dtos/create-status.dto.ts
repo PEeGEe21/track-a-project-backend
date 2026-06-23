@@ -1,4 +1,10 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateStatusDto {
   @IsString()
@@ -17,6 +23,10 @@ export class CreateStatusDto {
   @IsOptional()
   @IsInt()
   tabId?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isTerminal?: boolean;
 }
 
 export class UpdateStatusDto {
@@ -35,4 +45,8 @@ export class UpdateStatusDto {
   @IsOptional()
   @IsInt()
   tabId?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isTerminal?: boolean;
 }

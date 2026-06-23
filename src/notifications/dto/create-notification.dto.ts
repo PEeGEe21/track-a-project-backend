@@ -1,8 +1,8 @@
-import { User } from "src/typeorm/entities/User";
+import { User } from 'src/typeorm/entities/User';
 
 export class CreateNotificationDto {
   recipient: User;
-  sender: User;
+  sender?: User | null;
   title: string;
   message?: string;
   type: string;

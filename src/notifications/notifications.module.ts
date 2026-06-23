@@ -28,6 +28,9 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { NotificationPreferencesService } from './services/notification-preferences.service';
 import { UserPushSubscription } from 'src/typeorm/entities/UserPushSubscription';
 import { PushSubscriptionsService } from './services/push-subscriptions.service';
+import { DeadlineRemindersService } from './services/deadline-reminders.service';
+import { TaskDeadlineReminder } from 'src/typeorm/entities/TaskDeadlineReminder';
+import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings';
 
 @Module({
   imports: [
@@ -51,7 +54,9 @@ import { PushSubscriptionsService } from './services/push-subscriptions.service'
       Notification,
       UserNotificationPreference,
       UserPushSubscription,
+      TaskDeadlineReminder,
       Organization,
+      OrganizationSettings,
       UserOrganization,
       Note
     ]),
@@ -62,11 +67,13 @@ import { PushSubscriptionsService } from './services/push-subscriptions.service'
     NotificationsService,
     NotificationPreferencesService,
     PushSubscriptionsService,
+    DeadlineRemindersService,
   ],
   exports: [
     NotificationsService,
     NotificationPreferencesService,
     PushSubscriptionsService,
+    DeadlineRemindersService,
   ],
 })
 export class NotificationsModule {}

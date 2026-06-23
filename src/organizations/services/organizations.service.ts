@@ -27,6 +27,8 @@ import { SubscriptionService } from 'src/billing/services/subscription.service';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { InviteLinks } from 'src/common/services/invite-links';
 import { UpdateOrganizationMemberDto } from '../dto/update-organization-member.dto';
+import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings';
+import { DeadlineRemindersService } from 'src/notifications/services/deadline-reminders.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -36,11 +38,14 @@ export class OrganizationsService {
     private userOrganizationRepository: Repository<UserOrganization>,
     @InjectRepository(Organization)
     private organizationRepository: Repository<Organization>,
+    @InjectRepository(OrganizationSettings)
+    private organizationSettingsRepository: Repository<OrganizationSettings>,
     @InjectRepository(OrganizationInvitation)
     private invitationRepository: Repository<OrganizationInvitation>,
     private userService: UsersService,
     private billingService: BillingService,
     private subscriptionService: SubscriptionService,
+    private deadlineRemindersService: DeadlineRemindersService,
   ) {}
 
   private async assertOrganizationAdmin(userId: number, organizationId: string) {
@@ -140,6 +145,7 @@ export class OrganizationsService {
       .createQueryBuilder('org')
       .loadRelationCountAndMap('org.userCount', 'org.user_organizations')
       .loadRelationCountAndMap('org.projectCount', 'org.projects')
+      .leftJoinAndSelect('org.settings', 'settings')
       .leftJoinAndSelect('org.user_organizations', 'userOrg')
       .leftJoinAndSelect('userOrg.user', 'user')
       .where('org.id = :id', { id });
@@ -483,6 +489,7 @@ export class OrganizationsService {
     try {
       const organization = await this.organizationRepository.findOne({
         where: { id },
+        relations: ['settings'],
       });
 
       if (!organization) {
@@ -492,10 +499,65 @@ export class OrganizationsService {
       if (file) {
       }
 
-      await this.organizationRepository.update({ id }, { ...updateOrgDetails });
+      const {
+        deadline_reminders_enabled,
+        deadline_reminder_days_before,
+        deadline_reminder_hour,
+        deadline_reminder_minute,
+        ...organizationFields
+      } = updateOrgDetails;
+
+      await this.organizationRepository.update({ id }, organizationFields);
+
+      const hasSettingsUpdate =
+        typeof deadline_reminders_enabled !== 'undefined' ||
+        typeof deadline_reminder_days_before !== 'undefined' ||
+        typeof deadline_reminder_hour !== 'undefined' ||
+        typeof deadline_reminder_minute !== 'undefined';
+
+      if (hasSettingsUpdate) {
+        let settings = organization.settings ?? null;
+        if (!settings) {
+          settings = this.organizationSettingsRepository.create({
+            organization_id: organization.id,
+            organization,
+          });
+        }
+
+        if (typeof deadline_reminders_enabled !== 'undefined') {
+          settings.deadline_reminders_enabled =
+            deadline_reminders_enabled === true ||
+            deadline_reminders_enabled === 'true' ||
+            deadline_reminders_enabled === '1';
+        }
+
+        if (typeof deadline_reminder_days_before !== 'undefined') {
+          const parsedDays = Number(deadline_reminder_days_before);
+          settings.deadline_reminder_days_before = Number.isFinite(parsedDays)
+            ? Math.max(1, parsedDays)
+            : settings.deadline_reminder_days_before ?? 3;
+        }
+
+        if (typeof deadline_reminder_hour !== 'undefined') {
+          const parsedHour = Number(deadline_reminder_hour);
+          settings.deadline_reminder_hour = Number.isFinite(parsedHour)
+            ? Math.min(23, Math.max(0, parsedHour))
+            : settings.deadline_reminder_hour ?? 9;
+        }
+
+        if (typeof deadline_reminder_minute !== 'undefined') {
+          const parsedMinute = Number(deadline_reminder_minute);
+          settings.deadline_reminder_minute = Number.isFinite(parsedMinute)
+            ? Math.min(59, Math.max(0, parsedMinute))
+            : settings.deadline_reminder_minute ?? 0;
+        }
+
+        await this.organizationSettingsRepository.save(settings);
+      }
 
       const updatedOrg = await this.organizationRepository.findOne({
         where: { id },
+        relations: ['settings'],
       });
 
       return {
@@ -541,6 +603,22 @@ export class OrganizationsService {
       );
       throw err;
     }
+  }
+
+  async triggerDeadlineReminderTest(authUser: AuthUser, organizationId: string) {
+    const foundUser = await this.userService.getUserAccountById(
+      authUser.userId,
+    );
+
+    if (!foundUser) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    await this.assertOrganizationAdmin(authUser.userId, organizationId);
+
+    return this.deadlineRemindersService.runManualTestForOrganization(
+      organizationId,
+    );
   }
 
   /**

@@ -18,8 +18,6 @@ import { CategoriesModule } from 'src/categories/categories.module';
 import { UserPeerInvite } from 'src/typeorm/entities/UserPeerInvite';
 import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { ProjectPeerInvite } from 'src/typeorm/entities/ProjectPeerInvite';
-import { NotificationsService } from 'src/notifications/services/notifications.service';
-import { NotificationsGateway } from 'src/notifications/notifications.gateway';
 import { NotificationsModule } from 'src/notifications/notifications.module';
 import { Notification } from 'src/typeorm/entities/Notification';
 import { UserNotificationPreference } from 'src/typeorm/entities/UserNotificationPreference';
@@ -79,8 +77,6 @@ import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionS
     ProjectsGateway,
     MailingService,
     ConfigService,
-    NotificationsService,
-    NotificationsGateway,
   ],
   exports: [ProjectsService, ProjectsGateway],
 })

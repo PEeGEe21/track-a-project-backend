@@ -76,6 +76,7 @@ export class StatusService {
       color: status.color,
       description: status.description,
       tabId: status.tabId,
+      isTerminal: status.isTerminal,
       // other status properties
       // taskhhs: status.tasks,
       // taskIds: status.tasks.map((task) => task.id),
@@ -121,6 +122,7 @@ export class StatusService {
       id: status.id,
       title: status.title,
       description: status.description,
+      isTerminal: status.isTerminal,
       // other status properties
       // taskhhs: status.tasks,
       // taskIds: status.tasks.map((task) => task.id),
@@ -177,6 +179,7 @@ export class StatusService {
             title: updatedStatus.title,
             description: updatedStatus.description,
             tabId: updatedStatus.tabId,
+            isTerminal: updatedStatus.isTerminal,
             tasks: updatedStatus.tasks,
           },
         };
@@ -300,6 +303,7 @@ export class StatusService {
         user: foundUser,
         project: existingProject,
         tabId: CreateStatusDetails.tabId ?? 0,
+        isTerminal: CreateStatusDetails.isTerminal ?? false,
       };
 
       const newStatus = this.statusRepository.create(payload);
@@ -313,6 +317,7 @@ export class StatusService {
           id: savedStatus.id,
           title: savedStatus.title,
           description: savedStatus.description,
+          isTerminal: savedStatus.isTerminal,
           tasks: [],
         },
       };

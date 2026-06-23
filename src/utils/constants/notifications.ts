@@ -7,6 +7,7 @@ export const NOTIFICATION_TYPES = {
   PROJECT_COMMENT: 'project_comment',
   PEER_MESSAGE: 'peer_message',
   TASK_ASSIGNMENT: 'task_assignment',
+  DEADLINE_REMINDER: 'deadline_reminder',
 };
 
 export const NOTIFICATION_PREFERENCE_DETAILS = {
@@ -41,6 +42,10 @@ export const NOTIFICATION_PREFERENCE_DETAILS = {
   [NOTIFICATION_TYPES.TASK_ASSIGNMENT]: {
     label: 'Task assignments',
     description: 'New task ownership and assignment changes that affect you.',
+  },
+  [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {
+    label: 'Deadline reminders',
+    description: 'Upcoming due dates for work assigned to you or owned by you.',
   },
 } as const;
 
@@ -91,6 +96,12 @@ export const NOTIFICATION_DEFAULT_PREFERENCES = {
     in_app: true,
     email: true,
     push: false,
+    sound: true,
+  },
+  [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {
+    in_app: true,
+    email: true,
+    push: true,
     sound: true,
   },
 };

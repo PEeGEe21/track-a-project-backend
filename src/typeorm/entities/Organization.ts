@@ -35,6 +35,7 @@ import { UserPeer } from './UserPeer';
 import { UserPeerInvite } from './UserPeerInvite';
 import { Notification } from './Notification';
 import { Subscription } from './Subscription';
+import { OrganizationSettings } from './OrganizationSettings';
 
 @Entity('organizations')
 export class Organization {
@@ -93,6 +94,11 @@ export class Organization {
   @OneToOne(() => Subscription, { nullable: true })
   @JoinColumn({ name: 'active_subscription_id' })
   activeSubscription: Subscription | null;
+
+  @OneToOne(() => OrganizationSettings, (settings) => settings.organization, {
+    cascade: true,
+  })
+  settings?: OrganizationSettings | null;
 
   @OneToMany(() => UserOrganization, (uo) => uo.organization)
   user_organizations: UserOrganization[];

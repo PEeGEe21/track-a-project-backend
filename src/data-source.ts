@@ -41,6 +41,8 @@ import { MessageStar } from './typeorm/entities/MessageStar';
 import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
 import { ProjectIngestionSettings } from './typeorm/entities/ProjectIngestionSettings';
 import { IngestedEvent } from './typeorm/entities/IngestedEvent';
+import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
+import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -98,6 +100,8 @@ export const AppDataSource = new DataSource({
     UserPushSubscription,
     ProjectIngestionSettings,
     IngestedEvent,
+    TaskDeadlineReminder,
+    OrganizationSettings,
   ],
   migrationsTransactionMode: 'each',
 });
