@@ -25,6 +25,11 @@ describe('ProjectsService ingestion settings', () => {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const projectIngestionSettingsRepository = {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+  };
 
   let service: ProjectsService;
 
@@ -55,6 +60,7 @@ describe('ProjectsService ingestion settings', () => {
       {} as any,
       {} as any,
       ingestApiKeyRepository as any,
+      projectIngestionSettingsRepository as any,
     );
   });
 
@@ -162,6 +168,9 @@ describe('ProjectsService ingestion settings', () => {
     usersService.getUserAccountById.mockResolvedValue({ id: 10 });
     projectRepository.findOne.mockResolvedValue(project);
     projectPeerRepository.exists.mockResolvedValue(false);
+    projectIngestionSettingsRepository.findOne.mockResolvedValue(null);
+    projectIngestionSettingsRepository.create.mockImplementation((value) => value);
+    projectIngestionSettingsRepository.save.mockImplementation(async (value) => value);
     statusRepository.findOne.mockResolvedValue({
       id: 8,
       title: 'Inbox',
@@ -176,6 +185,8 @@ describe('ProjectsService ingestion settings', () => {
         7,
         'org_1',
         8,
+        'reopen_if_recent',
+        14,
       ),
     ).resolves.toEqual({
       success: true,
@@ -189,6 +200,8 @@ describe('ProjectsService ingestion settings', () => {
           color: '#123456',
           isTerminal: false,
         },
+        ingestion_closed_task_dedupe_behavior: 'reopen_if_recent',
+        closed_task_reopen_window_days: 14,
       },
     });
   });

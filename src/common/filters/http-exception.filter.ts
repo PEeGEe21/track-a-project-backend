@@ -6,10 +6,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { captureBackendError } from '../monitoring/projecttrakr-ingestion';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost) {
+  async catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
@@ -40,6 +41,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : exception instanceof HttpException
           ? HttpStatus[status]
           : 'Internal Server Error';
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      await captureBackendError(exception, {
+        title: `${request.method} ${request.url} failed`,
+        metadata: {
+          path: request.url,
+          method: request.method,
+          statusCode: status,
+          error,
+        },
+        dedupeKey: `http:${request.method}:${request.route?.path ?? request.path}:${status}`,
+      });
+    }
 
     response.status(status).json({
       success: false,

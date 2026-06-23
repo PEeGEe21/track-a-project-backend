@@ -18,6 +18,7 @@ import { Category } from './Category';
 import { Note } from './Note';
 import { Resource } from './Resource';
 import { Organization } from './Organization';
+import { IngestedEvent } from './IngestedEvent';
 
 @Entity({ name: 'tasks' })
 export class Task {
@@ -86,6 +87,9 @@ export class Task {
 
   @OneToMany(() => Resource, (resource) => resource.task)
   resources: Resource[];
+
+  @OneToMany(() => IngestedEvent, (ingestedEvent) => ingestedEvent.task)
+  ingestedEvents?: IngestedEvent[];
 
   @Column({ type: 'uuid', nullable: true })
   organization_id: string | null;

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IngestionKeyService } from './services/ingestion-key.service';
 import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
@@ -13,6 +13,8 @@ import { User } from 'src/typeorm/entities/User';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
 import { IngestionRateLimitGuard } from './guards/ingestion-rate-limit.guard';
 import { IngestionBodySizeGuard } from './guards/ingestion-body-size.guard';
+import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
+import { ProjectsModule } from 'src/projects/projects.module';
 
 @Module({
   imports: [
@@ -23,8 +25,10 @@ import { IngestionBodySizeGuard } from './guards/ingestion-body-size.guard';
       Status,
       IngestedEvent,
       User,
+      ProjectIngestionSettings,
     ]),
     ProjectActivitiesModule,
+    forwardRef(() => ProjectsModule),
   ],
   controllers: [IngestionController],
   providers: [

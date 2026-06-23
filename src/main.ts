@@ -9,9 +9,12 @@ import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.int
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AppLogger } from './common/logging/app-logger';
+import { bootProjectTrakrMonitoring } from './common/monitoring/projecttrakr-ingestion';
 
 process.env.TZ = 'UTC';
 async function bootstrap() {
+  bootProjectTrakrMonitoring();
+
   const app = await NestFactory.create(AppModule);
 
   app.use(helmet());
@@ -67,6 +70,7 @@ async function bootstrap() {
     allowedOrigins,
     docsUrl: '/api/docs',
     healthUrl: '/api/health',
+    projectTrakrMonitoring: config.ingestion.sdk.enabled,
   });
 }
 bootstrap();

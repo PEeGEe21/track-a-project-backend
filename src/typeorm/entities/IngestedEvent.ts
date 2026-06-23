@@ -21,7 +21,7 @@ export class IngestedEvent {
   @Column({ name: 'task_id' })
   taskId: number;
 
-  @ManyToOne(() => Task, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Task, (task) => task.ingestedEvents, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'task_id' })
   task: Task;
 
@@ -53,6 +53,9 @@ export class IngestedEvent {
 
   @Column({ default: 1 })
   occurrence_count: number;
+
+  @Column({ type: 'datetime' })
+  first_seen_at: Date;
 
   @Column({ type: 'datetime' })
   last_seen_at: Date;

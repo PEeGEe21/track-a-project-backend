@@ -88,6 +88,10 @@ Important optional values:
 - `RATE_LIMIT_INGESTION_MAX`
 - `RATE_LIMIT_INGESTION_WINDOW_MS`
 - `INGESTION_MAX_BODY_KB`
+- `PROJECTTRAKR_CAPTURE_BACKEND_ERRORS`
+- `PROJECTTRAKR_INGESTION_KEY`
+- `PROJECTTRAKR_INGESTION_ENDPOINT`
+- `PROJECTTRAKR_INGESTION_SOURCE`
 
 Secret ownership:
 
@@ -133,6 +137,42 @@ Ingestion-specific knobs:
 - `RATE_LIMIT_INGESTION_WINDOW_MS=60000`
 - `INGESTION_MAX_BODY_KB=50`
 
+ProjectTrakr backend error capture:
+
+- Set `PROJECTTRAKR_CAPTURE_BACKEND_ERRORS=true` to enable automatic reporting of `5xx` request failures.
+- Set `PROJECTTRAKR_INGESTION_KEY` to a ProjectTrakr ingestion key.
+- Set `PROJECTTRAKR_INGESTION_ENDPOINT` to the backend API base including `/api`, for example `https://api.example.com/api`.
+- `PROJECTTRAKR_INGESTION_SOURCE` defaults to `api`.
+- The public SDK installs directly from npm with no special `.npmrc` entry required:
+
+```bash
+npm install @peegee/projecttrakr-sdk
+```
+
+## SDK Smoke Test
+
+After setting the env vars above and restarting the backend, you can trigger a simple validation-only ingestion request with a test key:
+
+```bash
+curl -X POST "$PROJECTTRAKR_INGESTION_ENDPOINT/v1/ingest/tasks" \
+  -H "Authorization: Bearer $PROJECTTRAKR_INGESTION_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "api",
+    "title": "Backend SDK smoke test",
+    "severity": "high",
+    "metadata": {
+      "surface": "backend-readme-smoke"
+    }
+  }'
+```
+
+Expected response with a test key:
+
+```json
+{ "status": "validated", "test": true }
+```
+
 Realtime gateway events also use backend-side websocket throttling for registration, typing, whiteboard updates, project comments, and similar burst-heavy events.
 
 ## Redis And Queues
@@ -168,7 +208,11 @@ Behavior notes:
 - Live keys create or reopen tasks through `POST /api/v1/ingest/tasks`.
 - Test keys validate payloads and throttling but do not write tasks or ingested-event rows.
 - Duplicate ingestion events are deduped by `(project_id, dedupe_key)`.
-- Duplicate events tied to terminal tasks reopen them into the project default ingestion status.
+- Duplicate events tied to terminal tasks follow the project's ingestion dedupe setting:
+  - reopen
+  - always create new
+  - reopen only if closed recently
+- Project detail screens receive websocket refresh signals after live ingestion writes, so board/list views update without a manual page refresh.
 
 Public ingestion route:
 

@@ -53,6 +53,7 @@ import { StorageService } from 'src/types/storage.interface';
 import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
 import { IngestionKeyService } from 'src/ingestion/services/ingestion-key.service';
 import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
+import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -111,6 +112,8 @@ export class ProjectsService {
     private orgRepository: Repository<Organization>,
     @InjectRepository(IngestApiKey)
     private ingestApiKeyRepository: Repository<IngestApiKey>,
+    @InjectRepository(ProjectIngestionSettings)
+    private projectIngestionSettingsRepository: Repository<ProjectIngestionSettings>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -218,10 +221,12 @@ export class ProjectsService {
         where: { id },
         relations: [
           'tasks',
+          'tasks.ingestedEvents',
           'tasks.tags',
           'tasks.status',
           'tasks.assignees',
           'user',
+          'ingestionSettings',
         ],
       });
 
@@ -639,6 +644,11 @@ export class ProjectsService {
     projectId: number,
     organizationId: string,
     defaultIngestionStatusId: number,
+    ingestionClosedTaskDedupeBehavior?:
+      | 'reopen'
+      | 'create_new'
+      | 'reopen_if_recent',
+    closedTaskReopenWindowDays?: number,
   ) {
     const { project } = await this.getProjectForIngestionSettings(
       user,
@@ -666,6 +676,32 @@ export class ProjectsService {
     project.defaultIngestionStatus = status;
     await this.projectRepository.save(project);
 
+    let ingestionSettings =
+      await this.projectIngestionSettingsRepository.findOne({
+        where: { projectId: project.id },
+      });
+
+    if (!ingestionSettings) {
+      ingestionSettings = this.projectIngestionSettingsRepository.create({
+        projectId: project.id,
+        closedTaskDedupeBehavior: 'reopen',
+        reopenIfRecentWindowDays: 7,
+      });
+    }
+
+    if (ingestionClosedTaskDedupeBehavior) {
+      ingestionSettings.closedTaskDedupeBehavior =
+        ingestionClosedTaskDedupeBehavior;
+    }
+
+    if (closedTaskReopenWindowDays) {
+      ingestionSettings.reopenIfRecentWindowDays =
+        closedTaskReopenWindowDays;
+    }
+
+    ingestionSettings =
+      await this.projectIngestionSettingsRepository.save(ingestionSettings);
+
     return {
       success: true,
       message: 'Default ingestion status updated successfully',
@@ -678,6 +714,10 @@ export class ProjectsService {
           color: status.color,
           isTerminal: status.isTerminal,
         },
+        ingestion_closed_task_dedupe_behavior:
+          ingestionSettings.closedTaskDedupeBehavior,
+        closed_task_reopen_window_days:
+          ingestionSettings.reopenIfRecentWindowDays,
       },
     };
   }
@@ -1174,6 +1214,7 @@ export class ProjectsService {
         .leftJoinAndSelect('task.project', 'project')
         .leftJoinAndSelect('task.status', 'status')
         .leftJoinAndSelect('task.assignees', 'assignees')
+        .leftJoinAndSelect('task.ingestedEvents', 'ingestedEvents')
         .leftJoinAndSelect(
           'task.resources',
           'resources',

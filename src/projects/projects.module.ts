@@ -35,6 +35,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageModule } from 'src/storage/storage.module';
 import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
 import { IngestionModule } from 'src/ingestion/ingestion.module';
+import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { IngestionModule } from 'src/ingestion/ingestion.module';
       UserOrganization,
       Organization,
       IngestApiKey,
+      ProjectIngestionSettings,
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AuthModule),
@@ -67,7 +69,7 @@ import { IngestionModule } from 'src/ingestion/ingestion.module';
     CategoriesModule,
     ProjectActivitiesModule,
     StorageModule,
-    IngestionModule,
+    forwardRef(() => IngestionModule),
     // forwardRef(() => CategoriesModule),
     NotificationsModule,
   ],

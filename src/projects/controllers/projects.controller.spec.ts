@@ -114,7 +114,11 @@ describe('ProjectsController ingestion settings routes', () => {
 
     await controller.updateDefaultIngestionStatus(
       7,
-      { default_ingestion_status_id: 4 },
+      {
+        default_ingestion_status_id: 4,
+        ingestion_closed_task_dedupe_behavior: 'reopen_if_recent',
+        closed_task_reopen_window_days: 14,
+      },
       { user: { userId: 10 } } as any,
       'org_1',
     );
@@ -124,6 +128,8 @@ describe('ProjectsController ingestion settings routes', () => {
       7,
       'org_1',
       4,
+      'reopen_if_recent',
+      14,
     );
   });
 });

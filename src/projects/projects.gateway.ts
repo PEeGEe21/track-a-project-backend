@@ -46,6 +46,15 @@ type ActiveProjectCall = {
   timeout?: NodeJS.Timeout;
 };
 
+type ProjectIngestionRealtimePayload = {
+  projectId: number;
+  taskId: number;
+  action: 'created' | 'deduped' | 'reopened';
+  occurrenceCount: number;
+  source?: string;
+  dedupeKey?: string | null;
+};
+
 @WebSocketGateway({
   cors: {
     origin: config.corsAllowedOrigins,
@@ -734,6 +743,24 @@ export class ProjectsGateway
 
     // We don't know if anyone is in the room, but we tried
     return true;
+  }
+
+  emitIngestionUpdated(payload: ProjectIngestionRealtimePayload) {
+    this.logger.log(
+      `Broadcasting ingestion update to project_${payload.projectId}`,
+      {
+        action: payload.action,
+        taskId: payload.taskId,
+        roomSize:
+          this.server?.sockets?.adapter?.rooms?.get(
+            `project_${payload.projectId}`,
+          )?.size || 0,
+      },
+    );
+
+    this.server
+      .to(`project_${payload.projectId}`)
+      .emit('project:ingestion-updated', payload);
   }
 
   private clearCallTimer(call: ActiveProjectCall) {

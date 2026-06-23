@@ -4,6 +4,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   OneToMany,
+  OneToOne,
   JoinColumn,
   ManyToMany,
   JoinTable,
@@ -22,6 +23,7 @@ import { Whiteboard } from './Whiteboard';
 import { Status } from './Status';
 import { ProjectStatus } from '../../utils/constants/project';
 import { Organization } from './Organization';
+import { ProjectIngestionSettings } from './ProjectIngestionSettings';
 
 @Entity({ name: 'projects' })
 export class Project {
@@ -81,6 +83,12 @@ export class Project {
   @ManyToOne(() => Status, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'default_ingestion_status_id' })
   defaultIngestionStatus: Status | null;
+
+  @OneToOne(
+    () => ProjectIngestionSettings,
+    (ingestionSettings) => ingestionSettings.project,
+  )
+  ingestionSettings?: ProjectIngestionSettings | null;
 
   //   @ManyToOne(() => User, (user) => user.posts)
   //   post_user: User;

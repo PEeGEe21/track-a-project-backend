@@ -147,6 +147,16 @@ const envVarsSchema = joi
     S3_BUCKET_PUBLIC_READ: joi.string().optional(),
     S3_SIGNED_URL_TTL_SECONDS: joi.number().integer().min(60).default(3600),
     INGESTION_MAX_BODY_KB: joi.number().integer().min(1).default(50),
+    PROJECTTRAKR_INGESTION_KEY: joi.string().optional(),
+    PROJECTTRAKR_INGESTION_ENDPOINT: joi.string().uri().optional(),
+    PROJECTTRAKR_INGESTION_SOURCE: joi.string().optional(),
+    PROJECTTRAKR_CAPTURE_BACKEND_ERRORS: joi
+      .boolean()
+      .truthy('TRUE')
+      .truthy('true')
+      .falsy('FALSE')
+      .falsy('false')
+      .default(false),
     // TWILIO_ACCOUNT_SID: joi.string().required(),
     // TWILIO_AUTH_TOKEN: joi.string().required(),
     // CLOUDINARY_API_KEY: joi.string().required(),
@@ -363,6 +373,17 @@ export const config = {
   ingestion: {
     maxBodyKb: envVars.INGESTION_MAX_BODY_KB,
     maxBodyBytes: envVars.INGESTION_MAX_BODY_KB * 1024,
+    sdk: {
+      apiKey: envVars.PROJECTTRAKR_INGESTION_KEY ?? null,
+      endpoint: envVars.PROJECTTRAKR_INGESTION_ENDPOINT ?? null,
+      source: envVars.PROJECTTRAKR_INGESTION_SOURCE ?? 'api',
+      enabled: Boolean(
+        envVars.PROJECTTRAKR_CAPTURE_BACKEND_ERRORS &&
+          envVars.PROJECTTRAKR_INGESTION_KEY &&
+          envVars.PROJECTTRAKR_INGESTION_ENDPOINT,
+      ),
+      captureBackendErrors: envVars.PROJECTTRAKR_CAPTURE_BACKEND_ERRORS,
+    },
   },
   boldMetrics: {
     clientId: envVars.BOLD_METRICS_CLIENT_ID,

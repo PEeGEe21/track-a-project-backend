@@ -1,7 +1,14 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import {
+  forwardRef,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { ProjectActivitiesService } from 'src/project-activities/services/project-activities.service';
+import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { Project } from 'src/typeorm/entities/Project';
 import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
 import { IngestedEvent } from 'src/typeorm/entities/IngestedEvent';
@@ -9,16 +16,30 @@ import { Status } from 'src/typeorm/entities/Status';
 import { Task } from 'src/typeorm/entities/Task';
 import { User } from 'src/typeorm/entities/User';
 import { ActivityType } from 'src/utils/constants/activity';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   CreateIngestedTaskDto,
 } from '../dto/create-ingested-task.dto';
 import { IngestionRequestContext } from '../guards/ingestion-api-key.guard';
+import { ClosedTaskDedupeBehavior } from '../constants/closed-task-dedupe-behavior';
+import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
+import { ProjectsGateway } from 'src/projects/projects.gateway';
+
+type IngestionMutationResult = {
+  status: 'created' | 'deduped';
+  taskId: number;
+  occurrenceCount: number;
+  realtimeAction: 'created' | 'deduped' | 'reopened';
+};
 
 @Injectable()
 export class IngestionService {
   constructor(
     private readonly projectActivitiesService: ProjectActivitiesService,
+    @Inject(forwardRef(() => ProjectsGateway))
+    private readonly projectsGateway: ProjectsGateway,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(Task)
@@ -31,6 +52,8 @@ export class IngestionService {
     private readonly ingestApiKeyRepository: Repository<IngestApiKey>,
     @InjectRepository(IngestedEvent)
     private readonly ingestedEventRepository: Repository<IngestedEvent>,
+    @InjectRepository(ProjectIngestionSettings)
+    private readonly projectIngestionSettingsRepository: Repository<ProjectIngestionSettings>,
   ) {}
 
   async ingestTaskEvent(
@@ -65,6 +88,10 @@ export class IngestionService {
     }
 
     const targetStatus = await this.resolveTargetStatus(project);
+    const ingestionSettings =
+      await this.projectIngestionSettingsRepository.findOne({
+        where: { projectId: project.id },
+      });
 
     if (context.isTestKey) {
       return {
@@ -76,21 +103,52 @@ export class IngestionService {
     }
 
     const dedupeKey = dto.dedupeKey?.trim() || null;
-    if (dedupeKey) {
-      const existing = await this.ingestedEventRepository.findOne({
-        where: {
-          projectId: project.id,
-          dedupe_key: dedupeKey,
-        },
-        relations: ['task', 'task.status'],
-      });
+    const result = await this.dataSource.transaction(async (manager) => {
+      if (dedupeKey) {
+        const existing = await manager.getRepository(IngestedEvent).findOne({
+          where: {
+            projectId: project.id,
+            dedupe_key: dedupeKey,
+          },
+          relations: ['task', 'task.status'],
+        });
 
-      if (existing) {
-        return this.handleDuplicateEvent(existing, dto, project, targetStatus);
+        if (existing) {
+          return this.handleDuplicateEvent(
+            manager,
+            existing,
+            dto,
+            project,
+            targetStatus,
+            ingestionSettings?.closedTaskDedupeBehavior ?? 'reopen',
+            ingestionSettings?.reopenIfRecentWindowDays ?? 7,
+          );
+        }
       }
-    }
 
-    return this.createTaskFromEvent(dto, project, targetStatus, dedupeKey);
+      return this.createTaskFromEvent(
+        manager,
+        dto,
+        project,
+        targetStatus,
+        dedupeKey,
+      );
+    });
+
+    this.projectsGateway.emitIngestionUpdated({
+      projectId: project.id,
+      taskId: result.taskId,
+      action: result.realtimeAction,
+      occurrenceCount: result.occurrenceCount,
+      source: dto.source,
+      dedupeKey,
+    });
+
+    return {
+      status: result.status,
+      taskId: result.taskId,
+      occurrenceCount: result.occurrenceCount,
+    };
   }
 
   private async resolveTargetStatus(project: Project): Promise<Status> {
@@ -121,17 +179,21 @@ export class IngestionService {
   }
 
   private async createTaskFromEvent(
+    manager: EntityManager,
     dto: CreateIngestedTaskDto,
     project: Project,
     targetStatus: Status,
     dedupeKey: string | null,
-  ) {
+  ): Promise<IngestionMutationResult> {
     const richDescription = normalizeRichTextDescription({
       description: dto.description,
       description_html: dto.description_html,
     });
 
-    const task = this.taskRepository.create({
+    const taskRepository = manager.getRepository(Task);
+    const ingestedEventRepository = manager.getRepository(IngestedEvent);
+
+    const task = taskRepository.create({
       title: dto.title,
       description: richDescription?.description ?? '',
       description_html: richDescription?.description_html ?? null,
@@ -144,10 +206,10 @@ export class IngestionService {
       organization: project.organization ?? null,
     });
 
-    const savedTask = await this.taskRepository.save(task);
+    const savedTask = await taskRepository.save(task);
 
     if (dedupeKey) {
-      const event = this.ingestedEventRepository.create({
+      const event = ingestedEventRepository.create({
         taskId: savedTask.id,
         task: savedTask,
         projectId: project.id,
@@ -159,12 +221,13 @@ export class IngestionService {
         dedupe_key: dedupeKey,
         metadata: dto.metadata ?? null,
         occurrence_count: 1,
+        first_seen_at: this.resolveOccurredAt(dto.occurredAt),
         last_seen_at: this.resolveOccurredAt(dto.occurredAt),
       });
-      await this.ingestedEventRepository.save(event);
+      await ingestedEventRepository.save(event);
     }
 
-    await this.projectActivitiesService.createActivity({
+    await this.createActivityWithManager(manager, {
       organization_id: project.organization_id,
       projectId: project.id,
       userId: Number(project.user.id),
@@ -183,21 +246,23 @@ export class IngestionService {
       status: 'created',
       taskId: savedTask.id,
       occurrenceCount: 1,
+      realtimeAction: 'created',
     };
   }
 
   private async handleDuplicateEvent(
+    manager: EntityManager,
     event: IngestedEvent,
     dto: CreateIngestedTaskDto,
     project: Project,
     targetStatus: Status,
-  ) {
-    event.occurrence_count += 1;
-    event.last_seen_at = this.resolveOccurredAt(dto.occurredAt);
-    event.metadata = dto.metadata ?? event.metadata;
-    event.severity = dto.severity ?? event.severity;
+    closedTaskBehavior: ClosedTaskDedupeBehavior,
+    reopenIfRecentWindowDays: number,
+  ): Promise<IngestionMutationResult> {
+    const taskRepository = manager.getRepository(Task);
+    const ingestedEventRepository = manager.getRepository(IngestedEvent);
 
-    const task = await this.taskRepository.findOne({
+    const task = await taskRepository.findOne({
       where: { id: event.taskId },
       relations: ['status', 'project'],
     });
@@ -209,6 +274,35 @@ export class IngestionService {
       );
     }
 
+    if (task.status?.isTerminal && closedTaskBehavior === 'create_new') {
+      return this.createTaskFromEvent(
+        manager,
+        dto,
+        project,
+        targetStatus,
+        dto.dedupeKey?.trim() || null,
+      );
+    }
+
+    if (
+      task.status?.isTerminal &&
+      closedTaskBehavior === 'reopen_if_recent' &&
+      !this.wasTaskClosedRecently(task, reopenIfRecentWindowDays)
+    ) {
+      return this.createTaskFromEvent(
+        manager,
+        dto,
+        project,
+        targetStatus,
+        dto.dedupeKey?.trim() || null,
+      );
+    }
+
+    event.occurrence_count += 1;
+    event.last_seen_at = this.resolveOccurredAt(dto.occurredAt);
+    event.metadata = dto.metadata ?? event.metadata;
+    event.severity = dto.severity ?? event.severity;
+
     const nextSeverity = dto.severity ?? event.severity ?? task.severity;
     const shouldUpdateSeverity = nextSeverity && task.severity !== nextSeverity;
 
@@ -216,11 +310,14 @@ export class IngestionService {
       task.severity = nextSeverity;
     }
 
+    let realtimeAction: IngestionMutationResult['realtimeAction'] = 'deduped';
+
     if (task.status?.isTerminal) {
       task.status = targetStatus;
-      await this.taskRepository.save(task);
+      await taskRepository.save(task);
+      realtimeAction = 'reopened';
 
-      await this.projectActivitiesService.createActivity({
+      await this.createActivityWithManager(manager, {
         organization_id: project.organization_id,
         projectId: project.id,
         userId: Number(project.user.id),
@@ -235,15 +332,16 @@ export class IngestionService {
         },
       });
     } else if (shouldUpdateSeverity) {
-      await this.taskRepository.save(task);
+      await taskRepository.save(task);
     }
 
-    await this.ingestedEventRepository.save(event);
+    await ingestedEventRepository.save(event);
 
     return {
       status: 'deduped',
       taskId: task.id,
       occurrenceCount: event.occurrence_count,
+      realtimeAction,
     };
   }
 
@@ -258,5 +356,29 @@ export class IngestionService {
     }
 
     return occurredAt;
+  }
+
+  private wasTaskClosedRecently(
+    task: Task,
+    reopenIfRecentWindowDays: number,
+  ): boolean {
+    if (!task.updated_at) {
+      return false;
+    }
+
+    const closedAt = new Date(task.updated_at);
+    const threshold = new Date();
+    threshold.setDate(threshold.getDate() - reopenIfRecentWindowDays);
+
+    return closedAt >= threshold;
+  }
+
+  private async createActivityWithManager(
+    manager: EntityManager,
+    data: Parameters<ProjectActivitiesService['createActivity']>[0],
+  ) {
+    const activityRepository = manager.getRepository(ProjectActivity);
+    const activity = activityRepository.create(data);
+    return activityRepository.save(activity);
   }
 }

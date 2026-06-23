@@ -450,13 +450,11 @@ This keeps the repo’s Redis policy consistent.
 
 ## Phase 7: SDK package
 
-This repo does not currently contain the SDK package, so this should likely live as a sibling package or separate repo.
-
-If kept in this workspace, recommended location:
+Completed in this workspace as a sibling package:
 
 - `/projecttrakr-sdk`
 
-Suggested files:
+Implemented files:
 
 #### 20. Add `/projecttrakr-sdk/src/index.ts`
 
@@ -502,6 +500,61 @@ Document:
 - global crash behavior
 - Express/Fastify middleware example
 - direct `capture()` example
+
+### Package wiring that shipped
+
+The SDK now stands alone and should be consumed like a normal package:
+
+- [projecttrakr-sdk/package.json](/var/www/html/trackr-main/projecttrakr-sdk/package.json)
+- [track-a-project/package.json](/var/www/html/trackr-main/track-a-project/package.json)
+- [track-a-project-backend/package.json](/var/www/html/trackr-main/track-a-project-backend/package.json)
+
+Important implementation details:
+
+- frontend depends on `"@peegee/projecttrakr-sdk": "^0.1.0"`
+- backend depends on `"@peegee/projecttrakr-sdk": "^0.1.0"`
+- package is intended for public npm distribution, so consuming repos do not need custom `.npmrc` scope mapping
+- SDK `package.json` exports the root entry with:
+  - `import`
+  - `require`
+  - `types`
+  - `default`
+
+That export shape was necessary so Next.js could resolve:
+
+```ts
+import { captureError, init } from "@peegee/projecttrakr-sdk";
+```
+
+without hitting the earlier `Package path . is not exported` failure.
+
+Current SDK build scripts are standalone:
+
+```json
+"build": "tsc -p tsconfig.json",
+"typecheck": "tsc -p tsconfig.json --noEmit"
+```
+
+### Phase 7 closeout status
+
+Completed:
+
+- SDK package built and tested in `/projecttrakr-sdk`
+- backend installed SDK via local file dependency
+- Next.js frontend installed SDK via local file dependency
+- backend monitoring bridge reports server-side failures through the SDK
+- Next.js server-side logger reports server-side failures through the SDK
+- ingestion dedupe, reopen behavior, and per-project ingestion settings are live
+- project detail websocket updates invalidate queries after live ingestion events
+
+Validated:
+
+- raw ingestion API via `curl`
+- backend SDK capture flow
+- Next.js SDK capture flow
+- websocket-driven live task refresh
+- SDK package test suite
+- backend ingestion service spec suite
 
 ## API Behavior to Lock Before Coding
 

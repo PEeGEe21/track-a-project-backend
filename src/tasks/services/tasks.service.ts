@@ -138,6 +138,10 @@ export class TasksService {
         data.priority = updateTaskDetails.priority;
       }
 
+      if (updateTaskDetails.severity !== undefined) {
+        data.severity = updateTaskDetails.severity || null;
+      }
+
       const normalizedDueDate = this.normalizeDueDateInput(
         updateTaskDetails.due_date,
       );
@@ -363,6 +367,10 @@ export class TasksService {
 
         if (updateTaskDetails.priority !== undefined) {
           task.priority = Number(updateTaskDetails.priority);
+        }
+
+        if (updateTaskDetails.severity !== undefined) {
+          task.severity = updateTaskDetails.severity || null;
         }
 
         const normalizedDueDate = this.normalizeDueDateInput(
@@ -1036,7 +1044,15 @@ export class TasksService {
         where: { id: organizationId },
       });
 
-      const { title, description, status, priority, due_date, assignees } =
+      const {
+        title,
+        description,
+        status,
+        priority,
+        severity,
+        due_date,
+        assignees,
+      } =
         payload; // Destructure
       const richDescription = normalizeRichTextDescription({
         description,
@@ -1082,6 +1098,7 @@ export class TasksService {
         status: statusEntity ?? undefined,
         project,
         priority,
+        severity: severity || null,
         due_date: normalizedDueDate ?? null,
         organization,
         organization_id: organization.id,

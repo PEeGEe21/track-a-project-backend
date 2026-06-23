@@ -264,6 +264,8 @@ export class ProjectsController {
       projectId,
       organizationId,
       dto.default_ingestion_status_id,
+      dto.ingestion_closed_task_dedupe_behavior,
+      dto.closed_task_reopen_window_days,
     );
   }
 

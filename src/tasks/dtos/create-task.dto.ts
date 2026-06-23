@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsDate, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+
+const TASK_SEVERITY_VALUES = ['low', 'medium', 'high', 'critical'] as const;
 
 const transformDueDate = ({ value }) => {
   if (value === '' || value === null || value === undefined) {
@@ -26,6 +35,11 @@ export class CreateTaskDto {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(TASK_SEVERITY_VALUES)
+  severity?: string;
 
   @IsOptional()
   @Transform(transformDueDate)
@@ -61,6 +75,11 @@ export class UpdateTaskDto {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(TASK_SEVERITY_VALUES)
+  severity?: string;
 
   @IsOptional()
   @Transform(transformDueDate)
