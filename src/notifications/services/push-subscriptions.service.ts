@@ -14,7 +14,6 @@ export class PushSubscriptionsService {
   ) {}
 
   getClientConfig() {
-    console.log(config.webPush);
     return {
       enabled: Boolean(config.webPush.publicKey),
       publicKey: config.webPush.publicKey,

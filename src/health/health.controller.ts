@@ -10,8 +10,8 @@ export class HealthController {
     return this.healthService.getHealth();
   }
 
-  @Get('smoke-projecttrakr')
-  smokeProjectTrakrCapture() {
-    throw new Error('ProjectTrakr backend smoke test');
-  }
+  // @Get('smoke-projecttrakr')
+  // smokeProjectTrakrCapture() {
+  //   throw new Error('ProjectTrakr backend smoke test');
+  // }
 }

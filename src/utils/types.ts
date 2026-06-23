@@ -15,13 +15,13 @@ export type UpdateUserParams = {
   first_name?: string;
   last_name?: string;
   avatar?: string;
+  phonenumber?: string;
+  country?: string;
+  state?: string;
+  address?: string;
 };
 
 export type CreateUserProfileParams = {
-  firstname?: string;
-  lastname?: string;
-  username?: string;
-  email: string;
   phonenumber?: string;
   country?: string;
   state?: string;

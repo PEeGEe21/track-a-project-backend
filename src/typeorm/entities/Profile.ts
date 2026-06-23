@@ -16,9 +16,6 @@ export class Profile {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column()
-  email: string;
-
   @Column({
     default: '',
   })

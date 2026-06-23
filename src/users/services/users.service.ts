@@ -203,7 +203,7 @@ export class UsersService {
       }
 
       const userProfileDetails = await this.profileRepository.findOne({
-        where: { user: user },
+        where: { user: { id } },
         relations: ['user'],
       });
 
@@ -250,17 +250,7 @@ export class UsersService {
         where: { user: user },
       });
 
-      const userData = {
-        profile: userProfile,
-        email: createUserProfileDetails.email,
-      };
-
-      const updatedUserDetailResult = await this.userRepository.update(
-        { id: id },
-        { ...userData },
-      );
-
-      if (updatedUserDetailResult.affected < 1) {
+      if (!userProfile) {
         return {
           error: 'error',
           message: 'User Profile Update Failed',
@@ -343,8 +333,6 @@ export class UsersService {
     return user?.password;
   }
 
-
-
   async findUsers() {
     const users = await this.userRepository.find({
       relations: ['profile', 'projects'],
@@ -395,14 +383,54 @@ export class UsersService {
         nextUserDetails.avatar = avatarUrl;
       }
 
-      await this.userRepository.update({ id }, nextUserDetails);
+      const { phonenumber, country, state, address, ...userUpdateFields } =
+        nextUserDetails;
 
-      const updatedUser = await this.userRepository.findOne({ where: { id } });
+      await this.userRepository.update({ id }, userUpdateFields);
+
+      const refreshedUser = await this.userRepository.findOne({
+        where: { id },
+      });
+
+      if (!refreshedUser) {
+        throw new NotFoundException('User not found after update');
+      }
+
+      const existingProfile = await this.profileRepository.findOne({
+        where: { user: { id } },
+        relations: ['user'],
+      });
+
+      const nextProfileDetails = {
+        phonenumber: phonenumber ?? '',
+        country: country ?? '',
+        state: state ?? '',
+        address: address ?? '',
+      };
+
+      if (existingProfile) {
+        await this.profileRepository.update(
+          { id: existingProfile.id },
+          nextProfileDetails,
+        );
+      } else {
+        const profile = this.profileRepository.create({
+          ...nextProfileDetails,
+          profile_created: 1,
+          user: refreshedUser,
+        });
+        await this.profileRepository.save(profile);
+      }
+
+      const updatedProfile = await this.profileRepository.findOne({
+        where: { user: { id } },
+      });
 
       return {
         success: true,
         message: 'Updated Successfully',
-        user: updatedUser,
+        user: refreshedUser,
+        profile: updatedProfile,
       };
     } catch (err) {
       AppLogger.error('UsersService', 'Error in updateUser');
@@ -411,6 +439,7 @@ export class UsersService {
         throw err;
       }
 
+      console.log(err);
       throw new HttpException(
         'Failed to update user account',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1609,7 +1638,7 @@ export class UsersService {
         },
       };
     } catch (err) {
-      console.log(err)
+      console.log(err);
       AppLogger.error('UsersService', 'Error in getUserDashboardData');
       throw new UnauthorizedException('Could not fetch user dashboard data');
     }
