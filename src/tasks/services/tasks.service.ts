@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
@@ -713,23 +713,16 @@ export class TasksService {
         await manager.getRepository(Task).save(task);
       }
 
-      // Reorder tasks in source column (if provided)
-      if (updateDto.sourceTaskIds && updateDto.sourceTaskIds.length > 0) {
-        await Promise.all(
-          updateDto.sourceTaskIds.map((id, index) =>
-            manager.getRepository(Task).update({ id }, { position: index }),
-          ),
-        );
-      }
-
-      // Reorder tasks in target column (if provided)
-      if (updateDto.targetTaskIds && updateDto.targetTaskIds.length > 0) {
-        await Promise.all(
-          updateDto.targetTaskIds.map((id, index) =>
-            manager.getRepository(Task).update({ id }, { position: index }),
-          ),
-        );
-      }
+      await this.bulkUpdateTaskPositions(
+        manager,
+        updateDto.sourceTaskIds,
+        task.project.id,
+      );
+      await this.bulkUpdateTaskPositions(
+        manager,
+        updateDto.targetTaskIds,
+        task.project.id,
+      );
 
       // Return updated task with relations
       const updatedTask = await manager.getRepository(Task).findOne({
@@ -767,6 +760,42 @@ export class TasksService {
         },
       };
     });
+  }
+
+  private async bulkUpdateTaskPositions(
+    manager: EntityManager,
+    taskIds: number[] | undefined,
+    projectId: number,
+  ) {
+    if (!taskIds || taskIds.length === 0) {
+      return;
+    }
+
+    const normalizedTaskIds = Array.from(
+      new Set(
+        taskIds
+          .map((taskId) => Number(taskId))
+          .filter((taskId) => Number.isInteger(taskId) && taskId > 0),
+      ),
+    );
+
+    if (normalizedTaskIds.length === 0) {
+      return;
+    }
+
+    const positionCase = normalizedTaskIds
+      .map((taskId, index) => `WHEN ${taskId} THEN ${index}`)
+      .join(' ');
+
+    await manager
+      .createQueryBuilder()
+      .update(Task)
+      .set({
+        position: () => `CASE id ${positionCase} ELSE position END`,
+      })
+      .where('id IN (:...taskIds)', { taskIds: normalizedTaskIds })
+      .andWhere('project_id = :projectId', { projectId })
+      .execute();
   }
 
   // async updateTaskStatus2(
