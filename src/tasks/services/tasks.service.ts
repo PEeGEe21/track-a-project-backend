@@ -32,6 +32,8 @@ import { Resource } from 'src/typeorm/entities/Resource';
 import { MulterFile } from 'src/types/multer.types';
 import { StorageService } from 'src/types/storage.interface';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
+import { CreateNotificationDto } from 'src/notifications/dto/create-notification.dto';
+import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 
 @Injectable()
 export class TasksService {
@@ -69,6 +71,108 @@ export class TasksService {
 
     const parsedDate = new Date(String(value));
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  }
+
+  private getTaskStatusNotificationRecipients(task: Task, actorUserId: number) {
+    const recipients = new Map<number, User>();
+
+    const addRecipient = (candidate?: User | null) => {
+      if (!candidate?.id || candidate.id === actorUserId) {
+        return;
+      }
+
+      recipients.set(candidate.id, candidate);
+    };
+
+    addRecipient(task.user);
+    addRecipient(task.project?.user);
+
+    for (const peer of task.project?.projectPeers ?? []) {
+      if (
+        peer?.user &&
+        peer.status === ProjectPeerStatus.CONNECTED &&
+        peer.is_confirmed !== false
+      ) {
+        addRecipient(peer.user);
+      }
+    }
+
+    for (const assignee of task.assignees ?? []) {
+      addRecipient(assignee);
+    }
+
+    return Array.from(recipients.values());
+  }
+
+  private buildTaskStatusNotificationPayload(
+    actor: User,
+    task: Task,
+    action: 'completed' | 'reopened',
+  ): Omit<CreateNotificationDto, 'recipient'> {
+    const projectTitle = task.project?.title?.trim();
+    const statusTitle = task.status?.title?.trim();
+
+    return {
+      sender: actor,
+      title: action === 'completed' ? 'Task completed' : 'Task reopened',
+      message:
+        action === 'completed'
+          ? `${actor.fullName} marked "${task.title}" as completed${
+              projectTitle ? ` in ${projectTitle}` : ''
+            }.`
+          : `${actor.fullName} moved "${task.title}" back into active work${
+              statusTitle ? ` in ${statusTitle}` : ''
+            }.`,
+      type: NOTIFICATION_TYPES.TASK_STATUS_CHANGE,
+      metadata: {
+        taskId: task.id,
+        projectId: task.project?.id ?? null,
+        statusId: task.status?.id ?? null,
+        statusTitle: statusTitle ?? null,
+        transition: action,
+      },
+    };
+  }
+
+  private async sendTaskTerminalStatusNotifications(params: {
+    actor: User;
+    previousStatus: Status;
+    task: Task;
+    organizationId: string;
+  }) {
+    const { actor, previousStatus, task, organizationId } = params;
+    const movedIntoTerminal =
+      !previousStatus.isTerminal && Boolean(task.status?.isTerminal);
+    const movedOutOfTerminal =
+      Boolean(previousStatus.isTerminal) && !task.status?.isTerminal;
+
+    if (!movedIntoTerminal && !movedOutOfTerminal) {
+      return;
+    }
+
+    const recipients = this.getTaskStatusNotificationRecipients(task, actor.id);
+    if (recipients.length === 0) {
+      return;
+    }
+
+    const payload = this.buildTaskStatusNotificationPayload(
+      actor,
+      task,
+      movedIntoTerminal ? 'completed' : 'reopened',
+    );
+
+    await Promise.all(
+      recipients.map((recipient) =>
+        this.notificationService.createNotification(
+          actor,
+          {
+            ...payload,
+            recipient,
+          },
+          organizationId,
+        ),
+      ),
+    );
   }
 
   async findOne(id: number): Promise<Task> {
@@ -691,10 +795,20 @@ export class TasksService {
       // Find task with project and status
       const task = await manager.getRepository(Task).findOne({
         where: { id: taskId },
-        relations: ['status', 'project', 'project.user'],
+        relations: [
+          'status',
+          'project',
+          'project.user',
+          'project.projectPeers',
+          'project.projectPeers.user',
+          'assignees',
+          'user',
+        ],
       });
       if (!task)
         throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+
+      const previousStatus = task.status;
 
       // if (task.project.user.id !== userFound.id) {
       //   throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
@@ -727,7 +841,15 @@ export class TasksService {
       // Return updated task with relations
       const updatedTask = await manager.getRepository(Task).findOne({
         where: { id: taskId },
-        relations: ['status', 'project', 'assignees'],
+        relations: [
+          'status',
+          'project',
+          'project.user',
+          'project.projectPeers',
+          'project.projectPeers.user',
+          'assignees',
+          'user',
+        ],
       });
 
       await this.projectActivitiesService.createActivity({
@@ -741,6 +863,13 @@ export class TasksService {
         entityType: 'task',
         entityId: updatedTask.id,
         metadata: { taskTitle: updatedTask.title ?? '' },
+      });
+
+      await this.sendTaskTerminalStatusNotifications({
+        actor: userFound,
+        previousStatus,
+        task: updatedTask,
+        organizationId,
       });
 
       return {
