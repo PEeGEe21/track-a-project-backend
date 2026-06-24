@@ -63,7 +63,7 @@ export class NotificationsController {
     @Body() createNotificationDto: CreateNotificationDto,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
-  ) {
+  ): Promise<any> {
     return this.notificationsService.createNotification(
       req.user,
       createNotificationDto,
