@@ -73,11 +73,11 @@ export class TasksService {
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
   }
 
-  private getTaskStatusNotificationRecipients(task: Task, actorUserId: number) {
+  private getTaskStatusNotificationRecipients(task: Task) {
     const recipients = new Map<number, User>();
 
     const addRecipient = (candidate?: User | null) => {
-      if (!candidate?.id || candidate.id === actorUserId) {
+      if (!candidate?.id) {
         return;
       }
 
@@ -150,7 +150,7 @@ export class TasksService {
       return;
     }
 
-    const recipients = this.getTaskStatusNotificationRecipients(task, actor.id);
+    const recipients = this.getTaskStatusNotificationRecipients(task);
     if (recipients.length === 0) {
       return;
     }

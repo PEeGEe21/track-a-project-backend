@@ -25,7 +25,7 @@ describe('TasksService', () => {
     expect(service).toBeDefined();
   });
 
-  it('builds task status notification recipients without duplicates or actor', () => {
+  it('builds task status notification recipients without duplicates', () => {
     const recipients = (service as any).getTaskStatusNotificationRecipients(
       {
         user: { id: 2 },
@@ -51,10 +51,9 @@ describe('TasksService', () => {
         },
         assignees: [{ id: 2 }, { id: 4 }, { id: 1 }],
       },
-      1,
     );
 
-    expect(recipients.map((user) => user.id)).toEqual([2, 3, 5, 4]);
+    expect(recipients.map((user) => user.id)).toEqual([2, 3, 5, 4, 1]);
   });
 
   it('builds a completed notification payload with the task status change type', () => {
