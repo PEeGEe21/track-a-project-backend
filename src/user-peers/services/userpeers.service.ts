@@ -568,7 +568,7 @@ export class UserpeersService {
         relations: ['user'],
       });
 
-      console.log(orgMembers, 'orgMembers');
+      // console.log(orgMembers, 'orgMembers');
 
       // Exclude self
       const otherMembers = orgMembers.filter((m) => m.user_id !== foundUser.id);
