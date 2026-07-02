@@ -6,7 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { captureBackendError } from '../monitoring/projecttrakr-ingestion';
+import { captureBackendError } from '../monitoring/tailpoint-ingestion';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {

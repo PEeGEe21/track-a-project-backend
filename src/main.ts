@@ -9,11 +9,11 @@ import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.int
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AppLogger } from './common/logging/app-logger';
-import { bootProjectTrakrMonitoring } from './common/monitoring/projecttrakr-ingestion';
+import { bootTailpointMonitoring } from './common/monitoring/tailpoint-ingestion';
 
 process.env.TZ = 'UTC';
 async function bootstrap() {
-  bootProjectTrakrMonitoring();
+  bootTailpointMonitoring();
 
   const app = await NestFactory.create(AppModule);
 
@@ -56,7 +56,7 @@ async function bootstrap() {
     .setDescription('TTrack Your Prokect API description')
     .setVersion('1.0')
     .addBearerAuth()
-    .setExternalDoc('Trackr Postman Collection', '/api/docs-json')
+    .setExternalDoc('TailPoint Postman Collection', '/api/docs-json')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
@@ -70,7 +70,7 @@ async function bootstrap() {
     allowedOrigins,
     docsUrl: '/api/docs',
     healthUrl: '/api/health',
-    projectTrakrMonitoring: config.ingestion.sdk.enabled,
+    tailpointMonitoring: config.ingestion.sdk.enabled,
   });
 }
 bootstrap();

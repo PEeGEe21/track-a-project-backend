@@ -147,10 +147,10 @@ const envVarsSchema = joi
     S3_BUCKET_PUBLIC_READ: joi.string().optional(),
     S3_SIGNED_URL_TTL_SECONDS: joi.number().integer().min(60).default(3600),
     INGESTION_MAX_BODY_KB: joi.number().integer().min(1).default(50),
-    PROJECTTRAKR_INGESTION_KEY: joi.string().optional(),
-    PROJECTTRAKR_INGESTION_ENDPOINT: joi.string().uri().optional(),
-    PROJECTTRAKR_INGESTION_SOURCE: joi.string().optional(),
-    PROJECTTRAKR_CAPTURE_BACKEND_ERRORS: joi
+    TAILPOINT_INGESTION_KEY: joi.string().optional(),
+    TAILPOINT_INGESTION_ENDPOINT: joi.string().uri().optional(),
+    TAILPOINT_INGESTION_SOURCE: joi.string().optional(),
+    TAILPOINT_CAPTURE_BACKEND_ERRORS: joi
       .boolean()
       .truthy('TRUE')
       .truthy('true')
@@ -374,15 +374,15 @@ export const config = {
     maxBodyKb: envVars.INGESTION_MAX_BODY_KB,
     maxBodyBytes: envVars.INGESTION_MAX_BODY_KB * 1024,
     sdk: {
-      apiKey: envVars.PROJECTTRAKR_INGESTION_KEY ?? null,
-      endpoint: envVars.PROJECTTRAKR_INGESTION_ENDPOINT ?? null,
-      source: envVars.PROJECTTRAKR_INGESTION_SOURCE ?? 'api',
+      apiKey: envVars.TAILPOINT_INGESTION_KEY ?? null,
+      endpoint: envVars.TAILPOINT_INGESTION_ENDPOINT ?? null,
+      source: envVars.TAILPOINT_INGESTION_SOURCE ?? 'api',
       enabled: Boolean(
-        envVars.PROJECTTRAKR_CAPTURE_BACKEND_ERRORS &&
-          envVars.PROJECTTRAKR_INGESTION_KEY &&
-          envVars.PROJECTTRAKR_INGESTION_ENDPOINT,
+        envVars.TAILPOINT_CAPTURE_BACKEND_ERRORS &&
+          envVars.TAILPOINT_INGESTION_KEY &&
+          envVars.TAILPOINT_INGESTION_ENDPOINT,
       ),
-      captureBackendErrors: envVars.PROJECTTRAKR_CAPTURE_BACKEND_ERRORS,
+      captureBackendErrors: envVars.TAILPOINT_CAPTURE_BACKEND_ERRORS,
     },
   },
   boldMetrics: {

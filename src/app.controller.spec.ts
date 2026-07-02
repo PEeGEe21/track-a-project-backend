@@ -16,7 +16,7 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return the backend status banner', () => {
-      expect(appController.getHello()).toBe('Trackr backend is running.');
+      expect(appController.getHello()).toBe('TailPoint backend is running.');
     });
   });
 });

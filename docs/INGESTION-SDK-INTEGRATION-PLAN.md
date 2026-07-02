@@ -1,4 +1,4 @@
-# ProjectTrakr Ingestion SDK Integration Plan
+# Tailpoint Ingestion SDK Integration Plan
 
 ## Goal
 
@@ -452,11 +452,11 @@ This keeps the repo’s Redis policy consistent.
 
 Completed in this workspace as a sibling package:
 
-- `/projecttrakr-sdk`
+- `/tailpoint-sdk`
 
 Implemented files:
 
-#### 20. Add `/projecttrakr-sdk/src/index.ts`
+#### 20. Add `/tailpoint-sdk/src/index.ts`
 
 Public API:
 
@@ -465,7 +465,7 @@ Public API:
 - `captureError`
 - `errorHandler`
 
-#### 21. Add `/projecttrakr-sdk/src/client.ts`
+#### 21. Add `/tailpoint-sdk/src/client.ts`
 
 Responsibilities:
 
@@ -474,7 +474,7 @@ Responsibilities:
 - retry policy
 - timeout handling
 
-#### 22. Add `/projecttrakr-sdk/src/dedupe.ts`
+#### 22. Add `/tailpoint-sdk/src/dedupe.ts`
 
 Responsibilities:
 
@@ -483,7 +483,7 @@ Responsibilities:
   - error message
   - top stack frame
 
-#### 23. Add `/projecttrakr-sdk/src/types.ts`
+#### 23. Add `/tailpoint-sdk/src/types.ts`
 
 Export:
 
@@ -491,7 +491,7 @@ Export:
 - response types
 - init config type
 
-#### 24. Add `/projecttrakr-sdk/README.md`
+#### 24. Add `/tailpoint-sdk/README.md`
 
 Document:
 
@@ -505,14 +505,14 @@ Document:
 
 The SDK now stands alone and should be consumed like a normal package:
 
-- [projecttrakr-sdk/package.json](/var/www/html/trackr-main/projecttrakr-sdk/package.json)
+- Tailpoint SDK `package.json`
 - [track-a-project/package.json](/var/www/html/trackr-main/track-a-project/package.json)
 - [track-a-project-backend/package.json](/var/www/html/trackr-main/track-a-project-backend/package.json)
 
 Important implementation details:
 
-- frontend depends on `"@peegee/projecttrakr-sdk": "^0.1.0"`
-- backend depends on `"@peegee/projecttrakr-sdk": "^0.1.0"`
+- frontend depends on `"@peegee/tailpoint-sdk": "^0.1.0"`
+- backend depends on `"@peegee/tailpoint-sdk": "^0.1.0"`
 - package is intended for public npm distribution, so consuming repos do not need custom `.npmrc` scope mapping
 - SDK `package.json` exports the root entry with:
   - `import`
@@ -523,7 +523,7 @@ Important implementation details:
 That export shape was necessary so Next.js could resolve:
 
 ```ts
-import { captureError, init } from "@peegee/projecttrakr-sdk";
+import { captureError, init } from "@peegee/tailpoint-sdk";
 ```
 
 without hitting the earlier `Package path . is not exported` failure.
@@ -539,7 +539,7 @@ Current SDK build scripts are standalone:
 
 Completed:
 
-- SDK package built and tested in `/projecttrakr-sdk`
+- SDK package built and tested in `/tailpoint-sdk`
 - backend installed SDK via local file dependency
 - Next.js frontend installed SDK via local file dependency
 - backend monitoring bridge reports server-side failures through the SDK

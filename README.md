@@ -88,10 +88,10 @@ Important optional values:
 - `RATE_LIMIT_INGESTION_MAX`
 - `RATE_LIMIT_INGESTION_WINDOW_MS`
 - `INGESTION_MAX_BODY_KB`
-- `PROJECTTRAKR_CAPTURE_BACKEND_ERRORS`
-- `PROJECTTRAKR_INGESTION_KEY`
-- `PROJECTTRAKR_INGESTION_ENDPOINT`
-- `PROJECTTRAKR_INGESTION_SOURCE`
+- `TAILPOINT_CAPTURE_BACKEND_ERRORS`
+- `TAILPOINT_INGESTION_KEY`
+- `TAILPOINT_INGESTION_ENDPOINT`
+- `TAILPOINT_INGESTION_SOURCE`
 
 Secret ownership:
 
@@ -137,16 +137,16 @@ Ingestion-specific knobs:
 - `RATE_LIMIT_INGESTION_WINDOW_MS=60000`
 - `INGESTION_MAX_BODY_KB=50`
 
-ProjectTrakr backend error capture:
+Tailpoint backend error capture:
 
-- Set `PROJECTTRAKR_CAPTURE_BACKEND_ERRORS=true` to enable automatic reporting of `5xx` request failures.
-- Set `PROJECTTRAKR_INGESTION_KEY` to a ProjectTrakr ingestion key.
-- Set `PROJECTTRAKR_INGESTION_ENDPOINT` to the backend API base including `/api`, for example `https://api.example.com/api`.
-- `PROJECTTRAKR_INGESTION_SOURCE` defaults to `api`.
+- Set `TAILPOINT_CAPTURE_BACKEND_ERRORS=true` to enable automatic reporting of `5xx` request failures.
+- Set `TAILPOINT_INGESTION_KEY` to a Tailpoint ingestion key.
+- Set `TAILPOINT_INGESTION_ENDPOINT` to the backend API base including `/api`, for example `https://api.example.com/api`.
+- `TAILPOINT_INGESTION_SOURCE` defaults to `api`.
 - The public SDK installs directly from npm with no special `.npmrc` entry required:
 
 ```bash
-npm install @peegee/projecttrakr-sdk
+npm install @peegee/tailpoint-sdk
 ```
 
 ## SDK Smoke Test
@@ -154,8 +154,8 @@ npm install @peegee/projecttrakr-sdk
 After setting the env vars above and restarting the backend, you can trigger a simple validation-only ingestion request with a test key:
 
 ```bash
-curl -X POST "$PROJECTTRAKR_INGESTION_ENDPOINT/v1/ingest/tasks" \
-  -H "Authorization: Bearer $PROJECTTRAKR_INGESTION_KEY" \
+curl -X POST "$TAILPOINT_INGESTION_ENDPOINT/v1/ingest/tasks" \
+  -H "Authorization: Bearer $TAILPOINT_INGESTION_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "source": "api",

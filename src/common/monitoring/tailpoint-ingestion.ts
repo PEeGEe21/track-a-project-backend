@@ -1,10 +1,10 @@
-import { captureError, init } from '@peegee/projecttrakr-sdk';
+import { captureError, init } from '@peegee/tailpoint-sdk';
 import { config } from 'src/config';
 import { AppLogger } from '../logging/app-logger';
 
 let sdkReady = false;
 
-function ensureProjectTrakrSdk(): boolean {
+function ensureTailpointSdk(): boolean {
   if (sdkReady) {
     return true;
   }
@@ -20,13 +20,9 @@ function ensureProjectTrakrSdk(): boolean {
     captureUnhandledRejections: true,
     captureUncaughtExceptions: true,
     onError: (error) => {
-      AppLogger.error(
-        'ProjectTrakrIngestion',
-        'Failed to report backend error',
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      AppLogger.error('TailpointIngestion', 'Failed to report backend error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     },
   });
 
@@ -34,8 +30,8 @@ function ensureProjectTrakrSdk(): boolean {
   return true;
 }
 
-export function bootProjectTrakrMonitoring(): void {
-  ensureProjectTrakrSdk();
+export function bootTailpointMonitoring(): void {
+  ensureTailpointSdk();
 }
 
 export async function captureBackendError(
@@ -46,7 +42,7 @@ export async function captureBackendError(
     dedupeKey?: string;
   } = {},
 ): Promise<void> {
-  if (!ensureProjectTrakrSdk()) {
+  if (!ensureTailpointSdk()) {
     return;
   }
 
@@ -62,7 +58,7 @@ export async function captureBackendError(
       },
     });
   } catch (captureFailure) {
-    AppLogger.error('ProjectTrakrIngestion', 'SDK capture failed', {
+    AppLogger.error('TailpointIngestion', 'SDK capture failed', {
       error:
         captureFailure instanceof Error
           ? captureFailure.message

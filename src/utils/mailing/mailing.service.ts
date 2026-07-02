@@ -262,7 +262,7 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
       <div style="background:#F8FAFC; padding:32px 16px; font-family:Arial, sans-serif; color:#102A43;">
         <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; overflow:hidden;">
           <div style="padding:24px 28px; background:linear-gradient(135deg,#0F172A 0%,#102A43 55%,#2563EB 140%); color:#FFFFFF;">
-            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">Trackr Security</p>
+            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">TailPoint Security</p>
             <h2 style="margin:12px 0 0; font-size:28px; line-height:1.2;">Password reset code</h2>
           </div>
           <div style="padding:28px;">
@@ -326,7 +326,7 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
       <div style="background:#F8FAFC; padding:32px 16px; font-family:Arial, sans-serif; color:#102A43;">
         <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; overflow:hidden;">
           <div style="padding:24px 28px; background:linear-gradient(135deg,#083344 0%,#0F766E 55%,#2563EB 140%); color:#FFFFFF;">
-            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">Trackr Notification</p>
+            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">TailPoint Notification</p>
             <h2 style="margin:12px 0 0; font-size:28px; line-height:1.2;">${title}</h2>
           </div>
           <div style="padding:28px;">

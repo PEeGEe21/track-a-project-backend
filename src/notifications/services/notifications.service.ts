@@ -404,7 +404,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       body: payload.message ?? 'You have a new notification',
       icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-192x192.png',
-      tag: `trackr-${payload.type}-${payload.recipientId}`,
+      tag: `tailpoint-${payload.type}-${payload.recipientId}`,
       data: {
         url: destinationUrl,
         type: payload.type,
@@ -627,7 +627,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   ): Promise<DeliveryExecutionResult> {
     const deliveryPlan = await this.getDeliveryPlan(payload);
     const shouldSendEmail =
-      deliveryPlan.email && payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+      deliveryPlan.email &&
+      payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
 
     if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
       return {
@@ -684,7 +685,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async sendNotificationEmail(payload: NotificationJobPayload) {
-    const recipient = await this.usersService.getUserAccountById(payload.recipientId);
+    const recipient = await this.usersService.getUserAccountById(
+      payload.recipientId,
+    );
     if (!recipient?.email) {
       return;
     }
@@ -703,10 +706,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       email: recipient.email,
       firstName: recipient.first_name,
       title: payload.title,
-      message: payload.message ?? 'You have a new notification in Trackr.',
+      message: payload.message ?? 'You have a new notification in TailPoint.',
       actionUrl,
       actionLabel:
-        payload.type === 'deadline_reminder' ? 'Open task' : 'View notification',
+        payload.type === 'deadline_reminder'
+          ? 'Open task'
+          : 'View notification',
     });
   }
 
@@ -723,7 +728,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       organizationId: targetOrganizationId,
       recipientId: userFound.id,
       senderId: null,
-      title: 'Trackr test notification',
+      title: 'TailPoint test notification',
       message:
         'If you see this in your system notification bar, push delivery is working.',
       type: 'push_test',

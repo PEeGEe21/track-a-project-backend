@@ -815,10 +815,10 @@ export class ProjectsService {
     );
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'ProjexPlanr';
+    workbook.creator = 'Tailpoint';
     workbook.created = new Date();
     workbook.modified = new Date();
-    workbook.company = 'ProjexPlanr';
+    workbook.company = 'Tailpoint';
 
     const addSheet = (
       name: string,
@@ -3559,7 +3559,7 @@ export class ProjectsService {
 
           if (checkUserAccount) {
             // User exists and is in organization
-            peerEmail = `You just received a project invitation from ${user.firstname} ${user.lastname} via the ProjexTrackr platform. Sign in to your account to view the project invitation.`;
+            peerEmail = `You just received a project invitation from ${user.firstname} ${user.lastname} via the TailPoint platform. Sign in to your account to view the project invitation.`;
             eventLink = InviteLinks.projectLogin();
             peerAccount = true;
 
@@ -3591,7 +3591,7 @@ export class ProjectsService {
             );
           } else {
             // User doesn't exist - invite them to both platform and project
-            peerEmail = `You just received a project invitation and an invite to join the ProjexTrackr platform from ${user.firstname} ${user.lastname}. Accept the invite to onboard and view the project.`;
+            peerEmail = `You just received a project invitation and an invite to join the TailPoint platform from ${user.firstname} ${user.lastname}. Accept the invite to onboard and view the project.`;
             eventLink = InviteLinks.projectInvite(inviteCode, project.id);
             peerAccount = false;
 
@@ -3710,12 +3710,12 @@ export class ProjectsService {
 
         if (checkUserAccount) {
           const loginLink = InviteLinks.projectLogin();
-          peerEmail = `You just received a project from a peer.${user.first_name} ${user.last_name} via the ProjexTrackr platform. Sign in to your account to view received project. ${loginLink})`;
+          peerEmail = `You just received a project from a peer.${user.first_name} ${user.last_name} via the TailPoint platform. Sign in to your account to view received project. ${loginLink})`;
           eventLink = loginLink;
           peerAccount = true;
         } else {
           const inviteLink = InviteLinks.projectInvite(inviteCode, project.id);
-          peerEmail = `You just received a project and an invite to join the projextrackr platform from user.${user.first_name} ${user.last_name}. Accept invite and onboard to the project tracking platform to view the project. ${inviteLink}`;
+          peerEmail = `You just received a project and an invite to join the TailPoint platform from user.${user.first_name} ${user.last_name}. Accept invite and onboard to the project tracking platform to view the project. ${inviteLink}`;
           eventLink = inviteLink;
         }
 
