@@ -17,7 +17,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { NotesService } from '../services/notes.service';
-import { UpdateNoteDto } from '../dto/update-note.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
@@ -113,6 +112,7 @@ export class NotesController {
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
     @Body('durationSeconds') durationSeconds?: string | number,
+    @Body('transcript') transcript?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Audio file is required');
@@ -124,6 +124,20 @@ export class NotesController {
       req.user,
       organizationId,
       durationSeconds,
+      transcript,
+    );
+  }
+
+  @Post(':id/transcribe')
+  requestNoteTranscription(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notesService.requestAudioTranscription(
+      id,
+      req.user,
+      organizationId,
     );
   }
 }

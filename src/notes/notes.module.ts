@@ -26,6 +26,11 @@ import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageModule } from 'src/storage/storage.module';
+import { RedisModule } from 'src/redis/redis.module';
+import { AUDIO_TRANSCRIPTION_PROVIDER, NoteTranscriptionService } from './services/note-transcription.service';
+import { NoopAudioTranscriptionProvider } from './services/noop-audio-transcription.provider';
+import { OpenAiAudioTranscriptionProvider } from './services/openai-audio-transcription.provider';
+import { config } from 'src/config';
 
 @Module({
   imports: [
@@ -35,6 +40,7 @@ import { StorageModule } from 'src/storage/storage.module';
     // UsersModule,
     MailingModule,
     StorageModule,
+    RedisModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([
@@ -59,7 +65,29 @@ import { StorageModule } from 'src/storage/storage.module';
     ]),
   ],
   controllers: [NotesController],
-  providers: [NotesService],
+  providers: [
+    NotesService,
+    NoteTranscriptionService,
+    NoopAudioTranscriptionProvider,
+    OpenAiAudioTranscriptionProvider,
+    {
+      provide: AUDIO_TRANSCRIPTION_PROVIDER,
+      useFactory: (
+        noopProvider: NoopAudioTranscriptionProvider,
+        openAiProvider: OpenAiAudioTranscriptionProvider,
+      ) => {
+        if (
+          config.transcription.enabled &&
+          config.transcription.provider === 'openai'
+        ) {
+          return openAiProvider;
+        }
+
+        return noopProvider;
+      },
+      inject: [NoopAudioTranscriptionProvider, OpenAiAudioTranscriptionProvider],
+    },
+  ],
   exports: [NotesService],
 })
 export class NotesModule {}

@@ -150,6 +150,19 @@ const envVarsSchema = joi
     TAILPOINT_INGESTION_KEY: joi.string().optional(),
     TAILPOINT_INGESTION_ENDPOINT: joi.string().uri().optional(),
     TAILPOINT_INGESTION_SOURCE: joi.string().optional(),
+    TRANSCRIPTION_ENABLED: joi
+      .boolean()
+      .truthy('TRUE')
+      .truthy('true')
+      .falsy('FALSE')
+      .falsy('false')
+      .default(false),
+    TRANSCRIPTION_PROVIDER: joi
+      .string()
+      .allow(...['none', 'openai'])
+      .default('none'),
+    OPENAI_API_KEY: joi.string().optional(),
+    OPENAI_TRANSCRIPTION_MODEL: joi.string().optional(),
     TAILPOINT_CAPTURE_BACKEND_ERRORS: joi
       .boolean()
       .truthy('TRUE')
@@ -369,6 +382,14 @@ export const config = {
   },
   queue: {
     driver: envVars.QUEUE_DRIVER,
+  },
+  transcription: {
+    enabled: envVars.TRANSCRIPTION_ENABLED,
+    provider: envVars.TRANSCRIPTION_PROVIDER,
+    openAiApiKey: envVars.OPENAI_API_KEY ?? null,
+    openAiModel: envVars.OPENAI_TRANSCRIPTION_MODEL ?? 'whisper-1',
+    providerEnabled:
+      envVars.TRANSCRIPTION_ENABLED && envVars.TRANSCRIPTION_PROVIDER !== 'none',
   },
   ingestion: {
     maxBodyKb: envVars.INGESTION_MAX_BODY_KB,

@@ -9,4 +9,6 @@ export class CreateNoteDto {
   createdAt: Date;
   user: User;
   taskId?: number;
+  audio_transcript?: string | null;
+  audio_transcript_status?: string | null;
 }

@@ -43,6 +43,12 @@ export class Note {
   @Column({ type: 'int', nullable: true })
   audio_duration_seconds: number | null;
 
+  @Column({ type: 'text', nullable: true })
+  audio_transcript: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  audio_transcript_status: string | null;
+
   @ManyToOne(() => Task, (task) => task.notes)
   @JoinColumn({ name: 'task_id' })
   task: Task;

@@ -7,11 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Post } from '../../typeorm/entities/Post';
-import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
 import { Task } from 'src/typeorm/entities/Task';
-import { CreateNoteDto } from '../dto/create-note.dto';
 import { UpdateNoteDto } from '../dto/update-note.dto';
 import { UsersService } from 'src/users/services/users.service';
 import { Note } from 'src/typeorm/entities/Note';
@@ -19,6 +16,8 @@ import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageService } from 'src/types/storage.interface';
 import { MulterFile } from 'src/types/multer.types';
+import { NoteTranscriptionService } from './note-transcription.service';
+import { config } from 'src/config';
 
 @Injectable()
 export class NotesService {
@@ -32,6 +31,7 @@ export class NotesService {
     private orgRepository: Repository<Organization>,
     @Inject('STORAGE_SERVICE')
     private storageService: StorageService,
+    private noteTranscriptionService: NoteTranscriptionService,
   ) {}
 
   async findUserNotes(
@@ -87,9 +87,12 @@ export class NotesService {
       // 5. Search filter
       if (search) {
         const lowered = `%${search.toLowerCase()}%`;
-        queryBuilder.andWhere(`(LOWER(note.note) LIKE :search)`, {
-          search: lowered,
-        });
+        queryBuilder.andWhere(
+          `(LOWER(note.note) LIKE :search OR LOWER(COALESCE(note.audio_transcript, '')) LIKE :search)`,
+          {
+            search: lowered,
+          },
+        );
       }
 
       queryBuilder
@@ -140,12 +143,22 @@ export class NotesService {
         is_pinned,
         position,
         taskId,
+        audio_transcript,
+        audio_transcript_status,
       } = updateNoteDto;
 
       const data: any = {
         note: noteText ?? note.note,
         color: color ?? note.color,
         is_pinned: typeof is_pinned === 'boolean' ? is_pinned : note.is_pinned,
+        audio_transcript:
+          audio_transcript === undefined
+            ? note.audio_transcript
+            : audio_transcript,
+        audio_transcript_status:
+          audio_transcript_status === undefined
+            ? note.audio_transcript_status
+            : audio_transcript_status,
       };
 
       // ✅ Handle position (expects JSON object)
@@ -445,13 +458,18 @@ export class NotesService {
     user: any,
     organizationId: string,
     durationSeconds?: string | number,
+    transcript?: string,
   ): Promise<any> {
     const userFound = await this.usersService.getUserAccountById(user.userId);
     if (!userFound) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
 
-    const note = await this.getOwnedNoteOrThrow(noteId, userFound.id, organizationId);
+    const note = await this.getOwnedNoteOrThrow(
+      noteId,
+      userFound.id,
+      organizationId,
+    );
 
     if (!file.mimetype?.startsWith('audio/')) {
       throw new HttpException(
@@ -481,13 +499,88 @@ export class NotesService {
     note.audio_duration_seconds = Number.isFinite(parsedDuration)
       ? Math.max(0, Math.round(parsedDuration))
       : null;
+    note.audio_transcript = transcript?.trim() ? transcript.trim() : null;
+    note.audio_transcript_status = transcript?.trim()
+      ? 'manual'
+      : config.transcription.enabled
+        ? 'pending'
+        : null;
 
     const savedNote = await this.noteRepository.save(note);
+
+    if (config.transcription.enabled && !transcript?.trim()) {
+      await this.noteTranscriptionService.requestTranscription(
+        note.id,
+        organizationId,
+      );
+      const refreshedNote = await this.noteRepository.findOne({
+        where: {
+          id: note.id,
+          organization_id: organizationId,
+        },
+      });
+
+      return {
+        success: 'success',
+        message: 'Note audio uploaded successfully',
+        data: refreshedNote ?? savedNote,
+      };
+    }
 
     return {
       success: 'success',
       message: 'Note audio uploaded successfully',
       data: savedNote,
+    };
+  }
+
+  async requestAudioTranscription(
+    noteId: number,
+    user: any,
+    organizationId: string,
+  ) {
+    if (!config.transcription.enabled) {
+      throw new HttpException(
+        'Audio transcription is currently disabled',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const note = await this.getOwnedNoteOrThrow(
+      noteId,
+      userFound.id,
+      organizationId,
+    );
+    if (!note.audio_path) {
+      throw new HttpException(
+        'This note does not have audio to transcribe',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const result = await this.noteTranscriptionService.requestTranscription(
+      note.id,
+      organizationId,
+    );
+    const refreshedNote = await this.noteRepository.findOne({
+      where: {
+        id: note.id,
+        organization_id: organizationId,
+      },
+    });
+
+    return {
+      success: 'success',
+      message:
+        result.status === 'skipped'
+          ? 'Transcription provider is not configured'
+          : 'Audio transcription requested successfully',
+      data: refreshedNote ?? note,
     };
   }
 
