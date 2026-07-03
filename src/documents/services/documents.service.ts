@@ -289,12 +289,56 @@ export class DocumentsService {
     organizationId?: string | null,
   ): Promise<any> {
     const userFound = await this.getUserOrThrow(user);
-    const document = await this.getOwnedDocumentOrThrow(
-      id,
-      userFound.id,
-      organizationId,
-    );
-    await this.documentsRepository.remove(document);
+    await this.getOwnedDocumentOrThrow(id, userFound.id, organizationId);
+
+    const files = await this.filesRepository
+      .createQueryBuilder('file')
+      .where('file.documentId = :documentId', { documentId: id })
+      .andWhere(
+        organizationId === null
+          ? 'file.organization_id IS NULL'
+          : 'file.organization_id = :organizationId',
+        organizationId === null ? {} : { organizationId },
+      )
+      .getMany();
+
+    for (const file of files) {
+      await this.storageService.deleteFile(file.path);
+    }
+
+    await this.filesRepository
+      .createQueryBuilder()
+      .delete()
+      .from(DocumentFile)
+      .where('documentId = :documentId', { documentId: id })
+      .andWhere(
+        organizationId === null
+          ? 'organization_id IS NULL'
+          : 'organization_id = :organizationId',
+        organizationId === null ? {} : { organizationId },
+      )
+      .execute();
+
+    const deleteQuery = this.documentsRepository
+      .createQueryBuilder()
+      .delete()
+      .from(Document)
+      .where('id = :id', { id })
+      .andWhere('userId = :userId', { userId: userFound.id });
+
+    if (organizationId === null) {
+      deleteQuery.andWhere('organization_id IS NULL');
+    } else {
+      deleteQuery.andWhere('organization_id = :organizationId', {
+        organizationId,
+      });
+    }
+
+    const deleteResult = await deleteQuery.execute();
+
+    if (!deleteResult.affected) {
+      throw new NotFoundException(`Document with ID ${id} not found`);
+    }
 
     return {
       success: true,
