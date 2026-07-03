@@ -53,7 +53,7 @@ export class SupabaseStorageService implements StorageService {
 
       if (!bucketExists) {
         await this.supabase.storage.createBucket(this.bucketName, {
-          public: false, // Set to true if you want public access
+          public: true,
           fileSizeLimit: 52428800, // 50MB limit
           allowedMimeTypes: [
             'image/*',
@@ -70,7 +70,7 @@ export class SupabaseStorageService implements StorageService {
         // console.log(`Bucket '${this.bucketName}' created successfully`);
       } else {
         await this.supabase.storage.updateBucket(this.bucketName, {
-          public: false,
+          public: true,
           fileSizeLimit: 52428800,
           allowedMimeTypes: [
             'image/*',
