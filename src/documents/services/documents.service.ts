@@ -1,9 +1,11 @@
 import {
+  Inject,
   Injectable,
   NotFoundException,
   ForbiddenException,
   HttpException,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -13,6 +15,8 @@ import { Document } from 'src/typeorm/entities/Document';
 import { DocumentFile } from 'src/typeorm/entities/DocumentFile';
 import { Folder } from 'src/typeorm/entities/Folder';
 import { UsersService } from 'src/users/services/users.service';
+import { StorageService } from 'src/types/storage.interface';
+import { MulterFile } from 'src/types/multer.types';
 
 @Injectable()
 export class DocumentsService {
@@ -25,30 +29,32 @@ export class DocumentsService {
     private filesRepository: Repository<DocumentFile>,
     @InjectRepository(Folder)
     private foldersRepository: Repository<Folder>,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
   ) {}
 
   async create(
     createDocumentDto: CreateDocumentDto,
     user: any,
+    organizationId?: string | null,
   ): Promise<Document> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
+    const userFound = await this.getUserOrThrow(user);
+    const plainText =
+      createDocumentDto.plainText ??
+      this.extractPlainText(createDocumentDto.content);
+    const metadata = this.calculateMetadata(createDocumentDto.content);
 
-      const metadata = this.calculateMetadata(createDocumentDto.content);
+    const document = this.documentsRepository.create({
+      ...createDocumentDto,
+      plainText,
+      author: userFound,
+      userId: userFound.id,
+      metadata,
+      organization_id: organizationId ?? null,
+      publishedAt: createDocumentDto.isPublished ? new Date() : null,
+    });
 
-      const document = this.documentsRepository.create({
-        ...createDocumentDto,
-        author: userFound,
-        userId: userFound.id,
-        metadata,
-        publishedAt: createDocumentDto.isPublished ? new Date() : null,
-      });
-
-      return await this.documentsRepository.save(document);
-    } catch (err) {}
+    return await this.documentsRepository.save(document);
   }
 
   async findAll(
@@ -56,258 +62,290 @@ export class DocumentsService {
     page: number = 1,
     limit: number = 10,
     search?: string,
+    organizationId?: string | null,
   ): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
+    const userFound = await this.getUserOrThrow(user);
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const currentLimit = Math.max(Number(limit) || 10, 1);
 
-      const userId = userFound.id;
+    const query = this.documentsRepository
+      .createQueryBuilder('document')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .leftJoinAndSelect('document.folder', 'folder')
+      .leftJoinAndSelect('document.files', 'files')
+      .orderBy('document.updatedAt', 'DESC');
 
-      const query = this.documentsRepository
-        .createQueryBuilder('document')
-        .where('document.userId = :userId', { userId })
-        .leftJoinAndSelect('document.files', 'files')
-        .orderBy('document.updatedAt', 'DESC');
+    this.applyOrganizationScope(query, 'document', organizationId);
 
-      // if (options?.isPublished !== undefined) {
-      //   query.andWhere('document.isPublished = :isPublished', {
-      //     isPublished: options.isPublished,
-      //   });
-      // }
+    if (search) {
+      const lowered = `%${search.toLowerCase()}%`;
+      query.andWhere(
+        `(LOWER(document.title) LIKE :search OR LOWER(COALESCE(document.plainText, '')) LIKE :search)`,
+        { search: lowered },
+      );
+    }
 
-      if (search) {
-        const lowered = `%${search.toLowerCase()}%`;
-        query.andWhere(
-          `(LOWER(document.title) LIKE :search OR LOWER(document.plainText) LIKE :search)`,
-          { search: lowered },
-        );
-      }
+    query.skip((currentPage - 1) * currentLimit);
+    query.take(currentLimit);
 
-      query.skip((page - 1) * limit);
-      query.take(limit);
+    const [result, total] = await query.getManyAndCount();
+    const lastPage = Math.ceil(total / currentLimit);
 
-      // const data = await query.getMany();
-
-      const [result, total] = await query.getManyAndCount();
-      const lastPage = Math.ceil(total / limit);
-
-      return {
-        data: result,
-        meta: {
-          current_page: Number(page),
-          from: (page - 1) * limit + 1,
-          last_page: lastPage,
-          per_page: Number(limit),
-          to: (page - 1) * limit + result.length,
-          total: total,
-        },
-        success: true,
-        message: 'Success',
-        error: null,
-      };
-    } catch (err) {}
+    return {
+      data: result,
+      meta: {
+        current_page: currentPage,
+        from: total === 0 ? 0 : (currentPage - 1) * currentLimit + 1,
+        last_page: lastPage,
+        per_page: currentLimit,
+        to: (currentPage - 1) * currentLimit + result.length,
+        total,
+      },
+      success: true,
+      message: 'Success',
+      error: null,
+    };
   }
 
-  async findDocumentsData(user: any): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
+  async findDocumentsData(
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
 
-      const userId = userFound.id;
+    const recentquery = this.documentsRepository
+      .createQueryBuilder('document')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .leftJoinAndSelect('document.folder', 'folder')
+      .leftJoinAndSelect('document.files', 'files')
+      .orderBy('document.updatedAt', 'DESC')
+      .limit(5);
+    this.applyOrganizationScope(recentquery, 'document', organizationId);
 
-      // recent
-      const recentquery = this.documentsRepository
-        .createQueryBuilder('document')
-        .where('document.userId = :userId', { userId })
-        .leftJoinAndSelect('document.files', 'files')
-        .orderBy('document.updatedAt', 'DESC')
-        .limit(5);
+    const filesquery = this.filesRepository
+      .createQueryBuilder('file')
+      .leftJoinAndSelect('file.document', 'document')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .orderBy('document.updatedAt', 'DESC')
+      .limit(5);
+    this.applyOrganizationScope(filesquery, 'file', organizationId);
 
-      const recentdata = await recentquery.getMany();
+    const favoritequery = this.documentsRepository
+      .createQueryBuilder('document')
+      .leftJoinAndSelect('document.folder', 'folder')
+      .leftJoinAndSelect('document.files', 'files')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .andWhere('document.isFavorite = :isFavorite', { isFavorite: true })
+      .orderBy('document.updatedAt', 'DESC')
+      .limit(5);
+    this.applyOrganizationScope(favoritequery, 'document', organizationId);
 
-      // recent files
-      const filesquery = this.filesRepository
-        .createQueryBuilder('file')
-        .leftJoinAndSelect('file.document', 'document')
-        .where('document.userId = :userId', { userId })
-        .orderBy('document.updatedAt', 'DESC')
-        .limit(5);
+    const [recentdata, recentfiles, favoritedata] = await Promise.all([
+      recentquery.getMany(),
+      filesquery.getMany(),
+      favoritequery.getMany(),
+    ]);
 
-      const recentfiles = await filesquery.getMany();
-
-      const favoritequery = this.documentsRepository
-        .createQueryBuilder('document')
-        .leftJoinAndSelect('document.files', 'files')
-        .where('document.userId = :userId', { userId })
-        .andWhere('document.isFavorite = :isFavorite', { isFavorite: true })
-        .orderBy('document.updatedAt', 'DESC')
-        .limit(5);
-
-      const favoritedata = await favoritequery.getMany();
-
-      return {
-        data: {
-          recent: recentdata,
-          files: recentfiles,
-          favorites: favoritedata,
-        },
-        success: true,
-        message: 'Success',
-        error: null,
-      };
-    } catch (err) {}
+    return {
+      data: {
+        recent: recentdata,
+        files: recentfiles,
+        favorites: favoritedata,
+      },
+      success: true,
+      message: 'Success',
+      error: null,
+    };
   }
 
-  async findRecentUserDocumentFiles(user: any): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
+  async findRecentUserDocumentFiles(
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
 
-      const userId = userFound.id;
+    const query = this.filesRepository
+      .createQueryBuilder('file')
+      .leftJoinAndSelect('file.document', 'document')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .orderBy('document.updatedAt', 'DESC')
+      .limit(5);
+    this.applyOrganizationScope(query, 'file', organizationId);
 
-      const query = this.filesRepository
-        .createQueryBuilder('file')
-        .leftJoinAndSelect('file.document', 'document')
-        .where('document.userId = :userId', { userId })
-        .orderBy('document.updatedAt', 'DESC')
-        .limit(5);
+    const data = await query.getMany();
 
-      const data = await query.getMany();
-
-      return {
-        data,
-        success: true,
-        message: 'Success',
-        error: null,
-      };
-    } catch (err) {}
+    return {
+      data,
+      success: true,
+      message: 'Success',
+      error: null,
+    };
   }
 
-  async findFavoriteUserDocuments(user: any): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
+  async findFavoriteUserDocuments(
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
 
-      const userId = userFound.id;
+    const query = this.documentsRepository
+      .createQueryBuilder('document')
+      .where('document.userId = :userId', { userId: userFound.id })
+      .leftJoinAndSelect('document.folder', 'folder')
+      .leftJoinAndSelect('document.files', 'files')
+      .andWhere('document.isFavorite = :isFavorite', { isFavorite: true })
+      .orderBy('document.updatedAt', 'DESC')
+      .limit(5);
+    this.applyOrganizationScope(query, 'document', organizationId);
 
-      const query = this.documentsRepository
-        .createQueryBuilder('document')
-        .where('document.userId = :userId', { userId })
-        .leftJoinAndSelect('document.files', 'files')
-        .orderBy('document.updatedAt', 'DESC')
-        .where('document.isFavorite = :isFavorite', { isFavorite: true })
-        .limit(5);
+    const data = await query.getMany();
 
-      const data = await query.getMany();
-
-      return {
-        data,
-        success: true,
-        message: 'Success',
-        error: null,
-      };
-    } catch (err) {}
+    return {
+      data,
+      success: true,
+      message: 'Success',
+      error: null,
+    };
   }
 
-  async findOne(id: string, user: any): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
+  async findOne(
+    id: string,
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
+    const document = await this.getOwnedDocumentOrThrow(
+      id,
+      userFound.id,
+      organizationId,
+    );
 
-      const document = await this.documentsRepository.findOne({
-        where: { id },
-        relations: ['files', 'author'],
-      });
-
-      if (!document) {
-        throw new NotFoundException(`Document with ID ${id} not found`);
-      }
-
-      if (document.userId !== userFound.id) {
-        throw new ForbiddenException('You do not have access to this document');
-      }
-
-      return {
-        data: document,
-        success: true,
-      };
-    } catch (err) {}
+    return {
+      data: document,
+      success: true,
+    };
   }
 
   async update(
     id: string,
     updateDocumentDto: UpdateDocumentDto,
     user: any,
+    organizationId?: string | null,
   ): Promise<any> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
+    const userFound = await this.getUserOrThrow(user);
+    const document = await this.getOwnedDocumentOrThrow(
+      id,
+      userFound.id,
+      organizationId,
+    );
+    const { lastKnownUpdatedAt, ...updatePayload } = updateDocumentDto;
 
-      const document = await this.findOne(id, userFound.id);
+    if (lastKnownUpdatedAt) {
+      const clientTimestamp = new Date(lastKnownUpdatedAt);
+      if (
+        Number.isNaN(clientTimestamp.getTime()) ||
+        clientTimestamp.getTime() !== document.updatedAt.getTime()
+      ) {
+        throw new HttpException(
+          {
+            message:
+              'This document was updated in another session. Reload to review the latest version.',
+            data: {
+              latestDocument: document,
+            },
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
 
-      const metadata = updateDocumentDto.content
-        ? this.calculateMetadata(updateDocumentDto.content)
-        : document.metadata;
+    const nextContent = updatePayload.content ?? document.content;
+    const plainText =
+      updatePayload.plainText ?? this.extractPlainText(nextContent);
+    const metadata = this.calculateMetadata(nextContent);
 
-      Object.assign(document, {
-        ...updateDocumentDto,
-        metadata,
-        publishedAt:
-          updateDocumentDto.isPublished && !document.publishedAt
-            ? new Date()
-            : document.publishedAt,
-      });
+    Object.assign(document, {
+      ...updatePayload,
+      plainText,
+      metadata,
+      publishedAt:
+        updatePayload.isPublished && !document.publishedAt
+          ? new Date()
+          : document.publishedAt,
+    });
 
-      const savedDocument = await this.documentsRepository.save(document);
+    const savedDocument = await this.documentsRepository.save(document);
 
-      return {
-        data: savedDocument,
-        success: true,
-        message: 'Successfully Updated',
-      };
-    } catch (err) {}
+    return {
+      data: savedDocument,
+      success: true,
+      message: 'Successfully Updated',
+    };
   }
 
-  async remove(id: string, user: any): Promise<void> {
-    try {
-      const userFound = await this.usersService.getUserAccountById(user.userId);
-      const document = await this.findOne(id, userFound.id);
-      await this.documentsRepository.remove(document);
-    } catch (err) {}
+  async remove(
+    id: string,
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
+    const document = await this.getOwnedDocumentOrThrow(
+      id,
+      userFound.id,
+      organizationId,
+    );
+    await this.documentsRepository.remove(document);
+
+    return {
+      success: true,
+      message: 'Document deleted successfully',
+      data: { id },
+    };
   }
 
   async addFiles(
     documentId: string,
     files: Array<Express.Multer.File>,
     user: any,
+    organizationId?: string | null,
   ): Promise<DocumentFile[]> {
-    const userFound = await this.usersService.getUserAccountById(user.userId);
+    const userFound = await this.getUserOrThrow(user);
+    await this.getOwnedDocumentOrThrow(documentId, userFound.id, organizationId);
 
-    await this.findOne(documentId, userFound.id);
+    const uploadedFiles = await Promise.all(
+      (files ?? []).map(async (file) => {
+        const filePath = this.generateDocumentFilePath(
+          documentId,
+          organizationId ?? null,
+          file.originalname,
+        );
+        const fileUrl = await this.storageService.uploadFile(
+          file as MulterFile,
+          filePath,
+        );
 
-    const documentFiles = files.map((file) =>
-      this.filesRepository.create({
-        documentId,
-        filename: file.filename,
-        originalName: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-        path: file.path,
-        url: `/uploads/${file.filename}`, // Adjust based on your storage
+        return this.filesRepository.create({
+          documentId,
+          filename: filePath.split('/').pop() || file.originalname,
+          originalName: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          path: filePath,
+          url: fileUrl,
+          organization_id: organizationId ?? null,
+        });
       }),
     );
 
-    return await this.filesRepository.save(documentFiles);
+    return await this.filesRepository.save(uploadedFiles);
   }
 
-  async removeFile(fileId: string, user: any): Promise<void> {
-    const userFound = await this.usersService.getUserAccountById(user.userId);
+  async removeFile(
+    fileId: string,
+    user: any,
+    organizationId?: string | null,
+  ): Promise<any> {
+    const userFound = await this.getUserOrThrow(user);
 
     const file = await this.filesRepository.findOne({
       where: { id: fileId },
@@ -322,17 +360,25 @@ export class DocumentsService {
       throw new ForbiddenException('You do not have access to this file');
     }
 
+    if ((file.organization_id ?? null) !== (organizationId ?? null)) {
+      throw new ForbiddenException('You do not have access to this file');
+    }
+
+    await this.storageService.deleteFile(file.path);
     await this.filesRepository.remove(file);
-    // TODO: Delete physical file from storage
+    return {
+      success: true,
+      message: 'File deleted successfully',
+      data: { id: fileId },
+    };
   }
 
   private calculateMetadata(content: string): Document['metadata'] {
-    // Strip HTML tags for word count
-    const plainText = content.replace(/<[^>]*>/g, ' ').trim();
+    const plainText = this.extractPlainText(content);
     const words = plainText.split(/\s+/).filter((word) => word.length > 0);
     const wordCount = words.length;
     const characterCount = plainText.length;
-    const readingTime = Math.ceil(wordCount / 200); // Average reading speed
+    const readingTime = Math.ceil(wordCount / 200);
 
     return {
       wordCount,
@@ -345,37 +391,52 @@ export class DocumentsService {
     documentId: string,
     folderId: string | null,
     user: any,
+    organizationId?: string | null,
   ): Promise<Document> {
-    const userFound = await this.usersService.getUserAccountById(user.userId);
-    const document = await this.findOne(documentId, userFound.id);
+    const userFound = await this.getUserOrThrow(user);
+    const document = await this.getOwnedDocumentOrThrow(
+      documentId,
+      userFound.id,
+      organizationId,
+    );
 
-    // If moving to a folder, verify it exists and belongs to user
+    let nextFolder: Folder | null = null;
+
     if (folderId) {
-      const folder = await this.foldersRepository.findOne({
-        where: { id: folderId },
+      nextFolder = await this.foldersRepository.findOne({
+        where: { id: folderId, userId: userFound.id, organization_id: organizationId ?? null },
       });
 
-      if (!folder) {
+      if (!nextFolder) {
         throw new NotFoundException('Folder not found');
-      }
-
-      if (folder.userId !== userFound.id) {
-        throw new ForbiddenException('You do not have access to this folder');
       }
     }
 
     document.folderId = folderId;
-    return await this.documentsRepository.save(document);
+    document.folder = nextFolder;
+
+    await this.documentsRepository.save(document);
+
+    return await this.getOwnedDocumentOrThrow(
+      documentId,
+      userFound.id,
+      organizationId,
+    );
   }
 
-  async findByFolder(folderId: string | null, user: any): Promise<Document[]> {
-    const userFound = await this.usersService.getUserAccountById(user.userId);
-    const userId = userFound.id;
+  async findByFolder(
+    folderId: string | null,
+    user: any,
+    organizationId?: string | null,
+  ): Promise<Document[]> {
+    const userFound = await this.getUserOrThrow(user);
     const query = this.documentsRepository
       .createQueryBuilder('document')
-      .where('document.userId = :userId', { userId })
+      .where('document.userId = :userId', { userId: userFound.id })
+      .leftJoinAndSelect('document.folder', 'folder')
       .leftJoinAndSelect('document.files', 'files')
       .orderBy('document.updatedAt', 'DESC');
+    this.applyOrganizationScope(query, 'document', organizationId);
 
     if (folderId === null) {
       query.andWhere('document.folderId IS NULL');
@@ -384,5 +445,79 @@ export class DocumentsService {
     }
 
     return await query.getMany();
+  }
+
+  private async getUserOrThrow(user: any) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    return userFound;
+  }
+
+  private async getOwnedDocumentOrThrow(
+    id: string,
+    userId: number,
+    organizationId?: string | null,
+  ): Promise<Document> {
+    const query = this.documentsRepository
+      .createQueryBuilder('document')
+      .leftJoinAndSelect('document.folder', 'folder')
+      .leftJoinAndSelect('document.files', 'files')
+      .leftJoinAndSelect('document.author', 'author')
+      .where('document.id = :id', { id })
+      .andWhere('document.userId = :userId', { userId });
+
+    this.applyOrganizationScope(query, 'document', organizationId);
+
+    const document = await query.getOne();
+
+    if (!document) {
+      throw new NotFoundException(`Document with ID ${id} not found`);
+    }
+
+    return document;
+  }
+
+  private applyOrganizationScope(
+    query: any,
+    alias: string,
+    organizationId?: string | null,
+  ) {
+    if (organizationId === undefined) {
+      return query;
+    }
+
+    if (organizationId === null) {
+      query.andWhere(`${alias}.organization_id IS NULL`);
+      return query;
+    }
+
+    query.andWhere(`${alias}.organization_id = :organizationId`, {
+      organizationId,
+    });
+
+    return query;
+  }
+
+  private extractPlainText(content: string) {
+    if (typeof content !== 'string') {
+      throw new BadRequestException('Document content must be a string');
+    }
+
+    return content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private generateDocumentFilePath(
+    documentId: string,
+    organizationId: string | null,
+    filename: string,
+  ) {
+    const timestamp = Date.now();
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const organizationSegment = organizationId ?? 'personal';
+
+    return `organizations/${organizationSegment}/documents/${documentId}/files/${timestamp}_${sanitizedFilename}`;
   }
 }

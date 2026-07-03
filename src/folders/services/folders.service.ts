@@ -80,7 +80,6 @@ export class FoldersService {
     group: string,
   ): Promise<Folder[]> {
     const userFound = await this.usersService.getUserAccountById(user.userId);
-    console.log(userFound, 'www');
     if (!userFound) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
@@ -466,7 +465,6 @@ export class FoldersService {
   async findAllWithTree2(user: any): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
-      console.log(userFound, 'www');
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
@@ -534,7 +532,6 @@ export class FoldersService {
   async findRecentFolders2(user: any): Promise<any> {
     try {
       const userFound = await this.usersService.getUserAccountById(user.userId);
-      console.log(userFound, 'www');
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
@@ -550,7 +547,6 @@ export class FoldersService {
 
       const recentdata = await recentquery.getMany();
 
-      console.log(recentdata, 'recent');
       return {
         data: recentdata,
         success: true,
@@ -558,7 +554,7 @@ export class FoldersService {
         error: null,
       };
     } catch (err) {
-      console.log(err?.message, err);
+      console.error(err?.message, err);
     }
   }
 
@@ -569,7 +565,6 @@ export class FoldersService {
     organizationId: string,
   ): Promise<any> {
     try {
-      console.log(updateFolderDto, 'entered');
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -577,7 +572,6 @@ export class FoldersService {
 
       const folder = await this.findOne(id, userFound.id, organizationId);
 
-      console.log(updateFolderDto, 'entered');
       // If moving to a new parent, validate it
       if (
         updateFolderDto.parentId &&
@@ -720,35 +714,47 @@ export class FoldersService {
         message: 'Deleted Successfully',
       };
     } catch (err) {
-      console.log(err);
+      console.error(err);
       throw err;
     }
   }
 
   async getAncestors(
     id: string,
-    userId: number,
+    user: any,
     organizationId: string,
   ): Promise<Folder[]> {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const userId = userFound.id;
     const folder = await this.findOne(id, userId, organizationId);
     return await this.foldersRepository.findAncestors(folder);
   }
 
   async getDescendants(
     id: string,
-    userId: number,
+    user: any,
     organizationId: string,
   ): Promise<Folder[]> {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const userId = userFound.id;
     const folder = await this.findOne(id, userId, organizationId);
     return await this.foldersRepository.findDescendants(folder);
   }
 
   async getBreadcrumbs(
     id: string,
-    userId: number,
+    user: any,
     organizationId: string,
   ): Promise<Folder[]> {
-    const ancestors = await this.getAncestors(id, userId, organizationId);
+    const ancestors = await this.getAncestors(id, user, organizationId);
     return ancestors.reverse(); // Root -> Current
   }
 
@@ -765,6 +771,9 @@ export class FoldersService {
       const recentFolders = await this.foldersRepository
         .createQueryBuilder('folder')
         .where('folder.userId = :userId', { userId })
+        .andWhere('folder.organization_id = :organizationId', {
+          organizationId,
+        })
         .andWhere('folder.parentId IS NULL')
         .orderBy('folder.updatedAt', 'DESC')
         .limit(10)
@@ -788,7 +797,7 @@ export class FoldersService {
         error: null,
       };
     } catch (err) {
-      console.log(err?.message, err);
+      console.error(err?.message, err);
       throw err;
     }
   }

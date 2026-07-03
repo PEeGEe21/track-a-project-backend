@@ -4,18 +4,15 @@ import { DocumentsController } from './controllers/documents.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentFile } from 'src/typeorm/entities/DocumentFile';
 import { Document } from 'src/typeorm/entities/Document';
-import { MulterModule } from '@nestjs/platform-express';
 import { Folder } from 'src/typeorm/entities/Folder';
 import { UsersModule } from 'src/users/users.module';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Document, DocumentFile, Folder]),
-    MulterModule.register({
-      dest: './uploads',
-    }),
-
-    UsersModule
+    UsersModule,
+    StorageModule,
   ],
 
   controllers: [DocumentsController],

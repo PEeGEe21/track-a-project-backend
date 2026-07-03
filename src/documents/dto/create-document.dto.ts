@@ -1,5 +1,12 @@
 // src/documents/dto/create-document.dto.ts
-import { IsString, IsOptional, IsBoolean, MaxLength, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  MaxLength,
+  IsUUID,
+  IsISO8601,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateDocumentDto {
@@ -22,9 +29,21 @@ export class CreateDocumentDto {
   @IsBoolean()
   isPublished?: boolean;
 
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  isFavorite?: boolean;
+
   @ApiPropertyOptional({ description: 'Folder ID to place document in' })
   @IsOptional()
   @IsUUID()
   folderId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Last known updated timestamp used for conflict detection',
+  })
+  @IsOptional()
+  @IsISO8601()
+  lastKnownUpdatedAt?: string;
 
 }

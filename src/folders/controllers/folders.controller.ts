@@ -49,7 +49,6 @@ export class FoldersController {
     @Query('tree') tree?: string,
     @Query('group') group?: string,
   ) {
-    console.log(tree, 'tree');
     if (tree === 'true') {
       return this.foldersService.findAllWithTree(req.user, organizationId, group);
     }
@@ -62,7 +61,6 @@ export class FoldersController {
     @Req() req,
     @Headers('x-organization-id') organizationId: string,
   ) {
-    console.log('heree');
     return this.foldersService.findRecentFolders(req.user, organizationId);
   }
 
@@ -122,7 +120,6 @@ export class FoldersController {
     @Req() req,
     @Headers('x-organization-id') organizationId: string,
   ) {
-    console.log('wewee');
     return this.foldersService.update(id, updateFolderDto, req.user, organizationId);
   }
 
