@@ -1,4 +1,10 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
@@ -11,6 +17,8 @@ import { UsersService } from 'src/users/services/users.service';
 import { Note } from 'src/typeorm/entities/Note';
 import { TenantQueryHelper } from 'src/common/helpers/tenant-query.helper';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageService } from 'src/types/storage.interface';
+import { MulterFile } from 'src/types/multer.types';
 
 @Injectable()
 export class NotesService {
@@ -22,6 +30,8 @@ export class NotesService {
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(Organization)
     private orgRepository: Repository<Organization>,
+    @Inject('STORAGE_SERVICE')
+    private storageService: StorageService,
   ) {}
 
   async findUserNotes(
@@ -124,7 +134,6 @@ export class NotesService {
         throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
       }
 
-      console.log(updateNoteDto);
       const {
         note: noteText,
         color,
@@ -173,9 +182,6 @@ export class NotesService {
         where: { id },
         relations: ['task', 'user'],
       });
-
-      console.log(updatedNote, 'updatedNote');
-
       return {
         success: 'success',
         message: 'Note updated successfully',
@@ -306,6 +312,10 @@ export class NotesService {
         return { error: 'error', message: 'Note not found' }; // Or throw a NotFoundException
       }
 
+      if (note.audio_path) {
+        await this.storageService.deleteFile(note.audio_path);
+      }
+
       await this.noteRepository.delete(id);
 
       return { success: 'success', message: 'Note deleted successfully' };
@@ -427,5 +437,92 @@ export class NotesService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  async uploadNoteAudio(
+    noteId: number,
+    file: Express.Multer.File,
+    user: any,
+    organizationId: string,
+    durationSeconds?: string | number,
+  ): Promise<any> {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    const note = await this.getOwnedNoteOrThrow(noteId, userFound.id, organizationId);
+
+    if (!file.mimetype?.startsWith('audio/')) {
+      throw new HttpException(
+        'Only audio files can be attached to notes',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (note.audio_path) {
+      await this.storageService.deleteFile(note.audio_path);
+    }
+
+    const audioPath = this.generateNoteAudioPath(
+      noteId,
+      organizationId,
+      file.originalname,
+    );
+    const audioUrl = await this.storageService.uploadFile(
+      file as MulterFile,
+      audioPath,
+    );
+    const parsedDuration = Number(durationSeconds);
+
+    note.audio_path = audioPath;
+    note.audio_url = audioUrl;
+    note.audio_mime_type = file.mimetype;
+    note.audio_duration_seconds = Number.isFinite(parsedDuration)
+      ? Math.max(0, Math.round(parsedDuration))
+      : null;
+
+    const savedNote = await this.noteRepository.save(note);
+
+    return {
+      success: 'success',
+      message: 'Note audio uploaded successfully',
+      data: savedNote,
+    };
+  }
+
+  private async getOwnedNoteOrThrow(
+    id: number,
+    userId: number,
+    organizationId: string,
+  ): Promise<Note> {
+    const note = await this.noteRepository.findOne({
+      where: {
+        id,
+        organization_id: organizationId,
+      },
+      relations: ['user', 'task', 'organization'],
+    });
+
+    if (!note) {
+      throw new HttpException('Note not found', HttpStatus.BAD_REQUEST);
+    }
+
+    if (note.user?.id !== userId) {
+      throw new ForbiddenException('You do not have access to this note');
+    }
+
+    return note;
+  }
+
+  private generateNoteAudioPath(
+    noteId: number,
+    organizationId: string,
+    filename: string,
+  ) {
+    const timestamp = Date.now();
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+
+    return `organizations/${organizationId}/notes/${noteId}/audio/${timestamp}_${sanitizedFilename}`;
   }
 }

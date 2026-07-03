@@ -12,7 +12,8 @@ export class SupabaseStorageService implements StorageService {
   private readonly enabled: boolean;
 
   constructor(private configService: ConfigService) {
-    this.enabled = this.configService.get<string>('STORAGE_DRIVER') === 'supabase';
+    this.enabled =
+      this.configService.get<string>('STORAGE_DRIVER') === 'supabase';
 
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_KEY');
@@ -57,6 +58,7 @@ export class SupabaseStorageService implements StorageService {
           allowedMimeTypes: [
             'image/*',
             'video/*',
+            'audio/*',
             'application/pdf',
             'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -66,6 +68,22 @@ export class SupabaseStorageService implements StorageService {
           ],
         });
         // console.log(`Bucket '${this.bucketName}' created successfully`);
+      } else {
+        await this.supabase.storage.updateBucket(this.bucketName, {
+          public: false,
+          fileSizeLimit: 52428800,
+          allowedMimeTypes: [
+            'image/*',
+            'video/*',
+            'audio/*',
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'text/*',
+          ],
+        });
       }
     } catch (error) {
       AppLogger.error('SupabaseStorageService', 'Error initializing bucket');
@@ -124,7 +142,6 @@ export class SupabaseStorageService implements StorageService {
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
-
     } catch (error) {
       throw new HttpException(
         `Failed to delete file: ${error.message}`,
@@ -229,7 +246,10 @@ export class SupabaseStorageService implements StorageService {
 
       const { error } = await this.supabase.storage
         .from(this.bucketName)
-        .move(this.normalizeStorageKey(fromPath), this.normalizeStorageKey(toPath));
+        .move(
+          this.normalizeStorageKey(fromPath),
+          this.normalizeStorageKey(toPath),
+        );
 
       if (error) {
         throw new HttpException(
@@ -237,7 +257,6 @@ export class SupabaseStorageService implements StorageService {
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
-
     } catch (error) {
       throw new HttpException(
         `Failed to move file: ${error.message}`,
@@ -316,13 +335,17 @@ export class SupabaseStorageService implements StorageService {
       const markerIndex = url.pathname.indexOf(marker);
 
       if (markerIndex >= 0) {
-        return url.pathname.slice(markerIndex + marker.length).replace(/^\/+/, '');
+        return url.pathname
+          .slice(markerIndex + marker.length)
+          .replace(/^\/+/, '');
       }
 
       const bucketMarker = `/${this.bucketName}/`;
       const bucketIndex = url.pathname.indexOf(bucketMarker);
       if (bucketIndex >= 0) {
-        return url.pathname.slice(bucketIndex + bucketMarker.length).replace(/^\/+/, '');
+        return url.pathname
+          .slice(bucketIndex + bucketMarker.length)
+          .replace(/^\/+/, '');
       }
     } catch {
       return trimmed.replace(/^\/+/, '');

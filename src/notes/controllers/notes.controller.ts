@@ -12,6 +12,9 @@ import {
   Query,
   Patch,
   Headers,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import { NotesService } from '../services/notes.service';
 import { UpdateNoteDto } from '../dto/update-note.dto';
@@ -19,6 +22,8 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
 @Controller('notes')
@@ -57,7 +62,6 @@ export class NotesController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateNoteDto: any,
   ) {
-    console.log(updateNoteDto, 'updateTaskDto');
     return this.notesService.updateNote(id, updateNoteDto);
   }
 
@@ -92,5 +96,34 @@ export class NotesController {
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.notesService.createNote(payload, req.user, organizationId);
+  }
+
+  @Post(':id/audio')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 25 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadNoteAudio(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+    @Body('durationSeconds') durationSeconds?: string | number,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Audio file is required');
+    }
+
+    return this.notesService.uploadNoteAudio(
+      id,
+      file,
+      req.user,
+      organizationId,
+      durationSeconds,
+    );
   }
 }

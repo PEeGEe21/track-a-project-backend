@@ -25,6 +25,7 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
 import { ProjectActivity } from 'src/typeorm/entities/ProjectActivity';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
+import { StorageModule } from 'src/storage/storage.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { Organization } from 'src/typeorm/entities/Organization';
     JwtModule,
     // UsersModule,
     MailingModule,
+    StorageModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([

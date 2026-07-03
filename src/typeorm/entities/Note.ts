@@ -31,6 +31,18 @@ export class Note {
   @Column({ type: 'int', default: 0 })
   order: number;
 
+  @Column({ type: 'text', nullable: true })
+  audio_url: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  audio_path: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  audio_mime_type: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  audio_duration_seconds: number | null;
+
   @ManyToOne(() => Task, (task) => task.notes)
   @JoinColumn({ name: 'task_id' })
   task: Task;
