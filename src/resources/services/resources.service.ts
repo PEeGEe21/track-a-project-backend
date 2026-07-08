@@ -51,6 +51,27 @@ export class ResourcesService {
     private projectActivitiesService: ProjectActivitiesService,
   ) {}
 
+  private inferMimeType(
+    filename: string,
+    providedMimeType?: string | null,
+  ): string | null {
+    if (providedMimeType && providedMimeType.trim()) {
+      return providedMimeType;
+    }
+
+    const lowerName = filename.toLowerCase();
+
+    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
+      return 'text/markdown';
+    }
+
+    if (lowerName.endsWith('.txt')) {
+      return 'text/plain';
+    }
+
+    return null;
+  }
+
   async create(
     createResourceDto: CreateResourceDto,
     user: any,
@@ -234,7 +255,10 @@ export class ResourcesService {
       const resource = this.resourceRepository.create({
         ...resourceData,
         type: resourceData.type || 'file',
-        mime_type: resourceData.mime_type ?? null,
+        mime_type: this.inferMimeType(
+          file?.originalname ?? resourceData.title ?? '',
+          resourceData.mime_type || file?.mimetype || null,
+        ),
         url: fileUrl,
         file_path: storedFilePath,
         ...previewData,

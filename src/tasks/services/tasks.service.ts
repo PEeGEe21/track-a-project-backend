@@ -56,6 +56,27 @@ export class TasksService {
     private resourceRepository: Repository<Resource>,
   ) {}
 
+  private inferMimeType(
+    filename: string,
+    providedMimeType?: string | null,
+  ): string | null {
+    if (providedMimeType && providedMimeType.trim()) {
+      return providedMimeType;
+    }
+
+    const lowerName = filename.toLowerCase();
+
+    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
+      return 'text/markdown';
+    }
+
+    if (lowerName.endsWith('.txt')) {
+      return 'text/plain';
+    }
+
+    return null;
+  }
+
   private normalizeDueDateInput(value: unknown): Date | null | undefined {
     if (value === undefined) {
       return undefined;
@@ -189,7 +210,10 @@ export class TasksService {
   }
 
   async getTaskById(id: number): Promise<Task | undefined> {
-    const task = await this.taskRepository.findOneBy({ id });
+    const task = await this.taskRepository.findOne({
+      where: { id },
+      relations: ['project', 'status', 'assignees', 'resources'],
+    });
     if (!task)
       throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
     return task;
@@ -361,18 +385,12 @@ export class TasksService {
         metadata: { taskTitle: updatedTask.title ?? '' },
       });
 
+      const hydratedTask = await this.getHydratedTaskForResponse(id);
+
       return {
-        success: 'success',
+        success: true,
         message: 'Task updated successfully',
-        data: {
-          id: updatedTask.id,
-          title: updatedTask.title,
-          description: updatedTask.description,
-          description_html: updatedTask.description_html,
-          priority: updatedTask.priority,
-          dueDate: updatedTask.due_date,
-          status: updatedTask.status,
-        },
+        data: hydratedTask,
       };
     } catch (error) {
       console.log(error);
@@ -424,7 +442,9 @@ export class TasksService {
         uploadedFiles.push({
           originalname: file.originalname,
           size: file.size,
-          mimetype: file.mimetype ?? undefined,
+          mimetype:
+            this.inferMimeType(file.originalname, file.mimetype ?? null) ??
+            undefined,
           filePath,
           fileUrl,
         });
@@ -549,27 +569,71 @@ export class TasksService {
           (resource) => Number(resource.task?.id) === Number(task.id),
         );
 
+        await manager.getRepository(Task).save(task);
+
         const createdResources: Resource[] = [];
         for (const uploadedFile of uploadedFiles) {
-          const resource = manager.getRepository(Resource).create({
-            title: uploadedFile.originalname,
-            type: 'file',
-            mime_type: uploadedFile.mimetype ?? null,
-            url: uploadedFile.fileUrl,
-            file_path: uploadedFile.filePath,
-            file_size: uploadedFile.size,
-            project: task.project,
-            task,
-            createdBy: userFound,
-            organization_id: organizationId,
+          const insertResult = await manager.query(
+            `
+              INSERT INTO resources
+                (title, type, mime_type, url, file_path, file_size, projectId, taskId, createdById, organization_id, createdAt, updatedAt)
+              VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(6), NOW(6))
+            `,
+            [
+              uploadedFile.originalname,
+              'file',
+              uploadedFile.mimetype ?? null,
+              uploadedFile.fileUrl,
+              uploadedFile.filePath,
+              uploadedFile.size,
+              task.project.id,
+              task.id,
+              userFound.id,
+              organizationId,
+            ],
+          );
+
+          const createdResourceId = Number(insertResult?.insertId);
+
+          await manager.query(
+            `
+              UPDATE resources
+              SET projectId = ?, taskId = ?, createdById = ?, organization_id = ?
+              WHERE id = ?
+            `,
+            [
+              task.project.id,
+              task.id,
+              userFound.id,
+              organizationId,
+              createdResourceId,
+            ],
+          );
+
+          const persistedResourceRows = await manager.query(
+            `
+              SELECT id, projectId, taskId, createdById, organization_id
+              FROM resources
+              WHERE id = ?
+            `,
+            [createdResourceId],
+          );
+
+          const createdResource = await manager.getRepository(Resource).findOne({
+            where: { id: createdResourceId },
+            relations: ['project', 'task', 'createdBy'],
           });
 
-          createdResources.push(
-            await manager.getRepository(Resource).save(resource),
-          );
-        }
+          if (!createdResource) {
+            throw new HttpException(
+              'Failed to reload created resource',
+              HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+          }
 
-        await manager.getRepository(Task).save(task);
+          createdResources.push(createdResource);
+        }
 
         if (removableResources.length > 0) {
           await manager.getRepository(Resource).remove(removableResources);
@@ -577,8 +641,15 @@ export class TasksService {
 
         const updatedTask = await manager.getRepository(Task).findOne({
           where: { id: task.id },
-          relations: ['status', 'project', 'assignees', 'resources'],
+          relations: ['status', 'project', 'assignees'],
         });
+
+        if (updatedTask) {
+          updatedTask.resources = await this.loadResourcesForTask(
+            manager.getRepository(Resource),
+            task.id,
+          );
+        }
 
         return {
           userFound,
@@ -651,19 +722,12 @@ export class TasksService {
         metadata: { taskTitle: taskResult.task.title ?? '' },
       });
 
+      const hydratedTask = await this.getHydratedTaskForResponse(id);
+
       return {
-        success: 'success',
+        success: true,
         message: 'Task updated successfully',
-        data: {
-          id: taskResult.updatedTask.id,
-          title: taskResult.updatedTask.title,
-          description: taskResult.updatedTask.description,
-          description_html: taskResult.updatedTask.description_html,
-          priority: taskResult.updatedTask.priority,
-          dueDate: taskResult.updatedTask.due_date,
-          status: taskResult.updatedTask.status,
-          resources: taskResult.updatedTask.resources,
-        },
+        data: hydratedTask,
       };
     } catch (error) {
       for (const uploadedFile of uploadedFiles) {
@@ -776,6 +840,35 @@ export class TasksService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private async getHydratedTaskForResponse(id: number) {
+    const task = await this.taskRepository.findOne({
+      where: { id },
+      relations: ['project', 'status', 'assignees'],
+    });
+
+    if (!task) {
+      return null;
+    }
+
+    task.resources = await this.loadResourcesForTask(this.resourceRepository, id);
+
+    return task;
+  }
+
+  private async loadResourcesForTask(
+    resourceRepository: Repository<Resource>,
+    taskId: number,
+  ) {
+    return resourceRepository
+      .createQueryBuilder('resource')
+      .leftJoinAndSelect('resource.createdBy', 'createdBy')
+      .leftJoinAndSelect('resource.project', 'project')
+      .leftJoinAndSelect('resource.task', 'task')
+      .where('resource.taskId = :taskId', { taskId })
+      .orderBy('resource.id', 'ASC')
+      .getMany();
   }
 
   async updateTaskStatus(

@@ -33,6 +33,27 @@ export class DocumentsService {
     private storageService: StorageService,
   ) {}
 
+  private inferMimeType(
+    filename: string,
+    providedMimeType?: string | null,
+  ): string {
+    if (providedMimeType && providedMimeType.trim()) {
+      return providedMimeType;
+    }
+
+    const lowerName = filename.toLowerCase();
+
+    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) {
+      return 'text/markdown';
+    }
+
+    if (lowerName.endsWith('.txt')) {
+      return 'text/plain';
+    }
+
+    return 'application/octet-stream';
+  }
+
   async create(
     createDocumentDto: CreateDocumentDto,
     user: any,
@@ -372,7 +393,7 @@ export class DocumentsService {
           documentId,
           filename: filePath.split('/').pop() || file.originalname,
           originalName: file.originalname,
-          mimetype: file.mimetype,
+          mimetype: this.inferMimeType(file.originalname, file.mimetype),
           size: file.size,
           path: filePath,
           url: fileUrl,

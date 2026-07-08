@@ -34,6 +34,7 @@ import { Notification } from 'src/typeorm/entities/Notification';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { MenusModule } from 'src/menus/menus.module';
 import { AuthModule } from 'src/auth/auth.module';
+import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { AuthModule } from 'src/auth/auth.module';
       Organization,
       OrganizationInvitation,
       AuditLog,
+      ProjectStatusTemplate,
     ]),
   ],
   controllers: [AdminController],

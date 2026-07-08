@@ -17,6 +17,7 @@ import { UsersService } from 'src/users/services/users.service';
 import { ProjectStatus } from 'src/utils/constants/project';
 import { UserStatus } from 'src/utils/types';
 import { Between, Repository } from 'typeorm';
+import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
 
 @Injectable()
 export class AdminService {
@@ -31,9 +32,114 @@ export class AdminService {
     private projectRepository: Repository<Project>,
     @InjectRepository(AuditLog)
     private auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(ProjectStatusTemplate)
+    private projectStatusTemplateRepository: Repository<ProjectStatusTemplate>,
     // private jwtService: JwtService,
     private usersService: UsersService,
   ) {}
+
+  private getFallbackProjectStatusTemplates() {
+    return [
+      {
+        title: 'To Do',
+        color: '#94A3B8',
+        tabId: 0,
+        isDefault: true,
+        isTerminal: false,
+      },
+      {
+        title: 'In Progress',
+        color: '#3B82F6',
+        tabId: 1,
+        isDefault: true,
+        isTerminal: false,
+      },
+      {
+        title: 'Review',
+        color: '#8B5CF6',
+        tabId: 2,
+        isDefault: true,
+        isTerminal: false,
+      },
+      {
+        title: 'Done',
+        color: '#10B981',
+        tabId: 3,
+        isDefault: true,
+        isTerminal: true,
+      },
+    ];
+  }
+
+  private normalizeProjectStatusTemplates(
+    templates?: Array<Partial<ProjectStatusTemplate>>,
+  ) {
+    const source =
+      Array.isArray(templates) && templates.length > 0
+        ? templates
+        : this.getFallbackProjectStatusTemplates();
+
+    const cleaned = source
+      .map((template, index) => ({
+        title: String(template?.title ?? '').trim(),
+        color: template?.color?.trim() || this.getFallbackProjectStatusTemplates()[index]?.color || '#94A3B8',
+        tabId: index,
+        isDefault: template?.isDefault ?? true,
+        isActive: true,
+        isTerminal: Boolean(template?.isTerminal),
+      }))
+      .filter((template) => template.title.length > 0);
+
+    const normalized =
+      cleaned.length > 0 ? cleaned : this.getFallbackProjectStatusTemplates();
+
+    const firstTerminalIndex = normalized.findIndex((template) => template.isTerminal);
+    const doneIndex = normalized.findIndex(
+      (template) => template.title.trim().toLowerCase() === 'done',
+    );
+    const fallbackTerminalIndex = doneIndex >= 0 ? doneIndex : 0;
+
+    const terminalIndex =
+      firstTerminalIndex >= 0 ? firstTerminalIndex : fallbackTerminalIndex;
+
+    return normalized.map((template, index) => ({
+      ...template,
+      tabId: index,
+      isDefault: template.isDefault ?? true,
+      isActive: true,
+      isTerminal: index === terminalIndex,
+    }));
+  }
+
+  async getProjectStatusTemplates() {
+    const rows = await this.projectStatusTemplateRepository.find({
+      order: { tabId: 'ASC', id: 'ASC' },
+    });
+
+    return {
+      success: true,
+      message: 'Project status templates fetched successfully',
+      data: this.normalizeProjectStatusTemplates(rows),
+    };
+  }
+
+  async updateProjectStatusTemplates(
+    templates: Array<Partial<ProjectStatusTemplate>>,
+  ) {
+    const normalized = this.normalizeProjectStatusTemplates(templates);
+    const rowsToSave = normalized.map((template) => ({
+      ...template,
+    }));
+
+    await this.projectStatusTemplateRepository.clear();
+    await this.projectStatusTemplateRepository.save(rowsToSave);
+
+    return {
+      success: true,
+      message: 'Project status templates updated successfully',
+      data: normalized,
+    };
+  }
 
   // ── Dashboard Stats ───────────────────────────────────────────────────────
   async getDashboardStats() {

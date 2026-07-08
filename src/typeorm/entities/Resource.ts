@@ -56,17 +56,20 @@ export class Resource {
   @ManyToOne(() => Project, (project) => project.resources, {
     onDelete: 'CASCADE',
   })
+  @JoinColumn({ name: 'projectId' })
   project: Project;
 
   @ManyToOne(() => Task, (task) => task.resources, {
     onDelete: 'CASCADE',
     nullable: true,
   })
+  @JoinColumn({ name: 'taskId' })
   task?: Task;
 
   @ManyToOne(() => User, (user) => user.resources, {
     onDelete: 'SET NULL',
   })
+  @JoinColumn({ name: 'createdById' })
   createdBy: User;
 
   @Column({ type: 'uuid', nullable: true })

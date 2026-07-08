@@ -30,6 +30,9 @@ describe('ProjectsService ingestion settings', () => {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const projectStatusTemplateRepository = {
+    find: jest.fn(),
+  };
 
   let service: ProjectsService;
 
@@ -61,6 +64,7 @@ describe('ProjectsService ingestion settings', () => {
       {} as any,
       ingestApiKeyRepository as any,
       projectIngestionSettingsRepository as any,
+      projectStatusTemplateRepository as any,
     );
   });
 
@@ -204,5 +208,19 @@ describe('ProjectsService ingestion settings', () => {
         closed_task_reopen_window_days: 14,
       },
     });
+  });
+
+  it('falls back to marking Done as terminal when no configured template is terminal', () => {
+    const normalized = (service as any).normalizeProjectStatuses([
+      { title: 'To Do', color: '#94A3B8', isTerminal: false },
+      { title: 'In Progress', color: '#3B82F6', isTerminal: false },
+      { title: 'Done', color: '#10B981', isTerminal: false },
+    ]);
+
+    expect(normalized.map((status) => status.isTerminal)).toEqual([
+      false,
+      false,
+      true,
+    ]);
   });
 });

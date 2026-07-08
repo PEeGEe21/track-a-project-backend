@@ -51,7 +51,7 @@ export class Status {
   @Column({ type: 'uuid', nullable: true })
   organization_id: string | null;
 
-  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL'})
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'organization_id' })
   organization: Organization | null;
 

@@ -54,6 +54,7 @@ import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
 import { IngestionKeyService } from 'src/ingestion/services/ingestion-key.service';
 import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
+import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -114,9 +115,69 @@ export class ProjectsService {
     private ingestApiKeyRepository: Repository<IngestApiKey>,
     @InjectRepository(ProjectIngestionSettings)
     private projectIngestionSettingsRepository: Repository<ProjectIngestionSettings>,
+    @InjectRepository(ProjectStatusTemplate)
+    private projectStatusTemplateRepository: Repository<ProjectStatusTemplate>,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
+
+  private getFallbackProjectStatuses() {
+    return [
+      { title: 'To Do', color: '#94A3B8', tabId: 0, isDefault: true },
+      { title: 'In Progress', color: '#3B82F6', tabId: 1, isDefault: true },
+      { title: 'Review', color: '#8B5CF6', tabId: 2, isDefault: true },
+      {
+        title: 'Done',
+        color: '#10B981',
+        tabId: 3,
+        isDefault: true,
+        isTerminal: true,
+      },
+    ];
+  }
+
+  private normalizeProjectStatuses(
+    statuses?: Array<Partial<ProjectStatusTemplate>>,
+  ) {
+    const source =
+      Array.isArray(statuses) && statuses.length > 0
+        ? statuses
+        : this.getFallbackProjectStatuses();
+
+    const cleaned = source
+      .map((status, index) => ({
+        title: String(status?.title ?? '').trim(),
+        color:
+          status?.color?.trim() ||
+          this.getFallbackProjectStatuses()[index]?.color ||
+          '#94A3B8',
+        tabId: index,
+        isDefault: status?.isDefault ?? true,
+        isTerminal: Boolean(status?.isTerminal),
+      }))
+      .filter((status) => status.title.length > 0);
+
+    const normalized =
+      cleaned.length > 0 ? cleaned : this.getFallbackProjectStatuses();
+
+    const firstTerminalIndex = normalized.findIndex((status) => status.isTerminal);
+    const doneIndex = normalized.findIndex(
+      (status) => status.title.trim().toLowerCase() === 'done',
+    );
+    const terminalIndex =
+      firstTerminalIndex >= 0
+        ? firstTerminalIndex
+        : doneIndex >= 0
+          ? doneIndex
+          : normalized.length - 1;
+
+    return normalized.map((status, index) => ({
+      ...status,
+      tabId: index,
+      isDefault: status.isDefault ?? true,
+      isTerminal: index === terminalIndex,
+    }));
+  }
 
   private async resolveProjectCommentFileUrl(
     comment: any,
@@ -1300,21 +1361,17 @@ export class ProjectsService {
         // return;
       }
 
-      const coreStatuses = [
-        { title: 'To Do', color: '#94A3B8', tabId: 0, isDefault: true },
-        { title: 'In Progress', color: '#3B82F6', tabId: 1, isDefault: true },
-        { title: 'Review', color: '#8B5CF6', tabId: 2, isDefault: true },
-        { title: 'Done', color: '#10B981', tabId: 3, isDefault: true },
-      ];
+      const savedTemplates = await this.projectStatusTemplateRepository.find({
+        order: { tabId: 'ASC', id: 'ASC' },
+      });
+      const defaultStatuses = this.normalizeProjectStatuses(savedTemplates);
 
-      const statuses = coreStatuses.map((s) =>
-        this.statusRepository.create({
+      const statuses = defaultStatuses.map((s) => ({
           ...s,
           project: savedProject,
           organization_id: organizationId,
           isActive: true,
-        }),
-      );
+        }));
 
       await this.statusRepository.save(statuses);
 

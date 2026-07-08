@@ -77,6 +77,7 @@ import { IngestedEvent } from './typeorm/entities/IngestedEvent';
 import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
 import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
+import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -158,6 +159,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
             IngestedEvent,
             TaskDeadlineReminder,
             OrganizationSettings,
+            ProjectStatusTemplate,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -213,6 +215,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
       IngestedEvent,
       TaskDeadlineReminder,
       OrganizationSettings,
+      ProjectStatusTemplate,
     ]),
     UsersModule,
     ProjectsModule,

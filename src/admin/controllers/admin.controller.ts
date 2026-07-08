@@ -20,6 +20,8 @@ import { UpdateGlobalMenuDto } from 'src/menus/dto/update-global-menu.dto';
 import { ReorderMenusDto } from 'src/menus/dto/reorder-menu.dto';
 import { MenusService } from 'src/menus/services/menus.service';
 import { CreateGlobalMenuDto } from 'src/menus/dto/create-global-menu.dto';
+import { UpdateProjectStatusTemplatesDto } from '../dto/project-status-template.dto';
+import { ValidationPipe } from '@nestjs/common';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
@@ -80,6 +82,18 @@ export class AdminController {
   @Get('dashboard/stats')
   async getDashboardStats() {
     return this.adminService.getDashboardStats();
+  }
+
+  @Get('project-status-templates')
+  async getProjectStatusTemplates() {
+    return this.adminService.getProjectStatusTemplates();
+  }
+
+  @Put('project-status-templates')
+  async updateProjectStatusTemplates(
+    @Body(ValidationPipe) dto: UpdateProjectStatusTemplatesDto,
+  ) {
+    return this.adminService.updateProjectStatusTemplates(dto.statuses);
   }
 
   @Patch('users/:id/suspend')

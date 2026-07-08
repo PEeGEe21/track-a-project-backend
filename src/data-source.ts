@@ -43,6 +43,7 @@ import { ProjectIngestionSettings } from './typeorm/entities/ProjectIngestionSet
 import { IngestedEvent } from './typeorm/entities/IngestedEvent';
 import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
 import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
+import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -102,6 +103,7 @@ export const AppDataSource = new DataSource({
     IngestedEvent,
     TaskDeadlineReminder,
     OrganizationSettings,
+    ProjectStatusTemplate,
   ],
   migrationsTransactionMode: 'each',
 });
