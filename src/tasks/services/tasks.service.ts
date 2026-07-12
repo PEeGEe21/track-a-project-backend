@@ -34,6 +34,8 @@ import { StorageService } from 'src/types/storage.interface';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { CreateNotificationDto } from 'src/notifications/dto/create-notification.dto';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { AuthorizationService } from 'src/common/authorization/authorization.service';
+import { AuthUser } from 'src/types/users';
 
 @Injectable()
 export class TasksService {
@@ -54,6 +56,7 @@ export class TasksService {
     private organizationRepository: Repository<Organization>,
     @InjectRepository(Resource)
     private resourceRepository: Repository<Resource>,
+    private readonly authorizationService: AuthorizationService,
   ) {}
 
   private inferMimeType(
@@ -92,6 +95,30 @@ export class TasksService {
 
     const parsedDate = new Date(String(value));
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  }
+
+  private async assertTaskWriteAccess(
+    taskId: number,
+    actor: AuthUser,
+    organizationId: string,
+  ): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId, organization_id: organizationId },
+      relations: ['project'],
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    await this.authorizationService.assertProjectAccess({
+      actor,
+      organizationId,
+      projectId: task.project.id,
+      action: 'write',
+    });
+
+    return task;
   }
 
   private getTaskStatusNotificationRecipients(task: Task) {
@@ -209,20 +236,64 @@ export class TasksService {
     return task;
   }
 
-  async getTaskById(id: number): Promise<Task | undefined> {
+  async getTaskById(
+    id: number,
+    actor: AuthUser,
+    organizationId: string,
+  ): Promise<Task | undefined> {
     const task = await this.taskRepository.findOne({
-      where: { id },
+      where: { id, organization_id: organizationId },
       relations: ['project', 'status', 'assignees', 'resources'],
     });
-    if (!task)
-      throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
+    if (!task) throw new NotFoundException('Task not found');
+
+    await this.authorizationService.assertProjectAccess({
+      actor,
+      organizationId,
+      projectId: task.project.id,
+      action: 'read',
+    });
+
     return task;
   }
 
-  async findTasks() {
-    const tasks = await this.taskRepository.find({
-      relations: ['project', 'tags', 'status', 'assignees'],
-    });
+  async findTasks(actor: AuthUser, organizationId: string) {
+    const scope = await this.authorizationService.getProjectAccessScope(
+      actor,
+      organizationId,
+    );
+    const query = this.taskRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.project', 'project')
+      .leftJoinAndSelect('task.tags', 'tags')
+      .leftJoinAndSelect('task.status', 'status')
+      .leftJoinAndSelect('task.assignees', 'assignees')
+      .where('task.organization_id = :organizationId', { organizationId });
+
+    if (!scope.canAccessAllProjects) {
+      query.andWhere(
+        `(
+          project.user_id = :userId
+          OR EXISTS (
+            SELECT 1
+            FROM project_peers access_peer
+            WHERE access_peer.project_id = project.id
+              AND access_peer.user_id = :userId
+              AND access_peer.organization_id = :organizationId
+              AND access_peer.status = :peerStatus
+              AND access_peer.is_confirmed = :peerConfirmed
+          )
+        )`,
+        {
+          userId: scope.userId,
+          organizationId,
+          peerStatus: ProjectPeerStatus.CONNECTED,
+          peerConfirmed: true,
+        },
+      );
+    }
+
+    const tasks = await query.getMany();
     const res = {
       success: 'success',
       message: 'successful',
@@ -233,6 +304,7 @@ export class TasksService {
   }
 
   async updateTask(id: number, updateTaskDetails: any, user, organizationId) {
+    await this.assertTaskWriteAccess(id, user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -406,6 +478,7 @@ export class TasksService {
     user: any,
     organizationId: string,
   ) {
+    await this.assertTaskWriteAccess(id, user, organizationId);
     const uploadedFiles: Array<{
       originalname: string;
       size: number;
@@ -877,6 +950,7 @@ export class TasksService {
     user: any,
     organizationId: string,
   ) {
+    await this.assertTaskWriteAccess(taskId, user, organizationId);
     return await this.dataSource.transaction(async (manager) => {
       const userFound = await manager.getRepository(User).findOne({
         where: { id: user.userId },
@@ -1122,6 +1196,7 @@ export class TasksService {
     user: any,
     organizationId: string,
   ): Promise<any> {
+    await this.assertTaskWriteAccess(id, user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -1202,6 +1277,7 @@ export class TasksService {
     user: any,
     organizationId: string,
   ): Promise<any> {
+    await this.assertTaskWriteAccess(id, user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -1246,16 +1322,24 @@ export class TasksService {
   //   return this.taskRepository.delete({ id });
   // }
 
-  async getProjectTasks(id: number): Promise<any> {
-    const project = await this.projectRepository.findOneBy({ id });
-    if (!project)
-      throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+  async getProjectTasks(
+    id: number,
+    actor: AuthUser,
+    organizationId: string,
+  ): Promise<any> {
+    const project = await this.authorizationService.assertProjectAccess({
+      actor,
+      organizationId,
+      projectId: id,
+      action: 'read',
+    });
 
     const tasks = await this.taskRepository.find({
       where: {
         project: project,
+        organization_id: organizationId,
       },
-      relations: ['tags', 'projects', 'status'],
+      relations: ['tags', 'project', 'status', 'assignees'],
     });
 
     // const taskArray = [];
@@ -1281,6 +1365,12 @@ export class TasksService {
     user: any,
     organizationId: string,
   ): Promise<any> {
+    await this.authorizationService.assertProjectAccess({
+      actor: user,
+      organizationId,
+      projectId: id,
+      action: 'write',
+    });
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,

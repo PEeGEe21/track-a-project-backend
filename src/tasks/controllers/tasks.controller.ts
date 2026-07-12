@@ -19,22 +19,33 @@ import { CreateTaskDto, UpdateTaskDto } from '../dtos/create-task.dto';
 import { TasksService } from '../services/tasks.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { MulterFile } from 'src/types/multer.types';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
 export class TasksController {
   constructor(private taskService: TasksService) {}
   @Get('/')
-  getTasks() {
-    return this.taskService.findTasks();
+  @UseGuards(OrganizationAccessGuard)
+  getTasks(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.taskService.findTasks(req.user, organizationId);
   }
 
   @Get(':id')
-  getTask(@Param('id', ParseIntPipe) id: number) {
-    return this.taskService.getTaskById(id);
+  @UseGuards(OrganizationAccessGuard)
+  getTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.taskService.getTaskById(id, req.user, organizationId);
   }
 
   @Put(':id')
+  @UseGuards(OrganizationAccessGuard)
   updateTaskById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateTaskDto: UpdateTaskDto,
@@ -50,6 +61,7 @@ export class TasksController {
   }
 
   @Put(':id/with-attachments')
+  @UseGuards(OrganizationAccessGuard)
   @UseInterceptors(FilesInterceptor('attachments'))
   updateTaskWithAttachments(
     @Param('id', ParseIntPipe) id: number,
@@ -68,6 +80,7 @@ export class TasksController {
   }
 
   @Patch(':id/update-priority')
+  @UseGuards(OrganizationAccessGuard)
   updateTaskPriority(
     @Param('id', ParseIntPipe) id: number,
     @Body() priorityStatus: any,
@@ -83,6 +96,7 @@ export class TasksController {
   }
 
   @Patch(':id/status')
+  @UseGuards(OrganizationAccessGuard)
   updateTaskStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() payload: any,
@@ -98,6 +112,7 @@ export class TasksController {
   }
 
   @Delete(':id')
+  @UseGuards(OrganizationAccessGuard)
   deleteTask(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: any,
@@ -107,11 +122,17 @@ export class TasksController {
   }
 
   @Get(':id/tasks')
-  getProjectTasks(@Param('id', ParseIntPipe) id: number) {
-    return this.taskService.getProjectTasks(id);
+  @UseGuards(OrganizationAccessGuard)
+  getProjectTasks(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.taskService.getProjectTasks(id, req.user, organizationId);
   }
 
   @Post(':projectId')
+  @UseGuards(OrganizationAccessGuard)
   createProjectTask(
     @Param('projectId', ParseIntPipe) id: number,
     @Body() payload: any,

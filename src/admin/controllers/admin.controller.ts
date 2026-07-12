@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseEnumPipe,
   Patch,
   Post,
   Put,
@@ -22,6 +23,9 @@ import { MenusService } from 'src/menus/services/menus.service';
 import { CreateGlobalMenuDto } from 'src/menus/dto/create-global-menu.dto';
 import { UpdateProjectStatusTemplatesDto } from '../dto/project-status-template.dto';
 import { ValidationPipe } from '@nestjs/common';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { UpdateEntitlementOverrideDto } from 'src/entitlements/dto/update-entitlement-override.dto';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
@@ -29,7 +33,41 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly menusService: MenusService,
+    private readonly entitlementsService: EntitlementsService,
   ) {}
+
+  @Get('organizations/:id/entitlements')
+  getOrganizationEntitlements(@Param('id') organizationId: string) {
+    return this.entitlementsService.resolveOrganization(organizationId);
+  }
+
+  @Patch('organizations/:id/entitlements')
+  updateOrganizationEntitlement(
+    @Param('id') organizationId: string,
+    @Body(ValidationPipe) dto: UpdateEntitlementOverrideDto,
+    @Req() req: any,
+  ) {
+    return this.entitlementsService.setOrganizationOverride(
+      req.user,
+      organizationId,
+      dto.capability,
+      dto.enabled,
+    );
+  }
+
+  @Delete('organizations/:id/entitlements/:capability')
+  clearOrganizationEntitlement(
+    @Param('id') organizationId: string,
+    @Param('capability', new ParseEnumPipe(CapabilityKey))
+    capability: CapabilityKey,
+    @Req() req: any,
+  ) {
+    return this.entitlementsService.clearOrganizationOverride(
+      req.user,
+      organizationId,
+      capability,
+    );
+  }
 
   // ============================================
   // Super Admin Routes

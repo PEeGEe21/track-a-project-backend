@@ -19,6 +19,8 @@ import { Organization } from 'src/typeorm/entities/Organization';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Resource } from 'src/typeorm/entities/Resource';
 import { StorageModule } from 'src/storage/storage.module';
+import { AuthorizationModule } from 'src/common/authorization/authorization.module';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 
 @Module({
   imports: [
@@ -41,9 +43,10 @@ import { StorageModule } from 'src/storage/storage.module';
     NotificationsModule,
     ProjectActivitiesModule,
     StorageModule,
+    AuthorizationModule,
   ],
   controllers: [TasksController],
-  providers: [TasksService],
+  providers: [TasksService, OrganizationAccessGuard],
   exports: [TasksService],
 })
 export class TasksModule {}

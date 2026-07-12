@@ -4,8 +4,11 @@ import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 
 describe('TasksService', () => {
   let service: TasksService;
+  const taskRepository = { findOne: jest.fn(), find: jest.fn() };
+  const authorizationService = { assertProjectAccess: jest.fn() };
 
   beforeEach(() => {
+    jest.resetAllMocks();
     service = new TasksService(
       {} as any,
       {} as any,
@@ -14,15 +17,58 @@ describe('TasksService', () => {
       {} as any,
       {} as any,
       {} as any,
+      taskRepository as any,
       {} as any,
       {} as any,
       {} as any,
-      {} as any,
+      authorizationService as any,
     );
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('checks tenant and project authorization before a task mutation', async () => {
+    taskRepository.findOne.mockResolvedValue({
+      id: 55,
+      project: { id: 7 },
+    });
+    authorizationService.assertProjectAccess.mockResolvedValue({ id: 7 });
+
+    await (service as any).assertTaskWriteAccess(55, { userId: 2 }, 'org-1');
+
+    expect(taskRepository.findOne).toHaveBeenCalledWith({
+      where: { id: 55, organization_id: 'org-1' },
+      relations: ['project'],
+    });
+    expect(authorizationService.assertProjectAccess).toHaveBeenCalledWith({
+      actor: { userId: 2 },
+      organizationId: 'org-1',
+      projectId: 7,
+      action: 'write',
+    });
+  });
+
+  it('scopes a project task list to an authorized organization project', async () => {
+    const project = { id: 7 };
+    authorizationService.assertProjectAccess.mockResolvedValue(project);
+    taskRepository.find.mockResolvedValue([{ id: 55 }]);
+
+    await expect(
+      service.getProjectTasks(7, { userId: 2 } as any, 'org-1'),
+    ).resolves.toEqual({ success: 'success', data: [{ id: 55 }] });
+
+    expect(authorizationService.assertProjectAccess).toHaveBeenCalledWith({
+      actor: { userId: 2 },
+      organizationId: 'org-1',
+      projectId: 7,
+      action: 'read',
+    });
+    expect(taskRepository.find).toHaveBeenCalledWith({
+      where: { project, organization_id: 'org-1' },
+      relations: ['tags', 'project', 'status', 'assignees'],
+    });
   });
 
   it('builds task status notification recipients without duplicates', () => {

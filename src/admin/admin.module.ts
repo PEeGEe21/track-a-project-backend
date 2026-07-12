@@ -35,6 +35,7 @@ import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { MenusModule } from 'src/menus/menus.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
+import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplat
     forwardRef(() => MenusModule),
     forwardRef(() => NotificationsModule),
     ProjectActivitiesModule,
+    EntitlementsModule,
     TypeOrmModule.forFeature([
       User,
       Profile,

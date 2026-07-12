@@ -35,6 +35,9 @@ export class OrganizationSettings {
   @Column({ type: 'int', default: 0 })
   deadline_reminder_minute: number;
 
+  @Column({ type: 'json', nullable: true })
+  feature_overrides: Record<string, boolean> | null;
+
   @CreateDateColumn()
   created_at: Date;
 
