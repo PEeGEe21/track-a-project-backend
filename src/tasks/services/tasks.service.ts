@@ -7,7 +7,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import {
+  Brackets,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import { User } from '../../typeorm/entities/User';
@@ -36,6 +41,19 @@ import { CreateNotificationDto } from 'src/notifications/dto/create-notification
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { AuthorizationService } from 'src/common/authorization/authorization.service';
 import { AuthUser } from 'src/types/users';
+import {
+  ProductivityTaskQueryDto,
+  ProductivityTaskSort,
+  ProductivityTaskView,
+} from '../dtos/productivity-task-query.dto';
+import {
+  SavedTaskView,
+  SavedTaskViewVisibility,
+} from 'src/typeorm/entities/SavedTaskView';
+import {
+  CreateSavedTaskViewDto,
+  UpdateSavedTaskViewDto,
+} from '../dtos/saved-task-view.dto';
 
 @Injectable()
 export class TasksService {
@@ -57,6 +75,8 @@ export class TasksService {
     @InjectRepository(Resource)
     private resourceRepository: Repository<Resource>,
     private readonly authorizationService: AuthorizationService,
+    @InjectRepository(SavedTaskView)
+    private savedTaskViewRepository: Repository<SavedTaskView>,
   ) {}
 
   private inferMimeType(
@@ -301,6 +321,315 @@ export class TasksService {
     };
 
     return res;
+  }
+
+  private applyProductivityFilters(
+    query: SelectQueryBuilder<Task>,
+    filters: ProductivityTaskQueryDto,
+  ) {
+    if (filters.project_id) {
+      query.andWhere('project.id = :projectId', {
+        projectId: filters.project_id,
+      });
+    }
+    if (filters.status_id) {
+      query.andWhere('status.id = :statusId', { statusId: filters.status_id });
+    }
+    if (filters.priority !== undefined) {
+      query.andWhere('task.priority = :priority', {
+        priority: filters.priority,
+      });
+    }
+    if (filters.assignee_id) {
+      query.andWhere(
+        `EXISTS (
+          SELECT 1 FROM task_assignees filtered_assignee
+          WHERE filtered_assignee.task_id = task.id
+            AND filtered_assignee.user_id = :assigneeId
+        )`,
+        { assigneeId: filters.assignee_id },
+      );
+    }
+    if (filters.due_from) {
+      query.andWhere('task.due_date >= :dueFrom', {
+        dueFrom: `${filters.due_from} 00:00:00`,
+      });
+    }
+    if (filters.due_to) {
+      query.andWhere('task.due_date < DATE_ADD(:dueTo, INTERVAL 1 DAY)', {
+        dueTo: filters.due_to,
+      });
+    }
+    if (filters.search?.trim()) {
+      query
+        .andWhere(
+          new Brackets((search) => {
+            search
+              .where('task.title LIKE :search')
+              .orWhere('task.description LIKE :search')
+              .orWhere('project.title LIKE :search');
+          }),
+        )
+        .setParameter('search', `%${filters.search.trim()}%`);
+    }
+  }
+
+  private applyProductivityView(
+    query: SelectQueryBuilder<Task>,
+    view: ProductivityTaskView,
+    userId: number,
+    anchorDate: string,
+  ) {
+    switch (view) {
+      case ProductivityTaskView.MY_TASKS:
+        query.andWhere(
+          `EXISTS (
+            SELECT 1 FROM task_assignees my_assignment
+            WHERE my_assignment.task_id = task.id
+              AND my_assignment.user_id = :currentUserId
+          )`,
+          { currentUserId: userId },
+        );
+        break;
+      case ProductivityTaskView.TODAY:
+        query
+          .andWhere('task.due_date >= :dayStart')
+          .andWhere('task.due_date < DATE_ADD(:dayStart, INTERVAL 1 DAY)', {
+            dayStart: anchorDate,
+          });
+        break;
+      case ProductivityTaskView.UPCOMING:
+        query.andWhere('task.due_date >= DATE_ADD(:dayStart, INTERVAL 1 DAY)', {
+          dayStart: anchorDate,
+        });
+        break;
+      case ProductivityTaskView.OVERDUE:
+        query
+          .andWhere('task.due_date < :dayStart', { dayStart: anchorDate })
+          .andWhere('(status.id IS NULL OR status.isTerminal = :notTerminal)', {
+            notTerminal: false,
+          });
+        break;
+      case ProductivityTaskView.WAITING_ON:
+        query.andWhere('LOWER(TRIM(status.title)) = :waitingOnStatus', {
+          waitingOnStatus: 'waiting on',
+        });
+        break;
+    }
+  }
+
+  async findProductivityTasks(
+    actor: AuthUser,
+    organizationId: string,
+    filters: ProductivityTaskQueryDto,
+  ) {
+    const scope = await this.authorizationService.getProjectAccessScope(
+      actor,
+      organizationId,
+    );
+    const anchorDate = filters.date ?? new Date().toISOString().slice(0, 10);
+
+    const baseQuery = this.taskRepository
+      .createQueryBuilder('task')
+      .leftJoin('task.project', 'project')
+      .leftJoin('task.status', 'status')
+      .where('task.organization_id = :organizationId', { organizationId });
+
+    if (!scope.canAccessAllProjects) {
+      baseQuery.andWhere(
+        `(
+          project.user_id = :userId
+          OR EXISTS (
+            SELECT 1 FROM project_peers access_peer
+            WHERE access_peer.project_id = project.id
+              AND access_peer.user_id = :userId
+              AND access_peer.organization_id = :organizationId
+              AND access_peer.status = :peerStatus
+              AND access_peer.is_confirmed = :peerConfirmed
+          )
+        )`,
+        {
+          userId: scope.userId,
+          peerStatus: ProjectPeerStatus.CONNECTED,
+          peerConfirmed: true,
+        },
+      );
+    }
+
+    this.applyProductivityFilters(baseQuery, filters);
+
+    const views = Object.values(ProductivityTaskView);
+    const countEntries = await Promise.all(
+      views.map(async (view) => {
+        const countQuery = baseQuery.clone();
+        this.applyProductivityView(countQuery, view, scope.userId, anchorDate);
+        return [view, await countQuery.getCount()] as const;
+      }),
+    );
+
+    const taskQuery = baseQuery
+      .clone()
+      .leftJoinAndSelect('task.project', 'selectedProject')
+      .leftJoinAndSelect('selectedProject.statuses', 'projectStatuses')
+      .leftJoinAndSelect('task.status', 'selectedStatus')
+      .leftJoinAndSelect('task.assignees', 'assignees');
+    this.applyProductivityView(
+      taskQuery,
+      filters.view,
+      scope.userId,
+      anchorDate,
+    );
+
+    const sortColumns: Record<ProductivityTaskSort, string> = {
+      [ProductivityTaskSort.DUE_DATE]: 'task.due_date',
+      [ProductivityTaskSort.PRIORITY]: 'task.priority',
+      [ProductivityTaskSort.CREATED_AT]: 'task.created_at',
+      [ProductivityTaskSort.UPDATED_AT]: 'task.updated_at',
+      [ProductivityTaskSort.TITLE]: 'task.title',
+    };
+    if (filters.sort === ProductivityTaskSort.DUE_DATE) {
+      taskQuery
+        .addSelect('task.due_date IS NULL', 'task_due_date_is_null')
+        .orderBy('task_due_date_is_null', 'ASC');
+    }
+    taskQuery
+      .addOrderBy(
+        sortColumns[filters.sort],
+        filters.direction.toUpperCase() as 'ASC' | 'DESC',
+      )
+      .addOrderBy('task.id', 'ASC')
+      .skip((filters.page - 1) * filters.limit)
+      .take(filters.limit);
+
+    const [tasks, total] = await taskQuery.getManyAndCount();
+
+    return {
+      success: 'success',
+      data: tasks,
+      counts: Object.fromEntries(countEntries),
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+        total,
+        pages: Math.ceil(total / filters.limit),
+      },
+      filters: { view: filters.view, date: anchorDate },
+    };
+  }
+
+  async getSavedTaskViews(actor: AuthUser, organizationId: string) {
+    await this.authorizationService.getProjectAccessScope(
+      actor,
+      organizationId,
+    );
+    const views = await this.savedTaskViewRepository.find({
+      where: [
+        { organization_id: organizationId, owner_id: actor.userId },
+        {
+          organization_id: organizationId,
+          visibility: SavedTaskViewVisibility.ORGANIZATION,
+        },
+      ],
+      order: { is_default: 'DESC', name: 'ASC', id: 'ASC' },
+    });
+    return {
+      success: 'success',
+      data: views.map((view) => ({
+        ...view,
+        can_edit: Number(view.owner_id) === Number(actor.userId),
+      })),
+    };
+  }
+
+  async createSavedTaskView(
+    actor: AuthUser,
+    organizationId: string,
+    payload: CreateSavedTaskViewDto,
+  ) {
+    await this.authorizationService.getProjectAccessScope(
+      actor,
+      organizationId,
+    );
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(SavedTaskView);
+      if (payload.is_default) {
+        await repository.update(
+          {
+            organization_id: organizationId,
+            owner_id: actor.userId,
+            is_default: true,
+          },
+          { is_default: false },
+        );
+      }
+      const view = repository.create({
+        organization_id: organizationId,
+        owner_id: actor.userId,
+        name: payload.name.trim(),
+        scope: 'personal_productivity',
+        configuration: payload.configuration,
+        visibility: payload.visibility,
+        is_default: payload.is_default,
+      });
+      return { success: 'success', data: await repository.save(view) };
+    });
+  }
+
+  private async getOwnedSavedTaskView(
+    id: number,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    await this.authorizationService.getProjectAccessScope(
+      actor,
+      organizationId,
+    );
+    const view = await this.savedTaskViewRepository.findOne({
+      where: { id, organization_id: organizationId, owner_id: actor.userId },
+    });
+    if (!view) throw new NotFoundException('Saved view not found');
+    return view;
+  }
+
+  async updateSavedTaskView(
+    id: number,
+    actor: AuthUser,
+    organizationId: string,
+    payload: UpdateSavedTaskViewDto,
+  ) {
+    const existing = await this.getOwnedSavedTaskView(
+      id,
+      actor,
+      organizationId,
+    );
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(SavedTaskView);
+      if (payload.is_default) {
+        await repository.update(
+          {
+            organization_id: organizationId,
+            owner_id: actor.userId,
+            is_default: true,
+          },
+          { is_default: false },
+        );
+      }
+      repository.merge(existing, {
+        ...payload,
+        ...(payload.name !== undefined ? { name: payload.name.trim() } : {}),
+      });
+      return { success: 'success', data: await repository.save(existing) };
+    });
+  }
+
+  async deleteSavedTaskView(
+    id: number,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    const view = await this.getOwnedSavedTaskView(id, actor, organizationId);
+    await this.savedTaskViewRepository.remove(view);
+    return { success: 'success', data: { id } };
   }
 
   async updateTask(id: number, updateTaskDetails: any, user, organizationId) {
@@ -693,10 +1022,12 @@ export class TasksService {
             [createdResourceId],
           );
 
-          const createdResource = await manager.getRepository(Resource).findOne({
-            where: { id: createdResourceId },
-            relations: ['project', 'task', 'createdBy'],
-          });
+          const createdResource = await manager
+            .getRepository(Resource)
+            .findOne({
+              where: { id: createdResourceId },
+              relations: ['project', 'task', 'createdBy'],
+            });
 
           if (!createdResource) {
             throw new HttpException(
@@ -925,7 +1256,10 @@ export class TasksService {
       return null;
     }
 
-    task.resources = await this.loadResourcesForTask(this.resourceRepository, id);
+    task.resources = await this.loadResourcesForTask(
+      this.resourceRepository,
+      id,
+    );
 
     return task;
   }
@@ -1393,8 +1727,7 @@ export class TasksService {
         severity,
         due_date,
         assignees,
-      } =
-        payload; // Destructure
+      } = payload; // Destructure
       const richDescription = normalizeRichTextDescription({
         description,
         description_html: payload?.description_html,

@@ -21,6 +21,8 @@ import { Resource } from 'src/typeorm/entities/Resource';
 import { StorageModule } from 'src/storage/storage.module';
 import { AuthorizationModule } from 'src/common/authorization/authorization.module';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { EntitlementsModule } from 'src/entitlements/entitlements.module';
+import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
 
 @Module({
   imports: [
@@ -38,12 +40,14 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
       Organization,
       UserOrganization,
       Resource,
+      SavedTaskView,
     ]),
     forwardRef(() => UsersModule),
     NotificationsModule,
     ProjectActivitiesModule,
     StorageModule,
     AuthorizationModule,
+    EntitlementsModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, OrganizationAccessGuard],

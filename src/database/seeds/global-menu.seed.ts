@@ -84,7 +84,15 @@ export const globalMenuSeedData = [
     order_index: 9,
     is_active: false,
     required_tier: SubscriptionTier.PROFESSIONAL,
-  }
+  },
+  {
+    label: 'Productivity',
+    href: '/productivity',
+    icon: 'list-checks',
+    order_index: 10,
+    is_active: true,
+    required_tier: SubscriptionTier.FREE,
+  },
   // {
   //   label: 'Settings',
   //   href: '/settings',

@@ -79,6 +79,7 @@ import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 import { EntitlementsModule } from './entitlements/entitlements.module';
+import { SavedTaskView } from './typeorm/entities/SavedTaskView';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -161,6 +162,7 @@ import { EntitlementsModule } from './entitlements/entitlements.module';
             TaskDeadlineReminder,
             OrganizationSettings,
             ProjectStatusTemplate,
+            SavedTaskView,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,

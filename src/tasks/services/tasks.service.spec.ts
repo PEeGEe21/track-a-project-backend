@@ -5,7 +5,25 @@ import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 describe('TasksService', () => {
   let service: TasksService;
   const taskRepository = { findOne: jest.fn(), find: jest.fn() };
-  const authorizationService = { assertProjectAccess: jest.fn() };
+  const authorizationService = {
+    assertProjectAccess: jest.fn(),
+    getProjectAccessScope: jest.fn(),
+  };
+  const savedTaskViewRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    remove: jest.fn(),
+  };
+
+  const queryBuilder = () => {
+    const query = {
+      andWhere: jest.fn(),
+      setParameter: jest.fn(),
+    };
+    query.andWhere.mockReturnValue(query);
+    query.setParameter.mockReturnValue(query);
+    return query;
+  };
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -22,6 +40,7 @@ describe('TasksService', () => {
       {} as any,
       {} as any,
       authorizationService as any,
+      savedTaskViewRepository as any,
     );
   });
 
@@ -71,33 +90,103 @@ describe('TasksService', () => {
     });
   });
 
-  it('builds task status notification recipients without duplicates', () => {
-    const recipients = (service as any).getTaskStatusNotificationRecipients(
-      {
-        user: { id: 2 },
-        project: {
-          user: { id: 3 },
-          projectPeers: [
-            {
-              user: { id: 5 },
-              status: ProjectPeerStatus.CONNECTED,
-              is_confirmed: true,
-            },
-            {
-              user: { id: 6 },
-              status: 'pending',
-              is_confirmed: true,
-            },
-            {
-              user: { id: 7 },
-              status: ProjectPeerStatus.CONNECTED,
-              is_confirmed: false,
-            },
-          ],
-        },
-        assignees: [{ id: 2 }, { id: 4 }, { id: 1 }],
-      },
+  it('defines overdue as before the selected day and not terminal', () => {
+    const query = queryBuilder();
+
+    (service as any).applyProductivityView(query, 'overdue', 2, '2026-07-12');
+
+    expect(query.andWhere).toHaveBeenNthCalledWith(
+      1,
+      'task.due_date < :dayStart',
+      { dayStart: '2026-07-12' },
     );
+    expect(query.andWhere).toHaveBeenNthCalledWith(
+      2,
+      '(status.id IS NULL OR status.isTerminal = :notTerminal)',
+      { notTerminal: false },
+    );
+  });
+
+  it('applies assignee and inclusive due-date filters independently of a view', () => {
+    const query = queryBuilder();
+
+    (service as any).applyProductivityFilters(query, {
+      assignee_id: 9,
+      due_from: '2026-07-01',
+      due_to: '2026-07-12',
+    });
+
+    expect(query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('filtered_assignee.user_id = :assigneeId'),
+      { assigneeId: 9 },
+    );
+    expect(query.andWhere).toHaveBeenCalledWith('task.due_date >= :dueFrom', {
+      dueFrom: '2026-07-01 00:00:00',
+    });
+    expect(query.andWhere).toHaveBeenCalledWith(
+      'task.due_date < DATE_ADD(:dueTo, INTERVAL 1 DAY)',
+      { dueTo: '2026-07-12' },
+    );
+  });
+
+  it('lists only owned and organization-visible saved views in the selected organization', async () => {
+    authorizationService.getProjectAccessScope.mockResolvedValue({
+      userId: 2,
+      canAccessAllProjects: false,
+    });
+    savedTaskViewRepository.find.mockResolvedValue([{ id: 1 }]);
+
+    await service.getSavedTaskViews({ userId: 2 } as any, 'org-1');
+
+    expect(savedTaskViewRepository.find).toHaveBeenCalledWith({
+      where: [
+        { organization_id: 'org-1', owner_id: 2 },
+        { organization_id: 'org-1', visibility: 'organization' },
+      ],
+      order: { is_default: 'DESC', name: 'ASC', id: 'ASC' },
+    });
+  });
+
+  it('does not reveal a saved view owned by another user', async () => {
+    authorizationService.getProjectAccessScope.mockResolvedValue({
+      userId: 2,
+      canAccessAllProjects: false,
+    });
+    savedTaskViewRepository.findOne.mockResolvedValue(null);
+
+    await expect(
+      (service as any).getOwnedSavedTaskView(4, { userId: 2 }, 'org-1'),
+    ).rejects.toThrow('Saved view not found');
+    expect(savedTaskViewRepository.findOne).toHaveBeenCalledWith({
+      where: { id: 4, organization_id: 'org-1', owner_id: 2 },
+    });
+  });
+
+  it('builds task status notification recipients without duplicates', () => {
+    const recipients = (service as any).getTaskStatusNotificationRecipients({
+      user: { id: 2 },
+      project: {
+        user: { id: 3 },
+        projectPeers: [
+          {
+            user: { id: 5 },
+            status: ProjectPeerStatus.CONNECTED,
+            is_confirmed: true,
+          },
+          {
+            user: { id: 6 },
+            status: 'pending',
+            is_confirmed: true,
+          },
+          {
+            user: { id: 7 },
+            status: ProjectPeerStatus.CONNECTED,
+            is_confirmed: false,
+          },
+        ],
+      },
+      assignees: [{ id: 2 }, { id: 4 }, { id: 1 }],
+    });
 
     expect(recipients.map((user) => user.id)).toEqual([2, 3, 5, 4, 1]);
   });
