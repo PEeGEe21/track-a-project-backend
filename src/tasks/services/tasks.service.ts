@@ -54,6 +54,7 @@ import {
   CreateSavedTaskViewDto,
   UpdateSavedTaskViewDto,
 } from '../dtos/saved-task-view.dto';
+import { RecurringTasksService } from 'src/recurring-tasks/recurring-tasks.service';
 
 @Injectable()
 export class TasksService {
@@ -77,6 +78,7 @@ export class TasksService {
     private readonly authorizationService: AuthorizationService,
     @InjectRepository(SavedTaskView)
     private savedTaskViewRepository: Repository<SavedTaskView>,
+    private recurringTasksService: RecurringTasksService,
   ) {}
 
   private inferMimeType(
@@ -1373,6 +1375,12 @@ export class TasksService {
         organizationId,
       });
 
+      if (!previousStatus.isTerminal && updatedTask.status.isTerminal) {
+        await this.recurringTasksService.generateAfterCompletion(
+          updatedTask.id,
+        );
+      }
+
       return {
         success: true,
         message: 'Task status and order updated successfully',
@@ -1764,6 +1772,17 @@ export class TasksService {
       }
 
       const normalizedDueDate = this.normalizeDueDateInput(due_date);
+      let recurrencePayload = payload?.recurrence;
+      if (typeof recurrencePayload === 'string') {
+        try {
+          recurrencePayload = JSON.parse(recurrencePayload);
+        } catch {
+          throw new HttpException(
+            'Invalid recurrence payload',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
 
       const newTask = this.taskRepository.create({
         title,
@@ -1780,7 +1799,29 @@ export class TasksService {
 
       // console.log(newTask, 'project')
 
-      const savedTask = await this.taskRepository.save(newTask);
+      const savedTask = await this.dataSource.transaction(async (manager) => {
+        const task = await manager.getRepository(Task).save(newTask);
+        if (recurrencePayload) {
+          await this.recurringTasksService.createForTaskInTransaction(
+            manager,
+            task,
+            {
+              ...recurrencePayload,
+              interval: Number(recurrencePayload.interval ?? 1),
+              generate_before_days: Number(
+                recurrencePayload.generate_before_days ?? 0,
+              ),
+              next_due_at: new Date(recurrencePayload.next_due_at),
+              end_at: recurrencePayload.end_at
+                ? new Date(recurrencePayload.end_at)
+                : undefined,
+            },
+            user,
+            organizationId,
+          );
+        }
+        return task;
+      });
 
       // Attach assignees by emails if provided
       if (assignees && typeof assignees === 'string' && assignees.length > 0) {
@@ -1820,6 +1861,7 @@ export class TasksService {
       };
     } catch (err) {
       console.error('Error saving task:', err);
+      if (err instanceof HttpException) throw err;
       throw new HttpException(
         'Error saving task',
         HttpStatus.INTERNAL_SERVER_ERROR,

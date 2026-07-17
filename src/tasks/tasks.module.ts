@@ -23,6 +23,7 @@ import { AuthorizationModule } from 'src/common/authorization/authorization.modu
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
+import { RecurringTasksModule } from 'src/recurring-tasks/recurring-tasks.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
     StorageModule,
     AuthorizationModule,
     EntitlementsModule,
+    RecurringTasksModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, OrganizationAccessGuard],

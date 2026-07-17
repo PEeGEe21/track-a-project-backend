@@ -41,7 +41,9 @@ export class Status {
   @OneToMany(() => Task, (task) => task.status)
   tasks: Task[];
 
-  @ManyToOne(() => Project, (project) => project.statuses)
+  @ManyToOne(() => Project, (project) => project.statuses, {
+    onDelete: 'CASCADE',
+  })
   project: Project;
 
   @ManyToOne(() => User, (user) => user.status)

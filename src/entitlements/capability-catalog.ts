@@ -2,6 +2,7 @@ import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 
 export enum CapabilityKey {
   PERSONAL_PRODUCTIVITY_HUB = 'personal_productivity_hub',
+  RECURRING_TASKS = 'recurring_tasks',
 }
 
 export type CapabilityDefinition = {
@@ -17,6 +18,13 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     key: CapabilityKey.PERSONAL_PRODUCTIVITY_HUB,
     label: 'Personal Productivity Hub',
     description: 'Cross-project personal task views and saved filters.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.RECURRING_TASKS]: {
+    key: CapabilityKey.RECURRING_TASKS,
+    label: 'Recurring Tasks',
+    description: 'Generate repeated task occurrences from reusable rules.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

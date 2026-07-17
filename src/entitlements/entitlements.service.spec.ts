@@ -30,15 +30,17 @@ describe('EntitlementsService', () => {
     });
     settingsRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.resolveOrganization('org-1')).resolves.toEqual([
-      expect.objectContaining({
-        key: CapabilityKey.PERSONAL_PRODUCTIVITY_HUB,
-        override: null,
-        planEligible: true,
-        enabled: false,
-        reason: 'disabled_by_default_rollout',
-      }),
-    ]);
+    await expect(service.resolveOrganization('org-1')).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: CapabilityKey.PERSONAL_PRODUCTIVITY_HUB,
+          override: null,
+          planEligible: true,
+          enabled: false,
+          reason: 'disabled_by_default_rollout',
+        }),
+      ]),
+    );
   });
 
   it('enables an eligible capability through an organization override', async () => {
@@ -52,12 +54,14 @@ describe('EntitlementsService', () => {
       },
     });
 
-    await expect(service.resolveOrganization('org-1')).resolves.toEqual([
-      expect.objectContaining({
-        enabled: true,
-        reason: 'enabled_by_organization_override',
-      }),
-    ]);
+    await expect(service.resolveOrganization('org-1')).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          enabled: true,
+          reason: 'enabled_by_organization_override',
+        }),
+      ]),
+    );
   });
 
   it('does not allow an override to bypass the minimum subscription tier', async () => {
@@ -76,14 +80,16 @@ describe('EntitlementsService', () => {
     });
 
     try {
-      await expect(service.resolveOrganization('org-1')).resolves.toEqual([
-        expect.objectContaining({
-          override: true,
-          planEligible: false,
-          enabled: false,
-          reason: 'subscription_tier_too_low',
-        }),
-      ]);
+      await expect(service.resolveOrganization('org-1')).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            override: true,
+            planEligible: false,
+            enabled: false,
+            reason: 'subscription_tier_too_low',
+          }),
+        ]),
+      );
     } finally {
       definition.minimumTier = originalTier;
     }
@@ -106,13 +112,15 @@ describe('EntitlementsService', () => {
         { userId: 7, email: 'user@example.com', role: 'user' },
         'org-1',
       ),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        permissionGranted: false,
-        enabled: false,
-        reason: 'user_permission_denied',
-      }),
-    ]);
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          permissionGranted: false,
+          enabled: false,
+          reason: 'user_permission_denied',
+        }),
+      ]),
+    );
   });
 
   it('audits the actor and previous value when an override changes', async () => {

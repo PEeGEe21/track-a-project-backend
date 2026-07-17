@@ -14,6 +14,7 @@ describe('TasksService', () => {
     findOne: jest.fn(),
     remove: jest.fn(),
   };
+  const recurringTasksService = { generateAfterCompletion: jest.fn() };
 
   const queryBuilder = () => {
     const query = {
@@ -41,6 +42,7 @@ describe('TasksService', () => {
       {} as any,
       authorizationService as any,
       savedTaskViewRepository as any,
+      recurringTasksService as any,
     );
   });
 

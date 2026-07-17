@@ -45,6 +45,8 @@ import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
 import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 import { SavedTaskView } from './typeorm/entities/SavedTaskView';
+import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
+import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -106,6 +108,8 @@ export const AppDataSource = new DataSource({
     OrganizationSettings,
     ProjectStatusTemplate,
     SavedTaskView,
+    TaskRecurrence,
+    TaskRecurrenceOccurrence,
   ],
   migrationsTransactionMode: 'each',
 });

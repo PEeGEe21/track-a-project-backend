@@ -4,6 +4,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
@@ -160,7 +161,9 @@ export class ProjectsService {
     const normalized =
       cleaned.length > 0 ? cleaned : this.getFallbackProjectStatuses();
 
-    const firstTerminalIndex = normalized.findIndex((status) => status.isTerminal);
+    const firstTerminalIndex = normalized.findIndex(
+      (status) => status.isTerminal,
+    );
     const doneIndex = normalized.findIndex(
       (status) => status.title.trim().toLowerCase() === 'done',
     );
@@ -756,8 +759,7 @@ export class ProjectsService {
     }
 
     if (closedTaskReopenWindowDays) {
-      ingestionSettings.reopenIfRecentWindowDays =
-        closedTaskReopenWindowDays;
+      ingestionSettings.reopenIfRecentWindowDays = closedTaskReopenWindowDays;
     }
 
     ingestionSettings =
@@ -809,11 +811,24 @@ export class ProjectsService {
       // console.log(project);
 
       // return;
-      await this.projectRepository.delete(id);
+      await this.entityManager.transaction(async (manager) => {
+        const result = await manager.getRepository(Project).delete({
+          id,
+          organization_id: organizationId,
+        });
+        if (!result.affected) {
+          throw new NotFoundException('Project not found');
+        }
+      });
 
       return { success: 'success', message: 'Project deleted successfully' };
     } catch (err) {
-      AppLogger.error('ProjectsService', 'Error deleting project');
+      AppLogger.error('ProjectsService', 'Error deleting project', {
+        projectId: id,
+        organizationId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      if (err instanceof HttpException) throw err;
       throw new HttpException(
         'Error deleting project',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -1367,11 +1382,11 @@ export class ProjectsService {
       const defaultStatuses = this.normalizeProjectStatuses(savedTemplates);
 
       const statuses = defaultStatuses.map((s) => ({
-          ...s,
-          project: savedProject,
-          organization_id: organizationId,
-          isActive: true,
-        }));
+        ...s,
+        project: savedProject,
+        organization_id: organizationId,
+        isActive: true,
+      }));
 
       await this.statusRepository.save(statuses);
 

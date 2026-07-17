@@ -79,6 +79,9 @@ import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 import { EntitlementsModule } from './entitlements/entitlements.module';
+import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
+import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
+import { RecurringTasksModule } from './recurring-tasks/recurring-tasks.module';
 import { SavedTaskView } from './typeorm/entities/SavedTaskView';
 @Module({
   imports: [
@@ -162,6 +165,8 @@ import { SavedTaskView } from './typeorm/entities/SavedTaskView';
             TaskDeadlineReminder,
             OrganizationSettings,
             ProjectStatusTemplate,
+            TaskRecurrence,
+            TaskRecurrenceOccurrence,
             SavedTaskView,
           ],
           synchronize: false,
@@ -244,6 +249,7 @@ import { SavedTaskView } from './typeorm/entities/SavedTaskView';
     HealthModule,
     IngestionModule,
     EntitlementsModule,
+    RecurringTasksModule,
   ],
   controllers: [AppController],
   providers: [

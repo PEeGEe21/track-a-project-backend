@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { Organization } from 'src/typeorm/entities/Organization';
@@ -7,10 +11,7 @@ import { AuthUser } from 'src/types/users';
 import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 import { Repository } from 'typeorm';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
-import {
-  CAPABILITY_CATALOG,
-  CapabilityKey,
-} from './capability-catalog';
+import { CAPABILITY_CATALOG, CapabilityKey } from './capability-catalog';
 
 const tierRank: Record<SubscriptionTier, number> = {
   [SubscriptionTier.FREE]: 0,
@@ -67,8 +68,8 @@ export class EntitlementsService {
             : !permissionGranted
               ? 'user_permission_denied'
               : override === true
-              ? 'enabled_by_organization_override'
-              : 'enabled_by_default_rollout',
+                ? 'enabled_by_organization_override'
+                : 'enabled_by_default_rollout',
       };
     });
   }
