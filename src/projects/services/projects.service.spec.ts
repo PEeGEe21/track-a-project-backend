@@ -33,6 +33,9 @@ describe('ProjectsService ingestion settings', () => {
   const projectStatusTemplateRepository = {
     find: jest.fn(),
   };
+  const authorizationService = {
+    assertProjectPermission: jest.fn(),
+  };
 
   let service: ProjectsService;
 
@@ -65,6 +68,13 @@ describe('ProjectsService ingestion settings', () => {
       ingestApiKeyRepository as any,
       projectIngestionSettingsRepository as any,
       projectStatusTemplateRepository as any,
+      authorizationService as any,
+    );
+    authorizationService.assertProjectPermission.mockImplementation(
+      async () => ({
+        project: await projectRepository.findOne(),
+        role: 'owner',
+      }),
     );
   });
 
@@ -173,8 +183,12 @@ describe('ProjectsService ingestion settings', () => {
     projectRepository.findOne.mockResolvedValue(project);
     projectPeerRepository.exists.mockResolvedValue(false);
     projectIngestionSettingsRepository.findOne.mockResolvedValue(null);
-    projectIngestionSettingsRepository.create.mockImplementation((value) => value);
-    projectIngestionSettingsRepository.save.mockImplementation(async (value) => value);
+    projectIngestionSettingsRepository.create.mockImplementation(
+      (value) => value,
+    );
+    projectIngestionSettingsRepository.save.mockImplementation(
+      async (value) => value,
+    );
     statusRepository.findOne.mockResolvedValue({
       id: 8,
       title: 'Inbox',

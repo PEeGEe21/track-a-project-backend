@@ -7,6 +7,7 @@ describe('TasksService', () => {
   const taskRepository = { findOne: jest.fn(), find: jest.fn() };
   const authorizationService = {
     assertProjectAccess: jest.fn(),
+    assertProjectPermission: jest.fn(),
     getProjectAccessScope: jest.fn(),
   };
   const savedTaskViewRepository = {
@@ -54,21 +55,26 @@ describe('TasksService', () => {
     taskRepository.findOne.mockResolvedValue({
       id: 55,
       project: { id: 7 },
+      user: { id: 2 },
+      assignees: [],
     });
-    authorizationService.assertProjectAccess.mockResolvedValue({ id: 7 });
+    authorizationService.assertProjectPermission.mockResolvedValue({
+      project: { id: 7 },
+      role: 'contributor',
+    });
 
     await (service as any).assertTaskWriteAccess(55, { userId: 2 }, 'org-1');
 
     expect(taskRepository.findOne).toHaveBeenCalledWith({
       where: { id: 55, organization_id: 'org-1' },
-      relations: ['project'],
+      relations: ['project', 'user', 'assignees'],
     });
-    expect(authorizationService.assertProjectAccess).toHaveBeenCalledWith({
-      actor: { userId: 2 },
-      organizationId: 'org-1',
-      projectId: 7,
-      action: 'write',
-    });
+    expect(authorizationService.assertProjectPermission).toHaveBeenCalledWith(
+      { userId: 2 },
+      'org-1',
+      7,
+      'contribute',
+    );
   });
 
   it('scopes a project task list to an authorized organization project', async () => {

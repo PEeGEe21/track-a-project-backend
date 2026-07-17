@@ -4,7 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -39,7 +39,11 @@ import { StorageService } from 'src/types/storage.interface';
 import { normalizeRichTextDescription } from 'src/common/helpers/rich-text.helper';
 import { CreateNotificationDto } from 'src/notifications/dto/create-notification.dto';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
-import { AuthorizationService } from 'src/common/authorization/authorization.service';
+import {
+  AuthorizationService,
+  ProjectPermission,
+} from 'src/common/authorization/authorization.service';
+import { ProjectRolePolicy } from 'src/common/authorization/project-role.policy';
 import { AuthUser } from 'src/types/users';
 import {
   ProductivityTaskQueryDto,
@@ -123,22 +127,38 @@ export class TasksService {
     taskId: number,
     actor: AuthUser,
     organizationId: string,
+    permission: ProjectPermission = ProjectPermission.CONTRIBUTE,
   ): Promise<Task> {
     const task = await this.taskRepository.findOne({
       where: { id: taskId, organization_id: organizationId },
-      relations: ['project'],
+      relations: ['project', 'user', 'assignees'],
     });
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
 
-    await this.authorizationService.assertProjectAccess({
+    const context = await this.authorizationService.assertProjectPermission(
       actor,
       organizationId,
-      projectId: task.project.id,
-      action: 'write',
-    });
+      task.project.id,
+      permission,
+    );
+
+    if (
+      permission === ProjectPermission.CONTRIBUTE &&
+      !ProjectRolePolicy.canEdit(context.role)
+    ) {
+      const ownsTask = Number(task.user?.id) === Number(actor.userId);
+      const isAssigned = task.assignees?.some(
+        (assignee) => Number(assignee.id) === Number(actor.userId),
+      );
+      if (!ownsTask && !isAssigned) {
+        throw new ForbiddenException(
+          'Contributors can only change tasks they created or are assigned to',
+        );
+      }
+    }
 
     return task;
   }
@@ -1619,7 +1639,12 @@ export class TasksService {
     user: any,
     organizationId: string,
   ): Promise<any> {
-    await this.assertTaskWriteAccess(id, user, organizationId);
+    await this.assertTaskWriteAccess(
+      id,
+      user,
+      organizationId,
+      ProjectPermission.EDIT,
+    );
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -1707,12 +1732,12 @@ export class TasksService {
     user: any,
     organizationId: string,
   ): Promise<any> {
-    await this.authorizationService.assertProjectAccess({
-      actor: user,
+    await this.authorizationService.assertProjectPermission(
+      user,
       organizationId,
-      projectId: id,
-      action: 'write',
-    });
+      id,
+      ProjectPermission.CONTRIBUTE,
+    );
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,

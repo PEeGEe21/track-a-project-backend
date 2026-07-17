@@ -15,6 +15,10 @@ import {
 import { Task } from 'src/typeorm/entities/Task';
 import { Project } from 'src/typeorm/entities/Project';
 import { Status } from 'src/typeorm/entities/Status';
+import {
+  AuthorizationService,
+  ProjectPermission,
+} from 'src/common/authorization/authorization.service';
 
 @Injectable()
 export class StatusService {
@@ -25,6 +29,7 @@ export class StatusService {
     @InjectRepository(Project) private projectRepository: Repository<Project>,
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(Status) private statusRepository: Repository<Status>,
+    private readonly authorizationService: AuthorizationService,
   ) {}
 
   async getTaskById(id: number): Promise<Status | undefined> {
@@ -46,7 +51,17 @@ export class StatusService {
     return { tasks, columns };
   }
 
-  async findStatuses(projectId: number, user: any): Promise<any> {
+  async findStatuses(
+    projectId: number,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
+    await this.authorizationService.assertProjectPermission(
+      user,
+      organizationId,
+      projectId,
+      ProjectPermission.VIEW,
+    );
     const userFound = await this.userRepository.findOne({
       where: { id: user.userId },
     });
@@ -54,7 +69,7 @@ export class StatusService {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
 
     const project = await this.projectRepository.findOne({
-      where: { id: projectId },
+      where: { id: projectId, organization_id: organizationId },
     });
     if (!project)
       throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
@@ -144,11 +159,22 @@ export class StatusService {
   async updateStatus(
     id: number,
     updateStatusDetails: CreateStatusParams,
+    user: any,
+    organizationId: string,
   ): Promise<any> {
     try {
-      const status = await this.statusRepository.findOneBy({ id });
+      const status = await this.statusRepository.findOne({
+        where: { id, organization_id: organizationId },
+        relations: ['project'],
+      });
       if (!status)
         throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
+      await this.authorizationService.assertProjectPermission(
+        user,
+        organizationId,
+        status.project.id,
+        ProjectPermission.EDIT,
+      );
 
       const sanitizedUpdate = Object.fromEntries(
         Object.entries(updateStatusDetails || {}).filter(
@@ -192,6 +218,7 @@ export class StatusService {
       }
     } catch (err) {
       console.error('Error deleting status:', err);
+      if (err instanceof HttpException) throw err;
       throw new HttpException(
         'Error deleting status',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -199,11 +226,16 @@ export class StatusService {
     }
   }
 
-  async deleteStatus(id: number, payload: any, user): Promise<any> {
+  async deleteStatus(
+    id: number,
+    payload: any,
+    user: any,
+    organizationId: string,
+  ): Promise<any> {
     try {
       const existingStatus = await this.statusRepository.findOne({
-        where: { id: id },
-        relations: ['user', 'tasks'],
+        where: { id: id, organization_id: organizationId },
+        relations: ['user', 'tasks', 'project'],
       });
 
       if (!existingStatus) {
@@ -211,6 +243,12 @@ export class StatusService {
         // throw new HttpException('Status doesnt exist', HttpStatus.INTERNAL_SERVER_ERROR);
         return { error: 'error', message: 'Status not found' }; // Or throw a NotFoundException
       }
+      await this.authorizationService.assertProjectPermission(
+        user,
+        organizationId,
+        existingStatus.project.id,
+        ProjectPermission.EDIT,
+      );
 
       const existingTasks = await this.taskRepository.find({
         where: { status: existingStatus },
@@ -252,6 +290,7 @@ export class StatusService {
       return { success: 'success', message: 'Status deleted successfully' };
     } catch (err) {
       console.error('Error deleting status:', err);
+      if (err instanceof HttpException) throw err;
       throw new HttpException(
         'Error deleting status',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -262,6 +301,7 @@ export class StatusService {
   async createStatus(
     user: any,
     CreateStatusDetails: CreateStatusParams,
+    organizationId: string,
   ): Promise<any> {
     try {
       const foundUser = await this.userRepository.findOneBy({
@@ -276,8 +316,17 @@ export class StatusService {
       let existingProject = null;
 
       if (CreateStatusDetails.projectId) {
+        await this.authorizationService.assertProjectPermission(
+          user,
+          organizationId,
+          CreateStatusDetails.projectId,
+          ProjectPermission.EDIT,
+        );
         existingProject = await this.projectRepository.findOne({
-          where: { id: CreateStatusDetails.projectId },
+          where: {
+            id: CreateStatusDetails.projectId,
+            organization_id: organizationId,
+          },
         });
       }
 

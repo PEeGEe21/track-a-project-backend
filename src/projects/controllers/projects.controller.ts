@@ -7,6 +7,7 @@ import {
   Query,
   ParseIntPipe,
   Post,
+  Patch,
   Put,
   UseGuards,
   Req,
@@ -23,6 +24,8 @@ import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 import { Response } from 'express';
 import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 import { UpdateDefaultIngestionStatusDto } from '../dtos/update-default-ingestion-status.dto';
+import { UpdateProjectMemberRoleDto } from '../dtos/update-project-member-role.dto';
+import { ProjectRole } from 'src/utils/constants/projectRole';
 
 @UseGuards(JwtAuthGuard)
 @Controller('projects')
@@ -187,6 +190,58 @@ export class ProjectsController {
     );
   }
 
+  @Get(':projectId/members')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  listProjectMembers(
+    @Req() req: any,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.listProjectMembers(
+      req.user,
+      projectId,
+      organizationId,
+    );
+  }
+
+  @Get(':projectId/invite-candidates')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  listProjectInviteCandidates(
+    @Req() req: any,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('search') search: string,
+    @Query('page') page: number,
+    @Query('limit') limit: number,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.listProjectInviteCandidates(
+      req.user,
+      projectId,
+      organizationId,
+      search,
+      page,
+      limit,
+    );
+  }
+
+  @Patch(':projectId/members/:userId/role')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  updateProjectMemberRole(
+    @Req() req: any,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() dto: UpdateProjectMemberRoleDto,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.updateProjectMemberRole(
+      req.user,
+      projectId,
+      userId,
+      dto.role,
+      organizationId,
+    );
+  }
+
   @Get(':projectId/ingest-keys')
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
   listIngestKeys(
@@ -276,7 +331,7 @@ export class ProjectsController {
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.projectService.getProjectById(id, req.user);
+    return this.projectService.getProjectById(id, req.user, organizationId);
   }
 
   @Get(':id/export')
@@ -307,7 +362,11 @@ export class ProjectsController {
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.projectService.getProjectComments(req.user, projectId);
+    return this.projectService.getProjectComments(
+      req.user,
+      projectId,
+      organizationId,
+    );
   }
 
   @Get('/entity-check-comments')
@@ -387,8 +446,15 @@ export class ProjectsController {
   updateProjectById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateProjectDto: UpdateProjectDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.projectService.updateProject(id, updateProjectDto);
+    return this.projectService.updateProject(
+      id,
+      updateProjectDto,
+      req.user,
+      organizationId,
+    );
   }
 
   // @Get(':userId/projects/:projectId')
@@ -427,7 +493,7 @@ export class ProjectsController {
   getTasks(
     @Req() req: any,
     @Param('projectId', ParseIntPipe) projectId: number,
-    @Body() { emails }: { emails: string[] }, // Destructure and rename
+    @Body() { emails, role }: { emails: string[]; role?: ProjectRole },
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.projectService.sendProjectInvite(
@@ -435,6 +501,7 @@ export class ProjectsController {
       projectId,
       emails,
       organizationId,
+      role,
     );
   }
 }

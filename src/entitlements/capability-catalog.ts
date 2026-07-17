@@ -3,6 +3,7 @@ import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 export enum CapabilityKey {
   PERSONAL_PRODUCTIVITY_HUB = 'personal_productivity_hub',
   RECURRING_TASKS = 'recurring_tasks',
+  STRUCTURED_PROJECT_UPDATES = 'structured_project_updates',
 }
 
 export type CapabilityDefinition = {
@@ -25,6 +26,13 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     key: CapabilityKey.RECURRING_TASKS,
     label: 'Recurring Tasks',
     description: 'Generate repeated task occurrences from reusable rules.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.STRUCTURED_PROJECT_UPDATES]: {
+    key: CapabilityKey.STRUCTURED_PROJECT_UPDATES,
+    label: 'Structured Project Updates',
+    description: 'Draft, publish, and correct durable project status reports.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

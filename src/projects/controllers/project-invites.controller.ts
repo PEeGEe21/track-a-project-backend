@@ -13,6 +13,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
+import { ProjectRole } from 'src/utils/constants/projectRole';
 
 @Controller('project-invites')
 export class ProjectInvitesController {
@@ -58,11 +59,13 @@ export class ProjectInvitesController {
     @Req() req: any,
     @Param('projectId', ParseIntPipe) projectId: number,
     @Headers('x-organization-id') organizationId: string,
+    @Body() body: { role?: ProjectRole },
   ) {
     return this.projectService.generateProjectInviteLink(
       req.user,
       projectId,
       organizationId,
+      body.role,
     );
   }
 }

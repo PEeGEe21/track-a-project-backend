@@ -12,6 +12,7 @@ import { Project } from './Project';
 import { UserPeerStatus } from '../../utils/constants/userPeerEnums';
 import { ProjectPeerStatus } from '../../utils/constants/projectPeerEnums';
 import { Organization } from './Organization';
+import { ProjectRole } from '../../utils/constants/projectRole';
 
 @Entity({ name: 'project_peers' })
 export class ProjectPeer {
@@ -41,6 +42,9 @@ export class ProjectPeer {
 
   @Column({ type: 'boolean', default: false })
   is_confirmed: boolean;
+
+  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.EDITOR })
+  role: ProjectRole;
 
   @Column({ type: 'uuid', nullable: true })
   organization_id: string | null;

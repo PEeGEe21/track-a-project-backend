@@ -83,6 +83,9 @@ import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
 import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
 import { RecurringTasksModule } from './recurring-tasks/recurring-tasks.module';
 import { SavedTaskView } from './typeorm/entities/SavedTaskView';
+import { ProjectUpdate } from './typeorm/entities/ProjectUpdate';
+import { ProjectUpdateReference } from './typeorm/entities/ProjectUpdateReference';
+import { ProjectUpdatesModule } from './project-updates/project-updates.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -168,6 +171,8 @@ import { SavedTaskView } from './typeorm/entities/SavedTaskView';
             TaskRecurrence,
             TaskRecurrenceOccurrence,
             SavedTaskView,
+            ProjectUpdate,
+            ProjectUpdateReference,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -250,6 +255,7 @@ import { SavedTaskView } from './typeorm/entities/SavedTaskView';
     IngestionModule,
     EntitlementsModule,
     RecurringTasksModule,
+    ProjectUpdatesModule,
   ],
   controllers: [AppController],
   providers: [

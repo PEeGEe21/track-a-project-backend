@@ -35,6 +35,7 @@ import { IngestApiKey } from 'src/typeorm/entities/IngestApiKey';
 import { IngestionModule } from 'src/ingestion/ingestion.module';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
+import { AuthorizationModule } from 'src/common/authorization/authorization.module';
 
 @Module({
   imports: [
@@ -72,14 +73,10 @@ import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplat
     forwardRef(() => IngestionModule),
     // forwardRef(() => CategoriesModule),
     NotificationsModule,
+    AuthorizationModule,
   ],
   controllers: [ProjectsController, ProjectInvitesController],
-  providers: [
-    ProjectsService,
-    ProjectsGateway,
-    MailingService,
-    ConfigService,
-  ],
+  providers: [ProjectsService, ProjectsGateway, MailingService, ConfigService],
   exports: [ProjectsService, ProjectsGateway],
 })
 export class ProjectsModule {}

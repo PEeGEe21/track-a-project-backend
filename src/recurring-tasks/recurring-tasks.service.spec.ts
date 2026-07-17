@@ -21,7 +21,10 @@ describe('RecurringTasksService', () => {
   };
   const tasks = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
   const statuses = { findOne: jest.fn() };
-  const authorization = { assertProjectAccess: jest.fn() };
+  const authorization = {
+    assertProjectAccess: jest.fn(),
+    assertProjectPermission: jest.fn(),
+  };
   const entitlements = { assertCapability: jest.fn() };
   let service: RecurringTasksService;
 
@@ -38,7 +41,10 @@ describe('RecurringTasksService', () => {
   });
 
   it('rejects an invalid IANA timezone', async () => {
-    authorization.assertProjectAccess.mockResolvedValue({ id: 5 });
+    authorization.assertProjectPermission.mockResolvedValue({
+      project: { id: 5 },
+      role: 'contributor',
+    });
     await expect(
       service.create(
         5,
@@ -58,7 +64,10 @@ describe('RecurringTasksService', () => {
   });
 
   it('requires selected days for a weekday recurrence', async () => {
-    authorization.assertProjectAccess.mockResolvedValue({ id: 5 });
+    authorization.assertProjectPermission.mockResolvedValue({
+      project: { id: 5 },
+      role: 'contributor',
+    });
     await expect(
       service.create(
         5,
@@ -78,7 +87,10 @@ describe('RecurringTasksService', () => {
   });
 
   it('does not expose a template task from another project', async () => {
-    authorization.assertProjectAccess.mockResolvedValue({ id: 5 });
+    authorization.assertProjectPermission.mockResolvedValue({
+      project: { id: 5 },
+      role: 'contributor',
+    });
     tasks.findOne.mockResolvedValue({ id: 10, project: { id: 6 } });
     await expect(
       service.create(

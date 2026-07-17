@@ -56,6 +56,13 @@ import { IngestionKeyService } from 'src/ingestion/services/ingestion-key.servic
 import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
+import { ProjectRole } from 'src/utils/constants/projectRole';
+import { AuditLog } from 'src/typeorm/entities/AuditLog';
+import { ProjectRolePolicy } from 'src/common/authorization/project-role.policy';
+import {
+  AuthorizationService,
+  ProjectPermission,
+} from 'src/common/authorization/authorization.service';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -118,6 +125,7 @@ export class ProjectsService {
     private projectIngestionSettingsRepository: Repository<ProjectIngestionSettings>,
     @InjectRepository(ProjectStatusTemplate)
     private projectStatusTemplateRepository: Repository<ProjectStatusTemplate>,
+    private readonly authorizationService: AuthorizationService,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -235,33 +243,12 @@ export class ProjectsService {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
 
-    const project = await this.projectRepository.findOne({
-      where: { id: projectId, organization_id: organizationId },
-      relations: ['user', 'defaultIngestionStatus'],
-    });
-
-    if (!project) {
-      throw new HttpException(
-        'Project not found in this organization',
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    const isOwner = Number(project.user?.id) === Number(foundUser.id);
-    const isProjectPeer = await this.projectPeerRepository.exists({
-      where: {
-        project: { id: projectId },
-        user: { id: foundUser.id },
-        organization_id: organizationId,
-      },
-    });
-
-    if (user.role !== 'super_admin' && !isOwner && !isProjectPeer) {
-      throw new HttpException(
-        'You do not have permission to manage this project',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    const { project } = await this.authorizationService.assertProjectPermission(
+      user,
+      organizationId,
+      projectId,
+      ProjectPermission.MANAGE_SETTINGS,
+    );
 
     return { project, foundUser };
   }
@@ -279,10 +266,24 @@ export class ProjectsService {
     };
   }
 
-  async getProjectById(id: number, user: any): Promise<any | undefined> {
+  async getProjectById(
+    id: number,
+    user: any,
+    organizationId?: string,
+  ): Promise<any | undefined> {
     try {
+      const access = organizationId
+        ? await this.authorizationService.assertProjectPermission(
+            user,
+            organizationId,
+            id,
+            ProjectPermission.VIEW,
+          )
+        : null;
       const project = await this.projectRepository.findOne({
-        where: { id },
+        where: organizationId
+          ? { id, organization_id: organizationId }
+          : { id },
         relations: [
           'tasks',
           'tasks.ingestedEvents',
@@ -298,12 +299,17 @@ export class ProjectsService {
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
       let data = {
-        project,
+        project: {
+          ...project,
+          ...(access ? { current_role: access.role } : {}),
+        },
         tasks: project.tasks,
         success: 'success',
       };
       return data;
-    } catch (err) {}
+    } catch (err) {
+      throw err;
+    }
   }
 
   async findProjects() {
@@ -513,11 +519,26 @@ export class ProjectsService {
     }
   }
 
-  async updateProject(id: number, updateProjectDetails: UpdateProjectDto) {
+  async updateProject(
+    id: number,
+    updateProjectDetails: UpdateProjectDto,
+    user: any,
+    organizationId: string,
+  ) {
     try {
-      const project = await this.projectRepository.findOneBy({ id });
-      if (!project)
+      await this.authorizationService.assertProjectPermission(
+        user,
+        organizationId,
+        id,
+        ProjectPermission.EDIT,
+      );
+      const project = await this.projectRepository.findOneBy({
+        id,
+        organization_id: organizationId,
+      });
+      if (!project) {
         throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+      }
 
       const richDescription = normalizeRichTextDescription({
         description: updateProjectDetails.description,
@@ -791,21 +812,15 @@ export class ProjectsService {
     organizationId: string,
   ): Promise<any> {
     try {
+      await this.authorizationService.assertProjectPermission(
+        user,
+        organizationId,
+        id,
+        ProjectPermission.MANAGE_SETTINGS,
+      );
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
-
-      const project = await this.projectRepository.findOne({
-        where: {
-          id: id,
-          user: { id: userFound.id },
-          organization_id: organizationId,
-        },
-      });
-
-      if (!project) {
-        return { error: 'error', message: 'Project not found' };
       }
 
       // console.log(project);
@@ -1751,6 +1766,12 @@ export class ProjectsService {
     organizationId: string,
   ) {
     try {
+      await this.authorizationService.assertProjectPermission(
+        user,
+        organizationId,
+        projectId,
+        ProjectPermission.CONTRIBUTE,
+      );
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -1762,7 +1783,7 @@ export class ProjectsService {
 
       // const project = await this.projectRepository.findOneBy({ id: projectId });
       const project = await this.projectRepository.findOne({
-        where: { id: projectId },
+        where: { id: projectId, organization_id: organizationId },
         relations: ['user'], // <-- Load the owner relationship
       });
       if (!project)
@@ -2004,18 +2025,32 @@ export class ProjectsService {
     );
   }
 
-  async getProjectComments(user: any, projectId: number) {
+  async getProjectComments(
+    user: any,
+    projectId: number,
+    organizationId?: string,
+  ) {
     try {
+      const project = await this.projectRepository.findOneBy(
+        organizationId
+          ? { id: projectId, organization_id: organizationId }
+          : { id: projectId },
+      );
+      if (!project?.organization_id) {
+        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
+      }
+      await this.authorizationService.assertProjectPermission(
+        user,
+        project.organization_id,
+        projectId,
+        ProjectPermission.VIEW,
+      );
       const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
       // console.log(userFound);
-
-      const project = await this.projectRepository.findOneBy({ id: projectId });
-      if (!project)
-        throw new HttpException('Project not found', HttpStatus.BAD_REQUEST);
 
       const comments = await this.projectCommentRepository.find({
         where: { projectId },
@@ -2889,6 +2924,7 @@ export class ProjectsService {
     user: any,
     projectId: number,
     organizationId: string,
+    role: ProjectRole = ProjectRole.EDITOR,
   ) {
     const foundUser = await this.usersService.getUserAccountById(user.userId);
     if (!foundUser) {
@@ -2908,7 +2944,7 @@ export class ProjectsService {
     }
 
     const isOwner = project.user.id === foundUser.id;
-    const isProjectPeer = await this.projectPeerRepository.exists({
+    const invitingMembership = await this.projectPeerRepository.findOne({
       where: {
         project: { id: projectId },
         user: { id: foundUser.id },
@@ -2916,7 +2952,13 @@ export class ProjectsService {
       },
     });
 
-    if (!isOwner && !isProjectPeer) {
+    if (
+      !isOwner &&
+      !(
+        invitingMembership &&
+        ProjectRolePolicy.canInvite(invitingMembership.role)
+      )
+    ) {
       throw new HttpException(
         'You do not have permission to invite users to this project',
         HttpStatus.FORBIDDEN,
@@ -2935,6 +2977,7 @@ export class ProjectsService {
       status: 'pending',
       due_date: inviteExpiry,
       organization_id: organizationId,
+      role: role === ProjectRole.OWNER ? ProjectRole.EDITOR : role,
     });
 
     return {
@@ -3062,6 +3105,7 @@ export class ProjectsService {
         addedBy: { id: invitedBy.id },
         user: { id: newUser.id },
         organization_id: organizationId,
+        role: invite.role ?? ProjectRole.EDITOR,
       });
 
       await this.projectPeerRepository.save(peerToUser);
@@ -3194,6 +3238,7 @@ export class ProjectsService {
         project: project,
         addedBy: { id: invitedBy.id },
         user: { id: newUser.id },
+        role: invite.role ?? ProjectRole.EDITOR,
       });
 
       await this.projectPeerRepository.save(peerToUser);
@@ -3489,11 +3534,225 @@ export class ProjectsService {
     return data;
   }
 
+  async listProjectMembers(
+    user: any,
+    projectId: number,
+    organizationId: string,
+  ) {
+    const actor = await this.usersService.getUserAccountById(user.userId);
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user'],
+    });
+    if (!actor || !project)
+      throw new HttpException('Project not found', HttpStatus.NOT_FOUND);
+    const actorPeer = await this.projectPeerRepository.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: actor.id },
+        organization_id: organizationId,
+        status: ProjectPeerStatus.CONNECTED,
+        is_confirmed: true,
+      },
+    });
+    if (
+      Number(project.user.id) !== Number(actor.id) &&
+      !actorPeer &&
+      user.role !== 'super_admin'
+    )
+      throw new HttpException(
+        'You do not have access to this project',
+        HttpStatus.FORBIDDEN,
+      );
+    const peers = await this.projectPeerRepository.find({
+      where: {
+        project: { id: projectId },
+        organization_id: organizationId,
+        status: ProjectPeerStatus.CONNECTED,
+        is_confirmed: true,
+      },
+      relations: ['user'],
+      order: { created_at: 'ASC' },
+    });
+    const canManage =
+      Number(project.user.id) === Number(actor.id) ||
+      Boolean(actorPeer && ProjectRolePolicy.canManageRoles(actorPeer.role)) ||
+      user.role === 'super_admin';
+    return {
+      data: [
+        {
+          id: Number(project.user.id),
+          role: ProjectRole.OWNER,
+          is_creator: true,
+          user: project.user,
+        },
+        ...peers.map((peer) => ({
+          id: Number(peer.user.id),
+          membership_id: peer.id,
+          role: peer.role,
+          is_creator: false,
+          user: peer.user,
+        })),
+      ],
+      can_manage_roles: canManage,
+    };
+  }
+
+  async updateProjectMemberRole(
+    user: any,
+    projectId: number,
+    targetUserId: number,
+    role: ProjectRole,
+    organizationId: string,
+  ) {
+    const actor = await this.usersService.getUserAccountById(user.userId);
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user'],
+    });
+    if (!actor || !project)
+      throw new HttpException('Project not found', HttpStatus.NOT_FOUND);
+    const actorPeer = await this.projectPeerRepository.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: actor.id },
+        organization_id: organizationId,
+      },
+    });
+    const canManage =
+      Number(project.user.id) === Number(actor.id) ||
+      Boolean(actorPeer && ProjectRolePolicy.canManageRoles(actorPeer.role)) ||
+      user.role === 'super_admin';
+    if (!canManage)
+      throw new HttpException(
+        'Only project owners can manage member roles',
+        HttpStatus.FORBIDDEN,
+      );
+    if (Number(project.user.id) === Number(targetUserId))
+      throw new HttpException(
+        'The project creator remains an owner',
+        HttpStatus.BAD_REQUEST,
+      );
+    const membership = await this.projectPeerRepository.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: targetUserId },
+        organization_id: organizationId,
+        status: ProjectPeerStatus.CONNECTED,
+        is_confirmed: true,
+      },
+      relations: ['user'],
+    });
+    if (!membership)
+      throw new HttpException('Project member not found', HttpStatus.NOT_FOUND);
+    const previousRole = membership.role;
+    membership.role = role;
+    await this.projectPeerRepository.save(membership);
+    await this.entityManager.save(AuditLog, {
+      action: 'PROJECT_MEMBER_ROLE_CHANGE',
+      admin_id: actor.id,
+      target_user_id: targetUserId,
+      organization_id: organizationId,
+      metadata: {
+        project_id: projectId,
+        previous_role: previousRole,
+        new_role: role,
+      },
+    });
+    return {
+      success: true,
+      message: 'Project member role updated',
+      data: { user_id: targetUserId, role },
+    };
+  }
+
+  async listProjectInviteCandidates(
+    user: any,
+    projectId: number,
+    organizationId: string,
+    search = '',
+    page = 1,
+    limit = 20,
+  ) {
+    const actor = await this.usersService.getUserAccountById(user.userId);
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user'],
+    });
+    if (!actor || !project)
+      throw new HttpException('Project not found', HttpStatus.NOT_FOUND);
+    const actorPeer = await this.projectPeerRepository.findOne({
+      where: {
+        project: { id: projectId },
+        user: { id: actor.id },
+        organization_id: organizationId,
+      },
+    });
+    const canInvite =
+      Number(project.user.id) === Number(actor.id) ||
+      Boolean(actorPeer && ProjectRolePolicy.canInvite(actorPeer.role)) ||
+      user.role === 'super_admin';
+    if (!canInvite)
+      throw new HttpException(
+        'Editor access is required to invite project members',
+        HttpStatus.FORBIDDEN,
+      );
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+    const query = this.userRepository
+      .createQueryBuilder('candidate')
+      .innerJoin(
+        'candidate.user_organizations',
+        'membership',
+        'membership.organization_id = :organizationId',
+        { organizationId },
+      )
+      .where('candidate.is_active = :active', { active: true })
+      .andWhere('candidate.id != :ownerId', { ownerId: project.user.id })
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM project_peers peer WHERE peer.user_id = candidate.id AND peer.project_id = :projectId AND peer.organization_id = :organizationId)`,
+        { projectId, organizationId },
+      )
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM project_peer_invites invite WHERE LOWER(invite.email) = LOWER(candidate.email) AND invite.project_id = :projectId AND invite.organization_id = :organizationId AND invite.status = 'pending')`,
+        { projectId, organizationId },
+      );
+    const term = search.trim().toLowerCase();
+    if (term)
+      query.andWhere(
+        '(LOWER(candidate.first_name) LIKE :term OR LOWER(candidate.last_name) LIKE :term OR LOWER(candidate.email) LIKE :term)',
+        { term: `%${term}%` },
+      );
+    query
+      .orderBy('candidate.first_name', 'ASC')
+      .addOrderBy('candidate.last_name', 'ASC')
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit);
+    const [candidates, total] = await query.getManyAndCount();
+    return {
+      data: candidates.map((candidate) => ({
+        id: Number(candidate.id),
+        first_name: candidate.first_name,
+        last_name: candidate.last_name,
+        full_name: candidate.fullName,
+        email: candidate.email,
+        avatar: candidate.avatar,
+      })),
+      meta: {
+        current_page: safePage,
+        per_page: safeLimit,
+        last_page: Math.max(1, Math.ceil(total / safeLimit)),
+        total,
+      },
+    };
+  }
+
   async sendProjectInvite(
     user: any,
     projectId: number,
     emails: any[],
     organizationId: string,
+    role: ProjectRole = ProjectRole.EDITOR,
   ) {
     try {
       // Verify the inviting user exists and has access to the organization
@@ -3514,6 +3773,12 @@ export class ProjectsService {
       // }
 
       const userId = foundUser.id;
+      if (role === ProjectRole.OWNER) {
+        throw new HttpException(
+          'Owner access must be granted after a member joins the project',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
       // Verify project exists and belongs to the organization
       const project = await this.projectRepository.findOne({
@@ -3531,7 +3796,7 @@ export class ProjectsService {
       // Verify the user is authorized to send invites for this project
       // (either owner or existing peer with appropriate permissions)
       const isOwner = project.user.id === userId;
-      const isProjectPeer = await this.projectPeerRepository.exists({
+      const invitingMembership = await this.projectPeerRepository.findOne({
         where: {
           project: { id: projectId },
           user: { id: userId },
@@ -3539,7 +3804,13 @@ export class ProjectsService {
         },
       });
 
-      if (!isOwner && !isProjectPeer) {
+      const canInvite =
+        isOwner ||
+        Boolean(
+          invitingMembership &&
+            ProjectRolePolicy.canInvite(invitingMembership.role),
+        );
+      if (!canInvite) {
         throw new HttpException(
           'You do not have permission to invite users to this project',
           HttpStatus.FORBIDDEN,
@@ -3643,6 +3914,7 @@ export class ProjectsService {
               project: project,
               invite_code: inviteCode,
               status: 'pending',
+              role,
               due_date: inviteExpiry,
               organization_id: organizationId,
             });
@@ -3675,6 +3947,7 @@ export class ProjectsService {
               project: project,
               invite_code: inviteCode,
               status: 'pending',
+              role,
               due_date: inviteExpiry,
               organization_id: organizationId,
             });

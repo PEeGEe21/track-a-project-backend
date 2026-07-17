@@ -8,13 +8,15 @@ import {
   Post,
   Put,
   Req,
+  Headers,
   UseGuards,
 } from '@nestjs/common';
 import { CreateStatusDto, UpdateStatusDto } from '../dtos/create-status.dto';
 import { StatusService } from '../services/status.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, OrganizationAccessGuard)
 @Controller('status')
 export class StatusController {
   constructor(private statusService: StatusService) {}
@@ -22,8 +24,13 @@ export class StatusController {
   getStatus(
     @Param('projectId', ParseIntPipe) projectId: number,
     @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.statusService.findStatuses(projectId, req?.user);
+    return this.statusService.findStatuses(
+      projectId,
+      req?.user,
+      organizationId,
+    );
   }
 
   @Get(':id')
@@ -35,8 +42,15 @@ export class StatusController {
   updateStatusById(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateStatusDto: UpdateStatusDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.statusService.updateStatus(id, updateStatusDto);
+    return this.statusService.updateStatus(
+      id,
+      updateStatusDto,
+      req.user,
+      organizationId,
+    );
   }
 
   @Delete(':id')
@@ -44,12 +58,26 @@ export class StatusController {
     @Param('id', ParseIntPipe) id: number,
     @Body() payload: any,
     @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
   ) {
-    return this.statusService.deleteStatus(id, payload, req.user);
+    return this.statusService.deleteStatus(
+      id,
+      payload,
+      req.user,
+      organizationId,
+    );
   }
 
   @Post('/')
-  createProjectTask(@Body() CreateStatusDto: CreateStatusDto, @Req() req: any) {
-    return this.statusService.createStatus(req, CreateStatusDto);
+  createProjectTask(
+    @Body() CreateStatusDto: CreateStatusDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.statusService.createStatus(
+      req.user,
+      CreateStatusDto,
+      organizationId,
+    );
   }
 }

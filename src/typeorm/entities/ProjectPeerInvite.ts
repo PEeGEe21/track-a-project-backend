@@ -11,6 +11,7 @@ import {
 import { User } from './User';
 import { Project } from './Project';
 import { Organization } from './Organization';
+import { ProjectRole } from '../../utils/constants/projectRole';
 
 @Entity('project_peer_invites')
 export class ProjectPeerInvite {
@@ -47,6 +48,9 @@ export class ProjectPeerInvite {
     default: 'pending',
   })
   status: 'pending' | 'accepted' | 'expired' | 'declined';
+
+  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.EDITOR })
+  role: ProjectRole;
 
   @Column({ nullable: true, type: 'timestamp' })
   due_date: Date;

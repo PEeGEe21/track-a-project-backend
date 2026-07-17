@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { AuthorizationService } from 'src/common/authorization/authorization.service';
+import {
+  AuthorizationService,
+  ProjectPermission,
+} from 'src/common/authorization/authorization.service';
 import { Task } from 'src/typeorm/entities/Task';
 import { Status } from 'src/typeorm/entities/Status';
 import {
@@ -167,12 +170,12 @@ export class RecurringTasksService {
     actor: AuthUser,
     organizationId: string,
   ) {
-    const project = await this.authorization.assertProjectAccess({
+    const { project } = await this.authorization.assertProjectPermission(
       actor,
       organizationId,
       projectId,
-      action: 'write',
-    });
+      ProjectPermission.CONTRIBUTE,
+    );
     this.validateRuleInput(dto);
     const template = await this.tasks.findOne({
       where: { id: dto.template_task_id, organization_id: organizationId },
@@ -232,12 +235,12 @@ export class RecurringTasksService {
   }
 
   async list(projectId: number, actor: AuthUser, organizationId: string) {
-    await this.authorization.assertProjectAccess({
+    await this.authorization.assertProjectPermission(
       actor,
       organizationId,
       projectId,
-      action: 'read',
-    });
+      ProjectPermission.VIEW,
+    );
     return {
       success: 'success',
       data: await this.recurrences.find({
@@ -257,12 +260,12 @@ export class RecurringTasksService {
       relations: ['project'],
     });
     if (!task) throw new NotFoundException('Task not found');
-    await this.authorization.assertProjectAccess({
+    await this.authorization.assertProjectPermission(
       actor,
       organizationId,
-      projectId: task.project.id,
-      action: 'read',
-    });
+      task.project.id,
+      ProjectPermission.VIEW,
+    );
     const templateRule = await this.recurrences.findOne({
       where: { template_task_id: taskId, organization_id: organizationId },
     });
@@ -297,12 +300,12 @@ export class RecurringTasksService {
       relations: ['project', 'template_task'],
     });
     if (!rule) throw new NotFoundException('Recurrence not found');
-    await this.authorization.assertProjectAccess({
+    await this.authorization.assertProjectPermission(
       actor,
       organizationId,
-      projectId: rule.project_id,
-      action: 'write',
-    });
+      rule.project_id,
+      ProjectPermission.EDIT,
+    );
     return rule;
   }
 
