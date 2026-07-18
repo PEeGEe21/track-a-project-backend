@@ -47,6 +47,11 @@ import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate'
 import { SavedTaskView } from './typeorm/entities/SavedTaskView';
 import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
 import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
+import { ProjectUpdate } from './typeorm/entities/ProjectUpdate';
+import { ProjectUpdateReference } from './typeorm/entities/ProjectUpdateReference';
+import { Decision } from './typeorm/entities/Decision';
+import { DecisionLink } from './typeorm/entities/DecisionLink';
+import { DecisionHistory } from './typeorm/entities/DecisionHistory';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -110,6 +115,11 @@ export const AppDataSource = new DataSource({
     SavedTaskView,
     TaskRecurrence,
     TaskRecurrenceOccurrence,
+    ProjectUpdate,
+    ProjectUpdateReference,
+    Decision,
+    DecisionLink,
+    DecisionHistory,
   ],
   migrationsTransactionMode: 'each',
 });

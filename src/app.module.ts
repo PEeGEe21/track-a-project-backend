@@ -86,6 +86,10 @@ import { SavedTaskView } from './typeorm/entities/SavedTaskView';
 import { ProjectUpdate } from './typeorm/entities/ProjectUpdate';
 import { ProjectUpdateReference } from './typeorm/entities/ProjectUpdateReference';
 import { ProjectUpdatesModule } from './project-updates/project-updates.module';
+import { Decision } from './typeorm/entities/Decision';
+import { DecisionLink } from './typeorm/entities/DecisionLink';
+import { DecisionHistory } from './typeorm/entities/DecisionHistory';
+import { DecisionsModule } from './decisions/decisions.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -173,6 +177,9 @@ import { ProjectUpdatesModule } from './project-updates/project-updates.module';
             SavedTaskView,
             ProjectUpdate,
             ProjectUpdateReference,
+            Decision,
+            DecisionLink,
+            DecisionHistory,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -256,6 +263,7 @@ import { ProjectUpdatesModule } from './project-updates/project-updates.module';
     EntitlementsModule,
     RecurringTasksModule,
     ProjectUpdatesModule,
+    DecisionsModule,
   ],
   controllers: [AppController],
   providers: [
