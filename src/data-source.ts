@@ -52,6 +52,9 @@ import { ProjectUpdateReference } from './typeorm/entities/ProjectUpdateReferenc
 import { Decision } from './typeorm/entities/Decision';
 import { DecisionLink } from './typeorm/entities/DecisionLink';
 import { DecisionHistory } from './typeorm/entities/DecisionHistory';
+import { TaskComment } from './typeorm/entities/TaskComment';
+import { TaskCommentReaction } from './typeorm/entities/TaskCommentReaction';
+import { TaskCommentEdit } from './typeorm/entities/TaskCommentEdit';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -120,6 +123,9 @@ export const AppDataSource = new DataSource({
     Decision,
     DecisionLink,
     DecisionHistory,
+    TaskComment,
+    TaskCommentReaction,
+    TaskCommentEdit,
   ],
   migrationsTransactionMode: 'each',
 });

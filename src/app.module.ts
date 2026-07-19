@@ -90,6 +90,10 @@ import { Decision } from './typeorm/entities/Decision';
 import { DecisionLink } from './typeorm/entities/DecisionLink';
 import { DecisionHistory } from './typeorm/entities/DecisionHistory';
 import { DecisionsModule } from './decisions/decisions.module';
+import { TaskComment } from './typeorm/entities/TaskComment';
+import { TaskCommentReaction } from './typeorm/entities/TaskCommentReaction';
+import { TaskCommentEdit } from './typeorm/entities/TaskCommentEdit';
+import { TaskDiscussionsModule } from './task-discussions/task-discussions.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -180,6 +184,9 @@ import { DecisionsModule } from './decisions/decisions.module';
             Decision,
             DecisionLink,
             DecisionHistory,
+            TaskComment,
+            TaskCommentReaction,
+            TaskCommentEdit,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -264,6 +271,7 @@ import { DecisionsModule } from './decisions/decisions.module';
     RecurringTasksModule,
     ProjectUpdatesModule,
     DecisionsModule,
+    TaskDiscussionsModule,
   ],
   controllers: [AppController],
   providers: [
