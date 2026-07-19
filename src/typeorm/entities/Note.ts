@@ -10,6 +10,7 @@ import {
 import { User } from './User';
 import { Task } from './Task';
 import { Organization } from './Organization';
+import { Project } from './Project';
 
 @Entity({ name: 'notes' })
 export class Note {
@@ -63,6 +64,10 @@ export class Note {
   @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'organization_id' })
   organization: Organization | null;
+
+  @ManyToOne(() => Project, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'project_id' })
+  project: Project | null;
 
   @CreateDateColumn()
   created_at: Date;

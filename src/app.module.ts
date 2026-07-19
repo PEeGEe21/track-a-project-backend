@@ -94,6 +94,10 @@ import { TaskComment } from './typeorm/entities/TaskComment';
 import { TaskCommentReaction } from './typeorm/entities/TaskCommentReaction';
 import { TaskCommentEdit } from './typeorm/entities/TaskCommentEdit';
 import { TaskDiscussionsModule } from './task-discussions/task-discussions.module';
+import { WorkConversion } from './typeorm/entities/WorkConversion';
+import { WorkflowTemplate } from './typeorm/entities/WorkflowTemplate';
+import { WorkflowStep } from './typeorm/entities/WorkflowStep';
+import { WorkflowsModule } from './workflows/workflows.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -187,6 +191,9 @@ import { TaskDiscussionsModule } from './task-discussions/task-discussions.modul
             TaskComment,
             TaskCommentReaction,
             TaskCommentEdit,
+            WorkConversion,
+            WorkflowTemplate,
+            WorkflowStep,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -272,6 +279,7 @@ import { TaskDiscussionsModule } from './task-discussions/task-discussions.modul
     ProjectUpdatesModule,
     DecisionsModule,
     TaskDiscussionsModule,
+    WorkflowsModule,
   ],
   controllers: [AppController],
   providers: [

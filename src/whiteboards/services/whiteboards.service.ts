@@ -154,8 +154,7 @@ export class WhiteboardsService {
         whiteboardId,
         title,
         description,
-      } =
-        uploadFileDto;
+      } = uploadFileDto;
 
       if (projectId) {
         const project = await this.projectRepository.findOne({
@@ -316,14 +315,17 @@ export class WhiteboardsService {
           existingWhiteboard.project = { id: projectId } as Project;
         }
 
-        existingWhiteboard.elements = state.elements;
+        existingWhiteboard.elements = this.ensureStableObjectIds(
+          state.elements,
+        );
         existingWhiteboard.appState = state.appState;
         existingWhiteboard.files = state.files;
         existingWhiteboard.lastModifiedBy = userFound;
         existingWhiteboard.updated_at = new Date();
         existingWhiteboard.title =
           title || existingWhiteboard.title || 'Whiteboard';
-        existingWhiteboard.description = description ?? existingWhiteboard.description;
+        existingWhiteboard.description =
+          description ?? existingWhiteboard.description;
         existingWhiteboard.organization_id =
           existingWhiteboard.organization_id || organizationId;
 
@@ -339,7 +341,7 @@ export class WhiteboardsService {
         const newWhiteboard = this.whiteboardRepository.create({
           whiteboardId: whiteboardId || uuidv4(), // Use provided whiteboardId or generate new
           project: projectId ? { id: projectId } : null,
-          elements: state.elements,
+          elements: this.ensureStableObjectIds(state.elements),
           appState: state.appState,
           files: state.files,
           lastModifiedBy: userFound,
@@ -357,7 +359,7 @@ export class WhiteboardsService {
         return newWhiteboard;
       }
     } catch (error) {
-      console.log(error, "response")
+      console.log(error, 'response');
       this.logger.error(
         `Error saving whiteboard for ${projectId ?? 'standalone'}:`,
         error,
@@ -367,6 +369,12 @@ export class WhiteboardsService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private ensureStableObjectIds(elements: any[] | null | undefined): any[] {
+    return (elements || []).map((element) =>
+      element?.id ? element : { ...element, id: uuidv4() },
+    );
   }
 
   async getWhiteboardSnapshots(
@@ -584,7 +592,9 @@ export class WhiteboardsService {
       }
 
       if (existingWhiteboard) {
-        existingWhiteboard.elements = state.elements;
+        existingWhiteboard.elements = this.ensureStableObjectIds(
+          state.elements,
+        );
         existingWhiteboard.appState = state.appState;
         existingWhiteboard.files = state.files;
         existingWhiteboard.lastModifiedBy = userFound;
@@ -594,7 +604,7 @@ export class WhiteboardsService {
         const newWhiteboard = this.whiteboardRepository.create({
           whiteboardId,
           project: projectId ? { id: projectId } : null,
-          elements: state.elements,
+          elements: this.ensureStableObjectIds(state.elements),
           appState: state.appState,
           files: state.files,
           lastModifiedBy: userFound,
@@ -687,9 +697,7 @@ export class WhiteboardsService {
     group: string = 'all',
   ): Promise<any> {
     try {
-      const userFound = await this.usersService.getUserAccountById(
-        user.userId,
-      );
+      const userFound = await this.usersService.getUserAccountById(user.userId);
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
@@ -850,7 +858,7 @@ export class WhiteboardsService {
         success: true,
       };
     } catch (error) {
-      console.log(error)
+      console.log(error);
       this.logger.error('Error fetching user whiteboards:', error);
       throw new HttpException(
         error.message || 'Error fetching user whiteboards',
@@ -858,7 +866,6 @@ export class WhiteboardsService {
       );
     }
   }
-
 
   async getAllUserWhiteboards2(
     user,

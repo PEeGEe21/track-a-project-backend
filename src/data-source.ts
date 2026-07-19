@@ -55,6 +55,9 @@ import { DecisionHistory } from './typeorm/entities/DecisionHistory';
 import { TaskComment } from './typeorm/entities/TaskComment';
 import { TaskCommentReaction } from './typeorm/entities/TaskCommentReaction';
 import { TaskCommentEdit } from './typeorm/entities/TaskCommentEdit';
+import { WorkConversion } from './typeorm/entities/WorkConversion';
+import { WorkflowTemplate } from './typeorm/entities/WorkflowTemplate';
+import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -126,6 +129,9 @@ export const AppDataSource = new DataSource({
     TaskComment,
     TaskCommentReaction,
     TaskCommentEdit,
+    WorkConversion,
+    WorkflowTemplate,
+    WorkflowStep,
   ],
   migrationsTransactionMode: 'each',
 });
