@@ -60,6 +60,7 @@ describe('DecisionsService', () => {
       documents as any,
       messages as any,
       notes as any,
+      { record: jest.fn(), history: jest.fn() } as any,
     );
   });
 

@@ -23,6 +23,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { UploadNoteAudioDto } from '../dto/upload-note-audio.dto';
 
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
 @Controller('notes')
@@ -84,8 +85,9 @@ export class NotesController {
   deleteNote(
     @Param('id', ParseIntPipe) id: number,
     @Headers('x-organization-id') organizationId: string,
+    @Req() req: any,
   ) {
-    return this.notesService.deleteNote(id, organizationId);
+    return this.notesService.deleteNote(id, organizationId, req.user);
   }
 
   @Post('/')
@@ -111,8 +113,7 @@ export class NotesController {
     @UploadedFile() file: Express.Multer.File,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
-    @Body('durationSeconds') durationSeconds?: string | number,
-    @Body('transcript') transcript?: string,
+    @Body() body?: UploadNoteAudioDto,
   ) {
     if (!file) {
       throw new BadRequestException('Audio file is required');
@@ -123,8 +124,10 @@ export class NotesController {
       file,
       req.user,
       organizationId,
-      durationSeconds,
-      transcript,
+      body?.durationSeconds,
+      body?.transcript,
+      body?.recordingConsent,
+      body?.noticeVersion,
     );
   }
 
@@ -139,5 +142,32 @@ export class NotesController {
       req.user,
       organizationId,
     );
+  }
+
+  @Get(':id/audio/export')
+  exportAudio(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notesService.exportAudio(id, req.user, organizationId);
+  }
+
+  @Get(':id/audio/access-history')
+  audioAccessHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notesService.audioAccessHistory(id, req.user, organizationId);
+  }
+
+  @Delete(':id/audio')
+  deleteAudio(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.notesService.deleteAudio(id, req.user, organizationId);
   }
 }

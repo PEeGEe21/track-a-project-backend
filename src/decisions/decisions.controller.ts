@@ -74,6 +74,22 @@ export class DecisionsController {
   ) {
     return this.service.history(r.user, o, p, i, page, limit);
   }
+  @Get(':id/export') exportDecision(
+    @Req() r: any,
+    @Headers('x-organization-id') o: string,
+    @Param('projectId', ParseIntPipe) p: number,
+    @Param('id', ParseIntPipe) i: number,
+  ) {
+    return this.service.exportDecision(r.user, o, p, i);
+  }
+  @Get(':id/access-history') accessHistory(
+    @Req() r: any,
+    @Headers('x-organization-id') o: string,
+    @Param('projectId', ParseIntPipe) p: number,
+    @Param('id', ParseIntPipe) i: number,
+  ) {
+    return this.service.accessHistory(r.user, o, p, i);
+  }
   @Post() create(
     @Req() r: any,
     @Headers('x-organization-id') o: string,
@@ -116,5 +132,13 @@ export class DecisionsController {
     @Param('id', ParseIntPipe) i: number,
   ) {
     return this.service.removeProposal(r.user, o, p, i);
+  }
+  @Delete(':id/data') deleteDecisionData(
+    @Req() r: any,
+    @Headers('x-organization-id') o: string,
+    @Param('projectId', ParseIntPipe) p: number,
+    @Param('id', ParseIntPipe) i: number,
+  ) {
+    return this.service.deleteDecisionData(r.user, o, p, i);
   }
 }

@@ -50,6 +50,15 @@ export class Note {
   @Column({ type: 'varchar', length: 32, nullable: true })
   audio_transcript_status: string | null;
 
+  @Column({ type: 'datetime', nullable: true })
+  audio_consent_at: Date | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  audio_consent_by_id: number | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  audio_notice_version: string | null;
+
   @ManyToOne(() => Task, (task) => task.notes)
   @JoinColumn({ name: 'task_id' })
   task: Task;

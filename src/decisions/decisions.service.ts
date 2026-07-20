@@ -31,6 +31,8 @@ import { User } from 'src/typeorm/entities/User';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { DecisionLinkDto, SaveDecisionDto } from './dto/decision.dto';
+import { DataLifecycleService } from 'src/data-lifecycle/data-lifecycle.service';
+import { LifecycleRecordType } from 'src/typeorm/entities/DataLifecycleEvent';
 
 type Access = {
   user: User;
@@ -60,6 +62,7 @@ export class DecisionsService {
     @InjectRepository(ProjectComment)
     private readonly messages: Repository<ProjectComment>,
     @InjectRepository(Note) private readonly notes: Repository<Note>,
+    private readonly lifecycle: DataLifecycleService,
   ) {}
 
   async list(
@@ -447,6 +450,105 @@ export class DecisionsService {
     return { success: true };
   }
 
+  async exportDecision(actor: any, org: string, projectId: number, id: number) {
+    const access = await this.access(actor, org, projectId);
+    const item = await this.get(id, org, projectId);
+    this.assertReadable(item, access);
+    const history = await this.histories.find({
+      where: { decision_id: id },
+      order: { created_at: 'ASC' },
+    });
+    await this.lifecycle.record({
+      organizationId: org,
+      actorId: access.user.id,
+      recordType: LifecycleRecordType.DECISION,
+      recordId: id,
+      action: 'exported',
+      metadata: { project_id: projectId, format: 'json' },
+    });
+    return {
+      exported_at: new Date().toISOString(),
+      record_type: LifecycleRecordType.DECISION,
+      data: {
+        id: item.id,
+        project_id: item.project_id,
+        title: item.title,
+        context: item.context,
+        decision_date: item.decision_date,
+        status: item.status,
+        supersedes_decision_id: item.supersedes_decision_id,
+        owner: item.owner
+          ? {
+              id: item.owner.id,
+              name: item.owner.fullName,
+              email: item.owner.email,
+            }
+          : { id: item.owner_id },
+        created_by: item.created_by
+          ? {
+              id: item.created_by.id,
+              name: item.created_by.fullName,
+              email: item.created_by.email,
+            }
+          : { id: item.created_by_id },
+        links: item.links,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+      },
+      history,
+    };
+  }
+
+  async deleteDecisionData(
+    actor: any,
+    org: string,
+    projectId: number,
+    id: number,
+  ) {
+    const access = await this.access(actor, org, projectId);
+    if (!access.canManage)
+      throw new ForbiddenException('Editor access is required');
+    const item = await this.get(id, org, projectId);
+    await this.decisions.manager.transaction(async (manager) => {
+      await this.lifecycle.record({
+        organizationId: org,
+        actorId: access.user.id,
+        recordType: LifecycleRecordType.DECISION,
+        recordId: id,
+        action: 'deleted',
+        metadata: {
+          project_id: projectId,
+          previous_status: item.status,
+          deletion: 'hard',
+        },
+        manager,
+      });
+      await manager.update(
+        Decision,
+        { supersedes_decision_id: id },
+        { supersedes_decision_id: null },
+      );
+      // Cascades remove links and content-bearing history snapshots.
+      await manager.remove(Decision, item);
+    });
+    return { success: true, deletion: 'completed' };
+  }
+
+  async accessHistory(actor: any, org: string, projectId: number, id: number) {
+    const access = await this.access(actor, org, projectId);
+    const item = await this.get(id, org, projectId);
+    this.assertReadable(item, access);
+    await this.lifecycle.record({
+      organizationId: org,
+      actorId: access.user.id,
+      recordType: LifecycleRecordType.DECISION,
+      recordId: id,
+      action: 'accessed',
+      metadata: { resource: 'access_history', project_id: projectId },
+    });
+    return this.lifecycle.history(org, LifecycleRecordType.DECISION, id);
+  }
+
   async history(
     actor: any,
     org: string,
@@ -561,6 +663,15 @@ export class DecisionsService {
         if (!item) throw new NotFoundException('Decision not found');
         return item;
       });
+  }
+  private assertReadable(item: Decision, access: Access) {
+    if (
+      item.status === DecisionStatus.PROPOSED &&
+      (!access.canContribute ||
+        (!access.canManage &&
+          Number(item.created_by_id) !== Number(access.user.id)))
+    )
+      throw new ForbiddenException('You can only access your own proposals');
   }
   private content(dto: SaveDecisionDto) {
     if (!dto.title.trim() || !dto.context.trim())

@@ -18,6 +18,8 @@ import { StorageService } from 'src/types/storage.interface';
 import { MulterFile } from 'src/types/multer.types';
 import { NoteTranscriptionService } from './note-transcription.service';
 import { config } from 'src/config';
+import { DataLifecycleService } from 'src/data-lifecycle/data-lifecycle.service';
+import { LifecycleRecordType } from 'src/typeorm/entities/DataLifecycleEvent';
 
 @Injectable()
 export class NotesService {
@@ -32,6 +34,7 @@ export class NotesService {
     @Inject('STORAGE_SERVICE')
     private storageService: StorageService,
     private noteTranscriptionService: NoteTranscriptionService,
+    private readonly lifecycle: DataLifecycleService,
   ) {}
 
   async findUserNotes(
@@ -314,22 +317,35 @@ export class NotesService {
     }
   }
 
-  async deleteNote(id: number, organizationId: string): Promise<any> {
+  async deleteNote(
+    id: number,
+    organizationId: string,
+    user: any,
+  ): Promise<any> {
     try {
-      const note = await this.noteRepository.findOne({
-        where: { id: id, organization_id: organizationId },
-      });
-
-      if (!note) {
-        // throw new HttpException('Status doesnt exist', HttpStatus.INTERNAL_SERVER_ERROR);
-        return { error: 'error', message: 'Note not found' }; // Or throw a NotFoundException
-      }
+      const userFound = await this.usersService.getUserAccountById(user.userId);
+      if (!userFound)
+        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+      const note = await this.getOwnedNoteOrThrow(
+        id,
+        userFound.id,
+        organizationId,
+      );
 
       if (note.audio_path) {
         await this.storageService.deleteFile(note.audio_path);
       }
 
       await this.noteRepository.delete(id);
+
+      await this.lifecycle.record({
+        organizationId,
+        actorId: userFound.id,
+        recordType: LifecycleRecordType.NOTE_AUDIO,
+        recordId: id,
+        action: 'deleted',
+        metadata: { note_deleted: true, had_audio: Boolean(note.audio_path) },
+      });
 
       return { success: 'success', message: 'Note deleted successfully' };
     } catch (err) {
@@ -459,6 +475,8 @@ export class NotesService {
     organizationId: string,
     durationSeconds?: string | number,
     transcript?: string,
+    recordingConsent?: boolean,
+    noticeVersion?: string,
   ): Promise<any> {
     const userFound = await this.usersService.getUserAccountById(user.userId);
     if (!userFound) {
@@ -470,6 +488,13 @@ export class NotesService {
       userFound.id,
       organizationId,
     );
+
+    if (recordingConsent !== true || !noticeVersion?.trim()) {
+      throw new HttpException(
+        'Explicit recording consent and notice version are required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     if (!file.mimetype?.startsWith('audio/')) {
       throw new HttpException(
@@ -505,8 +530,20 @@ export class NotesService {
       : config.transcription.enabled
         ? 'pending'
         : null;
+    note.audio_consent_at = new Date();
+    note.audio_consent_by_id = userFound.id;
+    note.audio_notice_version = noticeVersion.trim();
 
     const savedNote = await this.noteRepository.save(note);
+
+    await this.lifecycle.record({
+      organizationId,
+      actorId: userFound.id,
+      recordType: LifecycleRecordType.NOTE_AUDIO,
+      recordId: note.id,
+      action: 'consented',
+      metadata: { notice_version: note.audio_notice_version, consent: true },
+    });
 
     if (config.transcription.enabled && !transcript?.trim()) {
       await this.noteTranscriptionService.requestTranscription(
@@ -564,6 +601,12 @@ export class NotesService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    if (!note.audio_consent_at || !note.audio_notice_version) {
+      throw new HttpException(
+        'Recording consent must be captured before transcription',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     const result = await this.noteTranscriptionService.requestTranscription(
       note.id,
@@ -585,6 +628,102 @@ export class NotesService {
           : 'Audio transcription requested successfully',
       data: refreshedNote ?? note,
     };
+  }
+
+  async exportAudio(noteId: number, user: any, organizationId: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    const note = await this.getOwnedNoteOrThrow(
+      noteId,
+      userFound.id,
+      organizationId,
+    );
+    if (!note.audio_path)
+      throw new HttpException(
+        'This note does not have audio',
+        HttpStatus.BAD_REQUEST,
+      );
+    const downloadUrl = await this.storageService.getSignedUrl(
+      note.audio_path,
+      300,
+    );
+    await this.lifecycle.record({
+      organizationId,
+      actorId: userFound.id,
+      recordType: LifecycleRecordType.NOTE_AUDIO,
+      recordId: note.id,
+      action: 'exported',
+      metadata: { format: 'audio_and_json', url_ttl_seconds: 300 },
+    });
+    return {
+      exported_at: new Date().toISOString(),
+      record_type: LifecycleRecordType.NOTE_AUDIO,
+      data: {
+        note_id: note.id,
+        mime_type: note.audio_mime_type,
+        duration_seconds: note.audio_duration_seconds,
+        transcript: note.audio_transcript,
+        transcript_status: note.audio_transcript_status,
+        consent_at: note.audio_consent_at,
+        notice_version: note.audio_notice_version,
+        download_url: downloadUrl,
+        download_url_expires_in_seconds: 300,
+      },
+    };
+  }
+
+  async deleteAudio(noteId: number, user: any, organizationId: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    const note = await this.getOwnedNoteOrThrow(
+      noteId,
+      userFound.id,
+      organizationId,
+    );
+    if (note.audio_path) await this.storageService.deleteFile(note.audio_path);
+    Object.assign(note, {
+      audio_url: null,
+      audio_path: null,
+      audio_mime_type: null,
+      audio_duration_seconds: null,
+      audio_transcript: null,
+      audio_transcript_status: null,
+      audio_consent_at: null,
+      audio_consent_by_id: null,
+      audio_notice_version: null,
+    });
+    await this.noteRepository.save(note);
+    await this.lifecycle.record({
+      organizationId,
+      actorId: userFound.id,
+      recordType: LifecycleRecordType.NOTE_AUDIO,
+      recordId: note.id,
+      action: 'deleted',
+      metadata: { note_deleted: false, deletion: 'hard' },
+    });
+    return { success: true, deletion: 'completed' };
+  }
+
+  async audioAccessHistory(noteId: number, user: any, organizationId: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    await this.getOwnedNoteOrThrow(noteId, userFound.id, organizationId);
+    await this.lifecycle.record({
+      organizationId,
+      actorId: userFound.id,
+      recordType: LifecycleRecordType.NOTE_AUDIO,
+      recordId: noteId,
+      action: 'accessed',
+      metadata: { resource: 'access_history' },
+    });
+    return this.lifecycle.history(
+      organizationId,
+      LifecycleRecordType.NOTE_AUDIO,
+      noteId,
+    );
   }
 
   private async getOwnedNoteOrThrow(

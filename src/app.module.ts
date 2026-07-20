@@ -102,6 +102,8 @@ import { UserProjectSidebarPin } from './typeorm/entities/UserProjectSidebarPin'
 import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.module';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { AiModule } from './ai/ai.module';
+import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
+import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -200,6 +202,7 @@ import { AiModule } from './ai/ai.module';
             WorkflowStep,
             UserProjectSidebarPin,
             AiRequestAudit,
+            DataLifecycleEvent,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -258,6 +261,7 @@ import { AiModule } from './ai/ai.module';
       ProjectStatusTemplate,
       UserProjectSidebarPin,
       AiRequestAudit,
+      DataLifecycleEvent,
     ]),
     UsersModule,
     ProjectsModule,
@@ -290,6 +294,7 @@ import { AiModule } from './ai/ai.module';
     WorkflowsModule,
     SidebarProjectsModule,
     AiModule,
+    DataLifecycleModule,
   ],
   controllers: [AppController],
   providers: [
