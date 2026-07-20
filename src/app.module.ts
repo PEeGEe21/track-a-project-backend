@@ -98,6 +98,8 @@ import { WorkConversion } from './typeorm/entities/WorkConversion';
 import { WorkflowTemplate } from './typeorm/entities/WorkflowTemplate';
 import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { UserProjectSidebarPin } from './typeorm/entities/UserProjectSidebarPin';
+import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -194,6 +196,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
             WorkConversion,
             WorkflowTemplate,
             WorkflowStep,
+            UserProjectSidebarPin,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -250,6 +253,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
       TaskDeadlineReminder,
       OrganizationSettings,
       ProjectStatusTemplate,
+      UserProjectSidebarPin,
     ]),
     UsersModule,
     ProjectsModule,
@@ -280,6 +284,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
     DecisionsModule,
     TaskDiscussionsModule,
     WorkflowsModule,
+    SidebarProjectsModule,
   ],
   controllers: [AppController],
   providers: [
