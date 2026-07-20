@@ -27,10 +27,12 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageModule } from 'src/storage/storage.module';
 import { RedisModule } from 'src/redis/redis.module';
-import { AUDIO_TRANSCRIPTION_PROVIDER, NoteTranscriptionService } from './services/note-transcription.service';
+import { NoteTranscriptionService } from './services/note-transcription.service';
+import { AUDIO_TRANSCRIPTION_PROVIDER } from 'src/ai/provider.tokens';
 import { NoopAudioTranscriptionProvider } from './services/noop-audio-transcription.provider';
 import { OpenAiAudioTranscriptionProvider } from './services/openai-audio-transcription.provider';
 import { config } from 'src/config';
+import { AiModule } from 'src/ai/ai.module';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { config } from 'src/config';
     MailingModule,
     StorageModule,
     RedisModule,
+    AiModule,
     forwardRef(() => AuthModule),
     forwardRef(() => UsersModule),
     TypeOrmModule.forFeature([

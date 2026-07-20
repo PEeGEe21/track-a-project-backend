@@ -10,6 +10,8 @@ import {
 export class OpenAiAudioTranscriptionProvider
   implements AudioTranscriptionProvider
 {
+  readonly name = 'openai';
+  get model() { return config.transcription.openAiModel; }
   isConfigured(): boolean {
     return Boolean(
       config.transcription.providerEnabled &&

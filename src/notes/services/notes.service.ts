@@ -512,6 +512,8 @@ export class NotesService {
       await this.noteTranscriptionService.requestTranscription(
         note.id,
         organizationId,
+        user,
+        false,
       );
       const refreshedNote = await this.noteRepository.findOne({
         where: {
@@ -566,6 +568,7 @@ export class NotesService {
     const result = await this.noteTranscriptionService.requestTranscription(
       note.id,
       organizationId,
+      user,
     );
     const refreshedNote = await this.noteRepository.findOne({
       where: {

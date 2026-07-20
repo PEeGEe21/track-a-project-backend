@@ -100,6 +100,8 @@ import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { UserProjectSidebarPin } from './typeorm/entities/UserProjectSidebarPin';
 import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.module';
+import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
+import { AiModule } from './ai/ai.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -197,6 +199,7 @@ import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.modul
             WorkflowTemplate,
             WorkflowStep,
             UserProjectSidebarPin,
+            AiRequestAudit,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -254,6 +257,7 @@ import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.modul
       OrganizationSettings,
       ProjectStatusTemplate,
       UserProjectSidebarPin,
+      AiRequestAudit,
     ]),
     UsersModule,
     ProjectsModule,
@@ -285,6 +289,7 @@ import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.modul
     TaskDiscussionsModule,
     WorkflowsModule,
     SidebarProjectsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

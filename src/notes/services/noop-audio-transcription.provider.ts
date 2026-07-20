@@ -9,6 +9,8 @@ import {
 export class NoopAudioTranscriptionProvider
   implements AudioTranscriptionProvider
 {
+  readonly name = 'none';
+  readonly model = 'none';
   isConfigured(): boolean {
     return false;
   }

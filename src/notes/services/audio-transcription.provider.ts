@@ -9,6 +9,8 @@ export type AudioTranscriptionResult = {
 };
 
 export interface AudioTranscriptionProvider {
+  readonly name: string;
+  readonly model: string;
   isConfigured(): boolean;
   transcribeAudio(
     input: AudioTranscriptionInput,

@@ -5,6 +5,7 @@ export enum CapabilityKey {
   RECURRING_TASKS = 'recurring_tasks',
   STRUCTURED_PROJECT_UPDATES = 'structured_project_updates',
   DECISION_REGISTER = 'decision_register',
+  AI_ASSISTANCE = 'ai_assistance',
 }
 
 export type CapabilityDefinition = {
@@ -42,6 +43,13 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Decision Register',
     description:
       'Record, approve, link, and supersede durable project decisions.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.AI_ASSISTANCE]: {
+    key: CapabilityKey.AI_ASSISTANCE,
+    label: 'AI Assistance Service',
+    description: 'Secure, audited AI assistance infrastructure.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

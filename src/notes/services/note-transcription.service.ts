@@ -13,13 +13,15 @@ import { Note } from 'src/typeorm/entities/Note';
 import { Repository } from 'typeorm';
 import { StorageService } from 'src/types/storage.interface';
 import { AudioTranscriptionProvider } from './audio-transcription.provider';
+import { AiGovernanceService } from 'src/ai/ai-governance.service';
+import { AuthUser } from 'src/types/users';
 
 type NoteTranscriptionJobPayload = {
   noteId: number;
   organizationId: string;
+  actor: AuthUser;
 };
-
-export const AUDIO_TRANSCRIPTION_PROVIDER = 'AUDIO_TRANSCRIPTION_PROVIDER';
+import { AUDIO_TRANSCRIPTION_PROVIDER } from 'src/ai/provider.tokens';
 
 @Injectable()
 export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
@@ -34,6 +36,7 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
     private readonly storageService: StorageService,
     @Inject(AUDIO_TRANSCRIPTION_PROVIDER)
     private readonly transcriptionProvider: AudioTranscriptionProvider,
+    private readonly governance: AiGovernanceService,
   ) {}
 
   async onModuleInit() {
@@ -58,7 +61,7 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
     this.worker = new Worker<NoteTranscriptionJobPayload>(
       'note-transcriptions',
       async (job) =>
-        this.processNoteTranscription(job.data.noteId, job.data.organizationId),
+        this.processNoteTranscription(job.data.noteId, job.data.organizationId, job.data.actor),
       {
         connection,
         prefix: config.redis.prefix,
@@ -72,7 +75,14 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
     await this.queue?.close();
   }
 
-  async requestTranscription(noteId: number, organizationId: string) {
+  async requestTranscription(noteId: number, organizationId: string, actor: AuthUser, enforceEntitlement = true) {
+    try {
+      await this.governance.assertAvailable(actor, organizationId);
+    } catch (error) {
+      if (enforceEntitlement) throw error;
+      await this.noteRepository.update({ id: noteId, organization_id: organizationId }, { audio_transcript_status: 'skipped' });
+      return { queued: false, status: 'skipped' };
+    }
     if (!this.transcriptionProvider.isConfigured()) {
       await this.noteRepository.update(
         { id: noteId, organization_id: organizationId },
@@ -92,7 +102,7 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
     if (config.queue.driver === 'redis' && this.queue) {
       await this.queue.add(
         'transcribe-note-audio',
-        { noteId, organizationId },
+        { noteId, organizationId, actor },
         {
           attempts: 3,
           removeOnComplete: 50,
@@ -110,14 +120,14 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    void this.processNoteTranscription(noteId, organizationId);
+    void this.processNoteTranscription(noteId, organizationId, actor);
     return {
       queued: false,
       status: 'pending',
     };
   }
 
-  async processNoteTranscription(noteId: number, organizationId: string) {
+  async processNoteTranscription(noteId: number, organizationId: string, actor: AuthUser) {
     const note = await this.noteRepository.findOne({
       where: {
         id: noteId,
@@ -138,6 +148,7 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
+      await this.governance.assertAvailable(actor, organizationId);
       await this.noteRepository.update(
         { id: noteId, organization_id: organizationId },
         { audio_transcript_status: 'processing' },
@@ -148,11 +159,26 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
       );
       const filename =
         note.audio_path.split('/').pop() || `note-${noteId}-audio.webm`;
-      const transcription = await this.transcriptionProvider.transcribeAudio({
+      const audit = await this.governance.start({
+        actor, organizationId, featureId: 'note_audio_transcription',
+        templateId: 'audio_transcription', templateVersion: 1,
+        provider: this.transcriptionProvider.name,
+        model: this.transcriptionProvider.model,
+        inputSize: audioBuffer.length,
+      });
+      const started = Date.now();
+      let transcription;
+      try {
+        transcription = await this.transcriptionProvider.transcribeAudio({
         audioBuffer,
         filename,
         mimeType: note.audio_mime_type || 'audio/webm',
-      });
+        });
+        await this.governance.finish(audit, started, { status: 'succeeded', outputSize: transcription.transcript.length });
+      } catch (error: any) {
+        await this.governance.finish(audit, started, { status: 'failed', errorCode: error?.name ?? 'transcription_error' });
+        throw error;
+      }
 
       await this.noteRepository.update(
         { id: noteId, organization_id: organizationId },
@@ -164,7 +190,6 @@ export class NoteTranscriptionService implements OnModuleInit, OnModuleDestroy {
         },
       );
     } catch (error: any) {
-      console.log(error, 'errorerror');
       AppLogger.error(
         'NoteTranscriptionService',
         `Failed to transcribe note ${noteId}: ${

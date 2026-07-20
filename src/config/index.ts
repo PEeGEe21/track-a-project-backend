@@ -161,8 +161,19 @@ const envVarsSchema = joi
       .string()
       .allow(...['none', 'openai'])
       .default('none'),
+    AI_TRANSCRIPTION_PROVIDER: joi
+      .string()
+      .allow(...['none', 'openai'])
+      .optional(),
     OPENAI_API_KEY: joi.string().optional(),
     OPENAI_TRANSCRIPTION_MODEL: joi.string().optional(),
+    OPENAI_AI_MODEL: joi.string().default('gpt-5.6-sol'),
+    AI_TEXT_PROVIDER: joi.string().allow('none', 'openai').default('none'),
+    AI_PROVIDER_TIMEOUT_MS: joi.number().integer().min(1000).default(30000),
+    AI_USER_HOURLY_LIMIT: joi.number().integer().min(1).default(50),
+    AI_ORGANIZATION_HOURLY_LIMIT: joi.number().integer().min(1).default(500),
+    AI_INPUT_COST_PER_MILLION: joi.number().min(0).default(0),
+    AI_OUTPUT_COST_PER_MILLION: joi.number().min(0).default(0),
     TAILPOINT_CAPTURE_BACKEND_ERRORS: joi
       .boolean()
       .truthy('TRUE')
@@ -385,11 +396,14 @@ export const config = {
   },
   transcription: {
     enabled: envVars.TRANSCRIPTION_ENABLED,
-    provider: envVars.TRANSCRIPTION_PROVIDER,
+    provider:
+      envVars.AI_TRANSCRIPTION_PROVIDER ?? envVars.TRANSCRIPTION_PROVIDER,
     openAiApiKey: envVars.OPENAI_API_KEY ?? null,
     openAiModel: envVars.OPENAI_TRANSCRIPTION_MODEL ?? 'whisper-1',
     providerEnabled:
-      envVars.TRANSCRIPTION_ENABLED && envVars.TRANSCRIPTION_PROVIDER !== 'none',
+      envVars.TRANSCRIPTION_ENABLED &&
+      (envVars.AI_TRANSCRIPTION_PROVIDER ?? envVars.TRANSCRIPTION_PROVIDER) !==
+        'none',
   },
   ingestion: {
     maxBodyKb: envVars.INGESTION_MAX_BODY_KB,
