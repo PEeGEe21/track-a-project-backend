@@ -23,22 +23,31 @@ jobs:
       FRONTEND_URL: https://app.ci.tailpoint.invalid
       ADMIN_FRONTEND_URL: https://admin.ci.tailpoint.invalid
       DATABASE_HOST: 127.0.0.1
-      DATABASE_PORT: "3306"
+      DATABASE_PORT: '3306'
       DATABASE_USERNAME: ci
       DATABASE_PASSWORD: ci
       DATABASE_NAME: tailpoint_ci
-      OTP_TTL: "600"
-      PASSWORD_RECOVERY_TTL: "72"
+      OTP_TTL: '600'
+      PASSWORD_RECOVERY_TTL: '72'
       PASSWORD_RECOVERY_EMAIL: support@example.com
       PASSWORD_RECOVERY_URL: https://app.ci.tailpoint.invalid/reset-password
-      REDIS_ENABLED: "false"
+      REDIS_ENABLED: 'false'
       RATE_LIMIT_DRIVER: memory
       QUEUE_DRIVER: inline
       STORAGE_DRIVER: minio
       S3_BUCKET_NAME: ci-files
       S3_ACCESS_KEY_ID: ci
       S3_SECRET_ACCESS_KEY: ci-only-not-a-secret
-      TRANSCRIPTION_ENABLED: "false"
+      TRANSCRIPTION_ENABLED: 'false'
+      AI_TEXT_PROVIDER: none
+      AI_TRANSCRIPTION_PROVIDER: none
+      OPENAI_AI_MODEL: gpt-5.6-sol
+      OPENAI_TRANSCRIPTION_MODEL: whisper-1
+      AI_PROVIDER_TIMEOUT_MS: '30000'
+      AI_USER_HOURLY_LIMIT: '50'
+      AI_ORGANIZATION_HOURLY_LIMIT: '500'
+      AI_INPUT_COST_PER_MILLION: '0'
+      AI_OUTPUT_COST_PER_MILLION: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
