@@ -34,6 +34,9 @@ export class Plan {
   @Column({ type: 'int', default: 0 })
   display_order: number;
 
+  @Column({ type: 'int', nullable: true, default: 10 })
+  sidebar_project_pin_limit: number | null;
+
   @OneToMany(() => Price, (price) => price.plan, { cascade: true })
   prices: Price[];
 

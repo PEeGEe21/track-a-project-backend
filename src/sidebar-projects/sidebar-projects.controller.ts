@@ -14,12 +14,12 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { ReorderSidebarProjectsDto } from './dto/reorder-sidebar-projects.dto';
 import { SidebarProjectsService } from './sidebar-projects.service';
+import { SidebarProjectMutationRateLimitGuard } from './sidebar-project-mutation-rate-limit.guard';
 
 @Controller('users/me/sidebar-projects')
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard)
@@ -32,7 +32,7 @@ export class SidebarProjectsController {
   }
 
   @Put(':projectId')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseGuards(SidebarProjectMutationRateLimitGuard)
   async pin(
     @Req() req: any,
     @Res() response: Response,
@@ -49,7 +49,7 @@ export class SidebarProjectsController {
 
   @Delete(':projectId')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseGuards(SidebarProjectMutationRateLimitGuard)
   unpin(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
@@ -59,7 +59,7 @@ export class SidebarProjectsController {
   }
 
   @Patch('order')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseGuards(SidebarProjectMutationRateLimitGuard)
   reorder(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,

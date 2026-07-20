@@ -26,11 +26,28 @@ import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 import { UpdateDefaultIngestionStatusDto } from '../dtos/update-default-ingestion-status.dto';
 import { UpdateProjectMemberRoleDto } from '../dtos/update-project-member-role.dto';
 import { ProjectRole } from 'src/utils/constants/projectRole';
+import { ProjectNavigationDto } from '../dtos/project-navigation.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('projects')
 export class ProjectsController {
   constructor(private projectService: ProjectsService) {}
+
+  @Post(':id/navigation')
+  @UseGuards(OrganizationAccessGuard)
+  recordProjectNavigation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ProjectNavigationDto,
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.recordProjectNavigation(
+      req.user,
+      organizationId,
+      id,
+      dto.navigationSource,
+    );
+  }
 
   @Get('/activity-chart')
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)

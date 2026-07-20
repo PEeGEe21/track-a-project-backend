@@ -9,8 +9,10 @@ import {
   ProjectPermission,
 } from 'src/common/authorization/authorization.service';
 import { UserProjectSidebarPin } from 'src/typeorm/entities/UserProjectSidebarPin';
+import { Organization } from 'src/typeorm/entities/Organization';
 import { AuthUser } from 'src/types/users';
 import { DataSource, Repository } from 'typeorm';
+import { AppLogger } from 'src/common/logging/app-logger';
 
 const PRODUCT_MAX_PINS = 10;
 
@@ -19,14 +21,23 @@ export class SidebarProjectsService {
   constructor(
     @InjectRepository(UserProjectSidebarPin)
     private readonly pins: Repository<UserProjectSidebarPin>,
+    @InjectRepository(Organization)
+    private readonly organizations: Repository<Organization>,
     private readonly authorization: AuthorizationService,
     private readonly dataSource: DataSource,
   ) {}
 
-  private effectiveLimit(): number {
-    // Plans do not currently expose a sidebar allowance. Undefined allowances
-    // deliberately use the product default from the PRD.
-    return PRODUCT_MAX_PINS;
+  private async effectiveLimit(organizationId: string): Promise<number> {
+    const organization = await this.organizations.findOne({
+      where: { id: organizationId },
+      relations: ['activeSubscription', 'activeSubscription.price', 'activeSubscription.price.plan'],
+    });
+    const configured =
+      organization?.activeSubscription?.price?.plan?.sidebar_project_pin_limit;
+    if (configured === null || configured === undefined) {
+      return PRODUCT_MAX_PINS;
+    }
+    return Math.max(0, Math.min(PRODUCT_MAX_PINS, Number(configured)));
   }
 
   async list(actor: AuthUser, organizationId: string) {
@@ -72,7 +83,20 @@ export class SidebarProjectsService {
       .limit(PRODUCT_MAX_PINS)
       .getRawMany();
 
-    return { data: rows, limit: this.effectiveLimit() };
+    const accessibleIds = rows.map((row) => Number(row.projectId));
+    const staleQuery = this.pins
+      .createQueryBuilder()
+      .delete()
+      .where('organization_id = :organizationId', { organizationId })
+      .andWhere('user_id = :userId', { userId: actor.userId });
+    if (accessibleIds.length) {
+      staleQuery.andWhere('project_id NOT IN (:...accessibleIds)', {
+        accessibleIds,
+      });
+    }
+    await staleQuery.execute();
+
+    return { data: rows, limit: await this.effectiveLimit(organizationId) };
   }
 
   async pin(actor: AuthUser, organizationId: string, projectId: number) {
@@ -93,8 +117,19 @@ export class SidebarProjectsService {
       organization_id: organizationId,
       user_id: actor.userId,
     });
-    const limit = this.effectiveLimit();
+    const limit = await this.effectiveLimit(organizationId);
     if (count >= limit) {
+      AppLogger.warn(
+        'SidebarProjectsService',
+        'project_sidebar_pin_limit_reached',
+        {
+          organizationId,
+          projectId,
+          userId: actor.userId,
+          limit,
+          currentPinCount: count,
+        },
+      );
       throw new ConflictException({
         message: `You can pin up to ${limit} projects`,
         limit,
@@ -112,7 +147,15 @@ export class SidebarProjectsService {
       position: (max ?? -1) + 1,
     });
     try {
-      return { pin: await this.pins.save(pin), role, created: true };
+      const saved = await this.pins.save(pin);
+      AppLogger.log('SidebarProjectsService', 'project_sidebar_pin_created', {
+        organizationId,
+        projectId,
+        userId: actor.userId,
+        role,
+        currentPinCount: count + 1,
+      });
+      return { pin: saved, role, created: true };
     } catch (error: any) {
       if (error?.code === 'ER_DUP_ENTRY') {
         const duplicate = await this.pins.findOneByOrFail({
@@ -122,16 +165,29 @@ export class SidebarProjectsService {
         });
         return { pin: duplicate, role, created: false };
       }
+      AppLogger.error('SidebarProjectsService', 'sidebar pin database failure', {
+        organizationId,
+        projectId,
+        userId: actor.userId,
+        databaseCode: error?.code,
+      });
       throw error;
     }
   }
 
   async unpin(actor: AuthUser, organizationId: string, projectId: number) {
-    await this.pins.delete({
+    const result = await this.pins.delete({
       organization_id: organizationId,
       user_id: actor.userId,
       project_id: projectId,
     });
+    if (result.affected) {
+      AppLogger.log('SidebarProjectsService', 'project_sidebar_pin_removed', {
+        organizationId,
+        projectId,
+        userId: actor.userId,
+      });
+    }
     return { success: true };
   }
 
@@ -169,6 +225,11 @@ export class SidebarProjectsService {
           ),
         ),
       );
+    });
+    AppLogger.log('SidebarProjectsService', 'project_sidebar_pins_reordered', {
+      organizationId,
+      userId: actor.userId,
+      projectIds,
     });
     return this.list(actor, organizationId);
   }

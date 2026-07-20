@@ -130,6 +130,28 @@ export class ProjectsService {
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
+  async recordProjectNavigation(
+    actor: any,
+    organizationId: string,
+    projectId: number,
+    navigationSource: string,
+  ) {
+    const { role } = await this.authorizationService.assertProjectPermission(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.VIEW,
+    );
+    AppLogger.log('ProjectsService', 'project_navigation', {
+      organizationId,
+      projectId,
+      userId: actor.userId,
+      role,
+      navigation_source: navigationSource,
+    });
+    return { success: true };
+  }
+
   private getFallbackProjectStatuses() {
     return [
       { title: 'To Do', color: '#94A3B8', tabId: 0, isDefault: true },

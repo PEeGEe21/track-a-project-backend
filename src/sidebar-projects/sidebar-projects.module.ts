@@ -6,13 +6,23 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { UserProjectSidebarPin } from 'src/typeorm/entities/UserProjectSidebarPin';
 import { SidebarProjectsController } from './sidebar-projects.controller';
 import { SidebarProjectsService } from './sidebar-projects.service';
+import { SidebarProjectMutationRateLimitGuard } from './sidebar-project-mutation-rate-limit.guard';
+import { Organization } from 'src/typeorm/entities/Organization';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserProjectSidebarPin, UserOrganization]),
+    TypeOrmModule.forFeature([
+      UserProjectSidebarPin,
+      UserOrganization,
+      Organization,
+    ]),
     AuthorizationModule,
   ],
   controllers: [SidebarProjectsController],
-  providers: [SidebarProjectsService, OrganizationAccessGuard],
+  providers: [
+    SidebarProjectsService,
+    OrganizationAccessGuard,
+    SidebarProjectMutationRateLimitGuard,
+  ],
 })
 export class SidebarProjectsModule {}
