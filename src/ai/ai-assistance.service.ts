@@ -10,6 +10,7 @@ import { AI_PROMPTS } from './prompt-templates';
 import { RedactionService } from './redaction.service';
 import { AiGovernanceService } from './ai-governance.service';
 import { AiTaskContextService } from './ai-task-context.service';
+import { AiProjectContextService } from './ai-project-context.service';
 
 @Injectable()
 export class AiAssistanceService {
@@ -18,6 +19,7 @@ export class AiAssistanceService {
     private redaction: RedactionService,
     private governance: AiGovernanceService,
     private taskContext?: AiTaskContextService,
+    private projectContext?: AiProjectContextService,
   ) {}
 
   async summarizeTaskThread(
@@ -35,6 +37,50 @@ export class AiAssistanceService {
       input,
     });
   }
+
+  async draftProjectUpdate(
+    actor: AuthUser,
+    organizationId: string,
+    projectId: number,
+  ) {
+    const input = await this.projectContext!.assembleUpdateContext(
+      actor,
+      organizationId,
+      projectId,
+    );
+    const result = await this.assist(actor, organizationId, {
+      featureId: 'draft_project_update',
+      input,
+    });
+    return { ...result, structuredDraft: this.parseProjectUpdate(result.draft) };
+  }
+
+  private parseProjectUpdate(value: string) {
+    const source = value
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '');
+    try {
+      const parsed = JSON.parse(source);
+      const health = ['on_track', 'at_risk', 'off_track'].includes(parsed.health)
+        ? parsed.health
+        : 'on_track';
+      return {
+        health,
+        accomplishments: String(parsed.accomplishments || '').trim(),
+        blockers: String(parsed.blockers || '').trim(),
+        next_steps: String(parsed.next_steps || '').trim(),
+      };
+    } catch {
+      return {
+        health: 'on_track',
+        accomplishments: value.trim(),
+        blockers: '',
+        next_steps: '',
+      };
+    }
+  }
+
   async assist(
     actor: AuthUser,
     organizationId: string,
