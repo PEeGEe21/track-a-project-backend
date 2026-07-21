@@ -6,6 +6,7 @@ import {
 @Injectable()
 export class NoopTextGenerationProvider implements TextGenerationProvider {
   readonly name = 'none';
+  readonly model = 'none';
   isConfigured() {
     return false;
   }

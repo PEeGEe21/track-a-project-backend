@@ -33,4 +33,30 @@ describe('OpenAiTextGenerationProvider', () => {
     });
     expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 3 });
   });
+
+  it('preserves quota diagnostics without exposing the provider message', async () => {
+    process.env.OPENAI_API_KEY = 'server-only-key';
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'x-request-id': 'req_123', 'retry-after': '2' }),
+      json: async () => ({
+        error: { code: 'insufficient_quota', message: 'raw provider detail' },
+      }),
+    } as Response);
+
+    await expect(
+      new OpenAiTextGenerationProvider().generate({
+        model: 'test-model',
+        instructions: 'instructions',
+        input: 'text',
+        timeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({
+      status: 429,
+      errorCode: 'provider_quota_exceeded',
+      providerRequestId: 'req_123',
+      retryAfterSeconds: 2,
+    });
+  });
 });

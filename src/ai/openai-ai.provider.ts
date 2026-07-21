@@ -3,10 +3,14 @@ import {
   TextGenerationProvider,
   TextGenerationRequest,
   TextGenerationResponse,
+  TextGenerationProviderError,
 } from './text-generation.provider';
 @Injectable()
 export class OpenAiTextGenerationProvider implements TextGenerationProvider {
   readonly name = 'openai';
+  get model() {
+    return process.env.OPENAI_AI_MODEL ?? 'gpt-5.6-sol';
+  }
   isConfigured() {
     return Boolean(process.env.OPENAI_API_KEY);
   }
@@ -31,10 +35,25 @@ export class OpenAiTextGenerationProvider implements TextGenerationProvider {
         store: false,
       }),
     });
-    if (!response.ok)
-      throw new ServiceUnavailableException(
-        `AI provider request failed (${response.status})`,
+    if (!response.ok) {
+      const body: any = await response.json().catch(() => ({}));
+      const upstreamCode = String(
+        body?.error?.code ?? body?.error?.type ?? 'provider_error',
       );
+      const errorCode =
+        response.status === 429
+          ? upstreamCode === 'insufficient_quota'
+            ? 'provider_quota_exceeded'
+            : 'provider_rate_limit_exceeded'
+          : 'provider_request_failed';
+      const retryAfter = Number(response.headers.get('retry-after'));
+      throw new TextGenerationProviderError(
+        response.status === 429 ? 429 : response.status >= 500 ? 503 : 502,
+        errorCode,
+        response.headers.get('x-request-id') ?? undefined,
+        Number.isFinite(retryAfter) ? retryAfter : undefined,
+      );
+    }
     const body: any = await response.json();
     const text =
       body.output_text ??

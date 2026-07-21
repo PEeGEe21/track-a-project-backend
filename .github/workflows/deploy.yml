@@ -21,17 +21,23 @@ jobs:
       TRANSCRIPTION_ENABLED: ${{ vars.TRANSCRIPTION_ENABLED || 'false' }}
       OPENAI_AI_MODEL: ${{ vars.OPENAI_AI_MODEL || 'gpt-5.6-sol' }}
       OPENAI_TRANSCRIPTION_MODEL: ${{ vars.OPENAI_TRANSCRIPTION_MODEL || 'whisper-1' }}
+      HUGGINGFACE_AI_MODEL: ${{ vars.HUGGINGFACE_AI_MODEL || 'google/gemma-3-4b-it' }}
       AI_PROVIDER_TIMEOUT_MS: ${{ vars.AI_PROVIDER_TIMEOUT_MS || '30000' }}
       AI_USER_HOURLY_LIMIT: ${{ vars.AI_USER_HOURLY_LIMIT || '50' }}
       AI_ORGANIZATION_HOURLY_LIMIT: ${{ vars.AI_ORGANIZATION_HOURLY_LIMIT || '500' }}
       AI_INPUT_COST_PER_MILLION: ${{ vars.AI_INPUT_COST_PER_MILLION || '0' }}
       AI_OUTPUT_COST_PER_MILLION: ${{ vars.AI_OUTPUT_COST_PER_MILLION || '0' }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
       - name: Validate AI deployment configuration
         run: |
           if { [ "$AI_TEXT_PROVIDER" = "openai" ] || [ "$AI_TRANSCRIPTION_PROVIDER" = "openai" ]; } && [ -z "$OPENAI_API_KEY" ]; then
             echo "OPENAI_API_KEY is required when an OpenAI provider is enabled"
+            exit 1
+          fi
+          if [ "$AI_TEXT_PROVIDER" = "huggingface" ] && [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN is required when the Hugging Face provider is enabled"
             exit 1
           fi
           case "$AI_PROVIDER_TIMEOUT_MS:$AI_USER_HOURLY_LIMIT:$AI_ORGANIZATION_HOURLY_LIMIT" in

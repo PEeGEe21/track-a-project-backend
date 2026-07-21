@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Headers,
+  Param,
+  ParseIntPipe,
   Post,
   Req,
   UseGuards,
@@ -18,6 +20,23 @@ import { CreateAiAssistanceDto } from './dto/create-ai-assistance.dto';
 @RequireCapability(CapabilityKey.AI_ASSISTANCE)
 export class AiController {
   constructor(private ai: AiAssistanceService) {}
+
+  @Post('projects/:projectId/draft-update') draftProjectUpdate(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+  ) {
+    return this.ai.draftProjectUpdate(req.user, organizationId, projectId);
+  }
+
+  @Post('tasks/:taskId/summarize-thread') summarizeTaskThread(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+    @Param('taskId', ParseIntPipe) taskId: number,
+  ) {
+    return this.ai.summarizeTaskThread(req.user, organizationId, taskId);
+  }
+
   @Post('assist') assist(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,

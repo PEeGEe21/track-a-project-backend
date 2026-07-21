@@ -168,7 +168,12 @@ const envVarsSchema = joi
     OPENAI_API_KEY: joi.string().optional(),
     OPENAI_TRANSCRIPTION_MODEL: joi.string().optional(),
     OPENAI_AI_MODEL: joi.string().default('gpt-5.6-sol'),
-    AI_TEXT_PROVIDER: joi.string().allow('none', 'openai').default('none'),
+    AI_TEXT_PROVIDER: joi
+      .string()
+      .allow('none', 'openai', 'huggingface')
+      .default('none'),
+    HF_TOKEN: joi.string().optional(),
+    HUGGINGFACE_AI_MODEL: joi.string().default('google/gemma-3-4b-it'),
     AI_PROVIDER_TIMEOUT_MS: joi.number().integer().min(1000).default(30000),
     AI_USER_HOURLY_LIMIT: joi.number().integer().min(1).default(50),
     AI_ORGANIZATION_HOURLY_LIMIT: joi.number().integer().min(1).default(500),
