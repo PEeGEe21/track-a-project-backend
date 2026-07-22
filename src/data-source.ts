@@ -60,6 +60,7 @@ import { WorkflowTemplate } from './typeorm/entities/WorkflowTemplate';
 import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
+import { AuditLog } from './typeorm/entities/AuditLog';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -136,6 +137,7 @@ export const AppDataSource = new DataSource({
     WorkflowStep,
     AiRequestAudit,
     DataLifecycleEvent,
+    AuditLog,
   ],
   migrationsTransactionMode: 'each',
 });
