@@ -104,6 +104,7 @@ import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { AiModule } from './ai/ai.module';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
+import { GlobalSearchModule } from './search/global-search.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -295,6 +296,7 @@ import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
     SidebarProjectsModule,
     AiModule,
     DataLifecycleModule,
+    GlobalSearchModule,
   ],
   controllers: [AppController],
   providers: [
