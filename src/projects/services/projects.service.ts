@@ -59,6 +59,9 @@ import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplat
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { ProjectRolePolicy } from 'src/common/authorization/project-role.policy';
+import { CustomFieldsService } from 'src/custom-fields/custom-fields.service';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import {
   AuthorizationService,
   ProjectPermission,
@@ -126,6 +129,8 @@ export class ProjectsService {
     @InjectRepository(ProjectStatusTemplate)
     private projectStatusTemplateRepository: Repository<ProjectStatusTemplate>,
     private readonly authorizationService: AuthorizationService,
+    private readonly customFieldsService: CustomFieldsService,
+    private readonly entitlementsService: EntitlementsService,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -878,6 +883,12 @@ export class ProjectsService {
     user: any,
     organizationId: string,
   ): Promise<{ filename: string; content: Buffer; mimeType: string }> {
+    await this.authorizationService.assertProjectPermission(
+      user,
+      organizationId,
+      id,
+      ProjectPermission.VIEW,
+    );
     const userFound = await this.usersService.getUserAccountById(user.userId);
     if (!userFound) {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
@@ -1014,6 +1025,47 @@ export class ProjectsService {
         task.resources?.length ?? 0,
       ]),
     ]);
+
+    const customFieldsEnabled = Boolean(
+      (
+        await this.entitlementsService.resolveForActor(user, organizationId)
+      ).find((item) => item.key === CapabilityKey.CUSTOM_FIELDS)?.enabled,
+    );
+    if (customFieldsEnabled && project.tasks?.length) {
+      const serialized = await this.customFieldsService.serializeTasks(
+        organizationId,
+        project.tasks.map((task) => ({
+          id: task.id,
+          projectId: project.id,
+        })),
+      );
+      addSheet('Custom Fields', [
+        [
+          'Task ID',
+          'Task Title',
+          'Field Key',
+          'Field Name',
+          'Field Type',
+          'Archived',
+          'Normalized Value',
+        ],
+        ...project.tasks.flatMap((task) =>
+          (serialized.get(task.id) ?? []).map((field) => [
+            task.id,
+            task.title ?? '',
+            field.key,
+            field.name,
+            field.type,
+            field.archived ? 'Yes' : 'No',
+            Array.isArray(field.value)
+              ? JSON.stringify(field.value)
+              : field.value === null
+                ? ''
+                : String(field.value),
+          ]),
+        ),
+      ]);
+    }
 
     addSheet('Resources', [
       [

@@ -59,6 +59,11 @@ import {
   UpdateSavedTaskViewDto,
 } from '../dtos/saved-task-view.dto';
 import { RecurringTasksService } from 'src/recurring-tasks/recurring-tasks.service';
+import { CustomFieldsService } from 'src/custom-fields/custom-fields.service';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
+import { PreparedCustomFieldFilter } from 'src/custom-fields/custom-fields.service';
+import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 
 @Injectable()
 export class TasksService {
@@ -83,7 +88,54 @@ export class TasksService {
     @InjectRepository(SavedTaskView)
     private savedTaskViewRepository: Repository<SavedTaskView>,
     private recurringTasksService: RecurringTasksService,
+    private readonly customFieldsService: CustomFieldsService,
+    private readonly entitlementsService: EntitlementsService,
   ) {}
+
+  private async customFieldsEnabled(actor: AuthUser, organizationId: string) {
+    const entitlements = await this.entitlementsService.resolveForActor(
+      actor,
+      organizationId,
+    );
+    return Boolean(
+      entitlements.find((item) => item.key === CapabilityKey.CUSTOM_FIELDS)
+        ?.enabled,
+    );
+  }
+
+  private async attachCustomFields<T extends Task>(
+    task: T,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    if (!(await this.customFieldsEnabled(actor, organizationId))) return task;
+    const customFields = await this.customFieldsService.serializeTaskValues(
+      organizationId,
+      task.project.id,
+      task.id,
+    );
+    return Object.assign(task, { customFields });
+  }
+
+  private async attachCustomFieldsToTasks<T extends Task>(
+    tasks: T[],
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    if (
+      !tasks.length ||
+      !(await this.customFieldsEnabled(actor, organizationId))
+    ) {
+      return tasks;
+    }
+    const serialized = await this.customFieldsService.serializeTasks(
+      organizationId,
+      tasks.map((task) => ({ id: task.id, projectId: task.project.id })),
+    );
+    return tasks.map((task) =>
+      Object.assign(task, { customFields: serialized.get(task.id) ?? [] }),
+    );
+  }
 
   private inferMimeType(
     filename: string,
@@ -296,7 +348,7 @@ export class TasksService {
       action: 'read',
     });
 
-    return task;
+    return this.attachCustomFields(task, actor, organizationId);
   }
 
   async findTasks(actor: AuthUser, organizationId: string) {
@@ -335,7 +387,11 @@ export class TasksService {
       );
     }
 
-    const tasks = await query.getMany();
+    const tasks = await this.attachCustomFieldsToTasks(
+      await query.getMany(),
+      actor,
+      organizationId,
+    );
     const res = {
       success: 'success',
       message: 'successful',
@@ -348,6 +404,7 @@ export class TasksService {
   private applyProductivityFilters(
     query: SelectQueryBuilder<Task>,
     filters: ProductivityTaskQueryDto,
+    customFieldFilters: PreparedCustomFieldFilter[] = [],
   ) {
     if (filters.project_id) {
       query.andWhere('project.id = :projectId', {
@@ -394,6 +451,65 @@ export class TasksService {
         )
         .setParameter('search', `%${filters.search.trim()}%`);
     }
+    customFieldFilters.forEach((filter, index) => {
+      const alias = `custom_value_${index}`;
+      const definitionAlias = `custom_definition_${index}`;
+      const fieldParameter = `customFieldId${index}`;
+      const valueParameter = `customFieldValue${index}`;
+      const nonEmpty = `JSON_UNQUOTE(JSON_EXTRACT(${alias}.value, '$')) <> '' AND (JSON_TYPE(${alias}.value) <> 'ARRAY' OR JSON_LENGTH(${alias}.value) > 0)`;
+      const base = `SELECT 1 FROM task_custom_field_values ${alias} INNER JOIN custom_field_definitions ${definitionAlias} ON ${definitionAlias}.id = ${alias}.definition_id WHERE ${alias}.task_id = task.id AND ${alias}.definition_id = :${fieldParameter} AND ${definitionAlias}.organization_id = :organizationId AND ${definitionAlias}.project_id = project.id`;
+      if (filter.operator === 'is_empty') {
+        query.andWhere(`NOT EXISTS (${base} AND ${nonEmpty})`, {
+          [fieldParameter]: filter.fieldId,
+        });
+        return;
+      }
+      if (filter.operator === 'is_not_empty') {
+        query.andWhere(`EXISTS (${base} AND ${nonEmpty})`, {
+          [fieldParameter]: filter.fieldId,
+        });
+        return;
+      }
+
+      const symbols: Record<string, string> = {
+        eq: '=',
+        neq: '<>',
+        gt: '>',
+        gte: '>=',
+        lt: '<',
+        lte: '<=',
+      };
+      let comparison: string;
+      let parameterValue: unknown = filter.value;
+      if (filter.type === CustomFieldType.MULTI_SELECT) {
+        if (filter.operator === 'contains') {
+          comparison = `JSON_CONTAINS(${alias}.value, JSON_QUOTE(:${valueParameter}))`;
+        } else {
+          const exactMatch = `JSON_CONTAINS(${alias}.value, CAST(:${valueParameter} AS JSON)) AND JSON_CONTAINS(CAST(:${valueParameter} AS JSON), ${alias}.value)`;
+          comparison =
+            filter.operator === 'neq' ? `NOT (${exactMatch})` : exactMatch;
+          parameterValue = JSON.stringify(filter.value);
+        }
+      } else if (filter.type === CustomFieldType.NUMBER) {
+        comparison = `CAST(JSON_UNQUOTE(JSON_EXTRACT(${alias}.value, '$')) AS DECIMAL(30,10)) ${
+          symbols[filter.operator]
+        } :${valueParameter}`;
+      } else if (filter.operator === 'contains') {
+        comparison = `LOWER(JSON_UNQUOTE(JSON_EXTRACT(${alias}.value, '$'))) LIKE :${valueParameter} ESCAPE '\\\\'`;
+        parameterValue = `%${String(filter.value)
+          .toLowerCase()
+          .replace(/[\\%_]/g, '\\$&')}%`;
+      } else {
+        comparison = `JSON_UNQUOTE(JSON_EXTRACT(${alias}.value, '$')) ${
+          symbols[filter.operator]
+        } :${valueParameter}`;
+        parameterValue = String(filter.value);
+      }
+      query.andWhere(`EXISTS (${base} AND ${comparison})`, {
+        [fieldParameter]: filter.fieldId,
+        [valueParameter]: parameterValue,
+      });
+    });
   }
 
   private applyProductivityView(
@@ -450,6 +566,18 @@ export class TasksService {
       organizationId,
     );
     const anchorDate = filters.date ?? new Date().toISOString().slice(0, 10);
+    let customFieldFilters: PreparedCustomFieldFilter[] = [];
+    if (filters.custom_fields?.length) {
+      await this.entitlementsService.assertCapability(
+        actor,
+        organizationId,
+        CapabilityKey.CUSTOM_FIELDS,
+      );
+      customFieldFilters = await this.customFieldsService.prepareFilters(
+        organizationId,
+        filters.custom_fields,
+      );
+    }
 
     const baseQuery = this.taskRepository
       .createQueryBuilder('task')
@@ -478,7 +606,7 @@ export class TasksService {
       );
     }
 
-    this.applyProductivityFilters(baseQuery, filters);
+    this.applyProductivityFilters(baseQuery, filters, customFieldFilters);
 
     const views = Object.values(ProductivityTaskView);
     const countEntries = await Promise.all(
@@ -523,7 +651,12 @@ export class TasksService {
       .skip((filters.page - 1) * filters.limit)
       .take(filters.limit);
 
-    const [tasks, total] = await taskQuery.getManyAndCount();
+    const [rawTasks, total] = await taskQuery.getManyAndCount();
+    const tasks = await this.attachCustomFieldsToTasks(
+      rawTasks,
+      actor,
+      organizationId,
+    );
 
     return {
       success: 'success',
@@ -671,6 +804,31 @@ export class TasksService {
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
       const data: CreateTaskParams = {};
+      let customFieldInputs = updateTaskDetails.customFields;
+      if (typeof customFieldInputs === 'string') {
+        try {
+          customFieldInputs = JSON.parse(customFieldInputs);
+        } catch {
+          throw new HttpException(
+            'Invalid customFields payload',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+      const hasCustomFieldUpdate = customFieldInputs !== undefined;
+      if (hasCustomFieldUpdate && !Array.isArray(customFieldInputs)) {
+        throw new HttpException(
+          'Invalid customFields payload',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      if (hasCustomFieldUpdate) {
+        await this.entitlementsService.assertCapability(
+          user,
+          organizationId,
+          CapabilityKey.CUSTOM_FIELDS,
+        );
+      }
       const richDescription = normalizeRichTextDescription({
         description: updateTaskDetails.description,
         description_html: updateTaskDetails.description_html,
@@ -712,17 +870,29 @@ export class TasksService {
         data.status = statusEntity;
       }
 
-      if (Object.keys(data).length === 0) {
+      if (Object.keys(data).length === 0 && !hasCustomFieldUpdate) {
         throw new HttpException(
           'No update values provided',
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      const updatedResult = await this.taskRepository.update(
-        { id },
-        { ...data },
-      );
+      const updatedResult = hasCustomFieldUpdate
+        ? await this.dataSource.transaction(async (manager) => {
+            const result = Object.keys(data).length
+              ? await manager.getRepository(Task).update({ id }, { ...data })
+              : { affected: 1 };
+            await this.customFieldsService.setTaskValuesInTransaction(
+              manager,
+              organizationId,
+              task.project.id,
+              id,
+              customFieldInputs,
+              false,
+            );
+            return result;
+          })
+        : await this.taskRepository.update({ id }, { ...data });
 
       console.log(updatedResult, 'rererr');
 
@@ -808,7 +978,11 @@ export class TasksService {
         metadata: { taskTitle: updatedTask.title ?? '' },
       });
 
-      const hydratedTask = await this.getHydratedTaskForResponse(id);
+      const hydratedTask = await this.getHydratedTaskForResponse(
+        id,
+        user,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -817,6 +991,11 @@ export class TasksService {
       };
     } catch (error) {
       console.log(error);
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error?.message || 'Failed to update task',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
     // return this.taskRepository.update({ id }, { ...updateTaskDetails });
@@ -830,6 +1009,31 @@ export class TasksService {
     organizationId: string,
   ) {
     await this.assertTaskWriteAccess(id, user, organizationId);
+    let customFieldInputs = updateTaskDetails.customFields;
+    if (typeof customFieldInputs === 'string') {
+      try {
+        customFieldInputs = JSON.parse(customFieldInputs);
+      } catch {
+        throw new HttpException(
+          'Invalid customFields payload',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    const hasCustomFieldUpdate = customFieldInputs !== undefined;
+    if (hasCustomFieldUpdate && !Array.isArray(customFieldInputs)) {
+      throw new HttpException(
+        'Invalid customFields payload',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (hasCustomFieldUpdate) {
+      await this.entitlementsService.assertCapability(
+        user,
+        organizationId,
+        CapabilityKey.CUSTOM_FIELDS,
+      );
+    }
     const uploadedFiles: Array<{
       originalname: string;
       size: number;
@@ -994,6 +1198,16 @@ export class TasksService {
         );
 
         await manager.getRepository(Task).save(task);
+        if (hasCustomFieldUpdate) {
+          await this.customFieldsService.setTaskValuesInTransaction(
+            manager,
+            organizationId,
+            task.project.id,
+            task.id,
+            customFieldInputs,
+            false,
+          );
+        }
 
         const createdResources: Resource[] = [];
         for (const uploadedFile of uploadedFiles) {
@@ -1148,7 +1362,11 @@ export class TasksService {
         metadata: { taskTitle: taskResult.task.title ?? '' },
       });
 
-      const hydratedTask = await this.getHydratedTaskForResponse(id);
+      const hydratedTask = await this.getHydratedTaskForResponse(
+        id,
+        user,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1268,7 +1486,11 @@ export class TasksService {
     }
   }
 
-  private async getHydratedTaskForResponse(id: number) {
+  private async getHydratedTaskForResponse(
+    id: number,
+    actor?: AuthUser,
+    organizationId?: string,
+  ) {
     const task = await this.taskRepository.findOne({
       where: { id },
       relations: ['project', 'status', 'assignees'],
@@ -1283,7 +1505,9 @@ export class TasksService {
       id,
     );
 
-    return task;
+    return actor && organizationId
+      ? this.attachCustomFields(task, actor, organizationId)
+      : task;
   }
 
   private async loadResourcesForTask(
@@ -1718,9 +1942,15 @@ export class TasksService {
     //   console.log('doesnt work')
     // });
 
+    const serializedTasks = await this.attachCustomFieldsToTasks(
+      tasks,
+      actor,
+      organizationId,
+    );
+
     let data = {
       success: 'success',
-      data: tasks,
+      data: serializedTasks,
     };
 
     return data;
@@ -1808,6 +2038,37 @@ export class TasksService {
           );
         }
       }
+      let customFieldInputs = payload?.customFields;
+      if (typeof customFieldInputs === 'string') {
+        try {
+          customFieldInputs = JSON.parse(customFieldInputs);
+        } catch {
+          throw new HttpException(
+            'Invalid customFields payload',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+      if (
+        customFieldInputs !== undefined &&
+        !Array.isArray(customFieldInputs)
+      ) {
+        throw new HttpException(
+          'Invalid customFields payload',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const customFieldsAvailable = await this.customFieldsEnabled(
+        user,
+        organizationId,
+      );
+      if (customFieldInputs !== undefined && !customFieldsAvailable) {
+        await this.entitlementsService.assertCapability(
+          user,
+          organizationId,
+          CapabilityKey.CUSTOM_FIELDS,
+        );
+      }
 
       const newTask = this.taskRepository.create({
         title,
@@ -1826,6 +2087,16 @@ export class TasksService {
 
       const savedTask = await this.dataSource.transaction(async (manager) => {
         const task = await manager.getRepository(Task).save(newTask);
+        if (customFieldsAvailable) {
+          await this.customFieldsService.setTaskValuesInTransaction(
+            manager,
+            organizationId,
+            project.id,
+            task.id,
+            customFieldInputs ?? [],
+            true,
+          );
+        }
         if (recurrencePayload) {
           await this.recurringTasksService.createForTaskInTransaction(
             manager,
@@ -1872,6 +2143,13 @@ export class TasksService {
       });
 
       // console.log(savedTask, 'savedtask')
+      const customFields = customFieldsAvailable
+        ? await this.customFieldsService.serializeTaskValues(
+            organizationId,
+            project.id,
+            savedTask.id,
+          )
+        : undefined;
       return {
         success: 'success',
         message: 'Task created successfully',
@@ -1882,6 +2160,7 @@ export class TasksService {
           description_html: savedTask.description_html,
           priority: savedTask.priority,
           due_date: savedTask.due_date,
+          ...(customFieldsAvailable ? { customFields } : {}),
         },
       };
     } catch (err) {

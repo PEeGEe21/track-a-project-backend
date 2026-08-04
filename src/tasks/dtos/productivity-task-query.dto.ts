@@ -1,5 +1,8 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  Allow,
+  ArrayMaxSize,
+  IsArray,
   IsEnum,
   IsInt,
   IsOptional,
@@ -7,7 +10,9 @@ import {
   Max,
   Matches,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { CustomFieldValue } from 'src/custom-fields/custom-field-type';
 
 export enum ProductivityTaskView {
   MY_TASKS = 'my_tasks',
@@ -29,6 +34,39 @@ export enum SortDirection {
   ASC = 'asc',
   DESC = 'desc',
 }
+
+export enum CustomFieldFilterOperator {
+  EQUALS = 'eq',
+  NOT_EQUALS = 'neq',
+  CONTAINS = 'contains',
+  GREATER_THAN = 'gt',
+  GREATER_THAN_OR_EQUAL = 'gte',
+  LESS_THAN = 'lt',
+  LESS_THAN_OR_EQUAL = 'lte',
+  IS_EMPTY = 'is_empty',
+  IS_NOT_EMPTY = 'is_not_empty',
+}
+
+export class CustomFieldFilterDto {
+  @IsString()
+  fieldId: string;
+
+  @IsEnum(CustomFieldFilterOperator)
+  operator: CustomFieldFilterOperator;
+
+  @Allow()
+  value?: CustomFieldValue;
+}
+
+const parseCustomFieldFilters = ({ value }) => {
+  if (value === undefined || value === '') return undefined;
+  if (Array.isArray(value)) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
 
 const optionalInteger = () =>
   Transform(({ value }) =>
@@ -102,4 +140,12 @@ export class ProductivityTaskQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @Transform(parseCustomFieldFilters)
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => CustomFieldFilterDto)
+  custom_fields?: CustomFieldFilterDto[];
 }

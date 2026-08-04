@@ -59,9 +59,12 @@ export class Note {
   @Column({ type: 'varchar', length: 32, nullable: true })
   audio_notice_version: string | null;
 
-  @ManyToOne(() => Task, (task) => task.notes)
+  @ManyToOne(() => Task, (task) => task.notes, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'task_id' })
-  task: Task;
+  task: Task | null;
 
   @ManyToOne(() => User, (user) => user.notes)
   @JoinColumn({ name: 'user_id' })

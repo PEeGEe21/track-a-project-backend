@@ -24,6 +24,7 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
 import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
 import { RecurringTasksModule } from 'src/recurring-tasks/recurring-tasks.module';
+import { CustomFieldsModule } from 'src/custom-fields/custom-fields.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { RecurringTasksModule } from 'src/recurring-tasks/recurring-tasks.module
     AuthorizationModule,
     EntitlementsModule,
     RecurringTasksModule,
+    CustomFieldsModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, OrganizationAccessGuard],

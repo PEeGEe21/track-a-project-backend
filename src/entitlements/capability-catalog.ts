@@ -6,6 +6,7 @@ export enum CapabilityKey {
   STRUCTURED_PROJECT_UPDATES = 'structured_project_updates',
   DECISION_REGISTER = 'decision_register',
   AI_ASSISTANCE = 'ai_assistance',
+  CUSTOM_FIELDS = 'custom_fields',
 }
 
 export type CapabilityDefinition = {
@@ -50,6 +51,13 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     key: CapabilityKey.AI_ASSISTANCE,
     label: 'AI Assistance Service',
     description: 'Secure, audited AI assistance infrastructure.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.CUSTOM_FIELDS]: {
+    key: CapabilityKey.CUSTOM_FIELDS,
+    label: 'Custom Fields',
+    description: 'Project-defined typed fields for tasks and intake.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

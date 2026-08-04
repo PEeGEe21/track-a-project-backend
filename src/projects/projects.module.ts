@@ -36,6 +36,8 @@ import { IngestionModule } from 'src/ingestion/ingestion.module';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
 import { AuthorizationModule } from 'src/common/authorization/authorization.module';
+import { CustomFieldsModule } from 'src/custom-fields/custom-fields.module';
+import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 
 @Module({
   imports: [
@@ -74,6 +76,8 @@ import { AuthorizationModule } from 'src/common/authorization/authorization.modu
     // forwardRef(() => CategoriesModule),
     NotificationsModule,
     AuthorizationModule,
+    CustomFieldsModule,
+    EntitlementsModule,
   ],
   controllers: [ProjectsController, ProjectInvitesController],
   providers: [ProjectsService, ProjectsGateway, MailingService, ConfigService],

@@ -105,6 +105,10 @@ import { AiModule } from './ai/ai.module';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
 import { GlobalSearchModule } from './search/global-search.module';
+import { CustomFieldDefinition } from './typeorm/entities/CustomFieldDefinition';
+import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
+import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
+import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -204,6 +208,9 @@ import { GlobalSearchModule } from './search/global-search.module';
             UserProjectSidebarPin,
             AiRequestAudit,
             DataLifecycleEvent,
+            CustomFieldDefinition,
+            CustomFieldOption,
+            TaskCustomFieldValue,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -297,6 +304,7 @@ import { GlobalSearchModule } from './search/global-search.module';
     AiModule,
     DataLifecycleModule,
     GlobalSearchModule,
+    CustomFieldsModule,
   ],
   controllers: [AppController],
   providers: [

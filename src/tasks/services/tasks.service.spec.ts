@@ -1,6 +1,7 @@
 import { TasksService } from './tasks.service';
 import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 
 describe('TasksService', () => {
   let service: TasksService;
@@ -16,6 +17,11 @@ describe('TasksService', () => {
     remove: jest.fn(),
   };
   const recurringTasksService = { generateAfterCompletion: jest.fn() };
+  const customFieldsService = { serializeTaskValues: jest.fn() };
+  const entitlementsService = {
+    resolveForActor: jest.fn().mockResolvedValue([]),
+    assertCapability: jest.fn(),
+  };
 
   const queryBuilder = () => {
     const query = {
@@ -44,7 +50,10 @@ describe('TasksService', () => {
       authorizationService as any,
       savedTaskViewRepository as any,
       recurringTasksService as any,
+      customFieldsService as any,
+      entitlementsService as any,
     );
+    entitlementsService.resolveForActor.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -135,6 +144,31 @@ describe('TasksService', () => {
       'task.due_date < DATE_ADD(:dueTo, INTERVAL 1 DAY)',
       { dueTo: '2026-07-12' },
     );
+  });
+
+  it('adds tenant-safe typed custom-field predicates to the shared query', () => {
+    const query = queryBuilder();
+
+    (service as any).applyProductivityFilters(query, {}, [
+      {
+        fieldId: 'field-1',
+        type: CustomFieldType.NUMBER,
+        operator: 'gte',
+        value: 10,
+      },
+    ]);
+
+    expect(query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('task_custom_field_values custom_value_0'),
+      {
+        customFieldId0: 'field-1',
+        customFieldValue0: 10,
+      },
+    );
+    expect(query.andWhere.mock.calls[0][0]).toContain(
+      'custom_definition_0.organization_id = :organizationId',
+    );
+    expect(query.andWhere.mock.calls[0][0]).toContain('CAST(JSON_UNQUOTE');
   });
 
   it('lists only owned and organization-visible saved views in the selected organization', async () => {

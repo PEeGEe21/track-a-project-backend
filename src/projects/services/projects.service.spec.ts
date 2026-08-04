@@ -1,4 +1,5 @@
 import { ProjectsService } from './projects.service';
+import * as ExcelJS from 'exceljs';
 
 describe('ProjectsService ingestion settings', () => {
   const usersService = {
@@ -36,6 +37,12 @@ describe('ProjectsService ingestion settings', () => {
   const authorizationService = {
     assertProjectPermission: jest.fn(),
   };
+  const customFieldsService = {
+    serializeTasks: jest.fn(),
+  };
+  const entitlementsService = {
+    resolveForActor: jest.fn(),
+  };
 
   let service: ProjectsService;
 
@@ -69,6 +76,8 @@ describe('ProjectsService ingestion settings', () => {
       projectIngestionSettingsRepository as any,
       projectStatusTemplateRepository as any,
       authorizationService as any,
+      customFieldsService as any,
+      entitlementsService as any,
     );
     authorizationService.assertProjectPermission.mockImplementation(
       async () => ({
@@ -76,6 +85,71 @@ describe('ProjectsService ingestion settings', () => {
         role: 'owner',
       }),
     );
+  });
+
+  it('exports stable custom-field metadata and normalized values', async () => {
+    usersService.getUserAccountById.mockResolvedValue({ id: 10 });
+    projectRepository.findOne.mockResolvedValue({
+      id: 7,
+      title: 'Export project',
+      description: '',
+      status: 'active',
+      user: { id: 10, first_name: 'Owner', last_name: '', email: 'o@test' },
+      tasks: [
+        {
+          id: 55,
+          title: 'Task one',
+          description: '',
+          priority: 0,
+          assignees: [],
+          resources: [],
+        },
+      ],
+      projectPeers: [],
+      resources: [],
+    });
+    entitlementsService.resolveForActor.mockResolvedValue([
+      { key: 'custom_fields', enabled: true },
+    ]);
+    customFieldsService.serializeTasks.mockResolvedValue(
+      new Map([
+        [
+          55,
+          [
+            {
+              key: 'regions',
+              name: 'Regions',
+              type: 'multi_select',
+              archived: false,
+              value: ['west', 'north'],
+            },
+          ],
+        ],
+      ]),
+    );
+
+    const exported = await service.exportProjectWorkbook(
+      7,
+      { userId: 10 },
+      'org-1',
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(exported.content as any);
+    const sheet = workbook.getWorksheet('Custom Fields');
+
+    expect(authorizationService.assertProjectPermission).toHaveBeenCalled();
+    expect(sheet?.getRow(1).values).toEqual([
+      undefined,
+      'Task ID',
+      'Task Title',
+      'Field Key',
+      'Field Name',
+      'Field Type',
+      'Archived',
+      'Normalized Value',
+    ]);
+    expect(sheet?.getRow(2).getCell(3).value).toBe('regions');
+    expect(sheet?.getRow(2).getCell(7).value).toBe('["west","north"]');
   });
 
   it('rejects key creation when the default ingestion status is missing', async () => {

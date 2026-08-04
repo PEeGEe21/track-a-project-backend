@@ -61,6 +61,9 @@ import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { AuditLog } from './typeorm/entities/AuditLog';
+import { CustomFieldDefinition } from './typeorm/entities/CustomFieldDefinition';
+import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
+import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -138,6 +141,9 @@ export const AppDataSource = new DataSource({
     AiRequestAudit,
     DataLifecycleEvent,
     AuditLog,
+    CustomFieldDefinition,
+    CustomFieldOption,
+    TaskCustomFieldValue,
   ],
   migrationsTransactionMode: 'each',
 });
