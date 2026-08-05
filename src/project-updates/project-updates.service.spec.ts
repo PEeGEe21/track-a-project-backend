@@ -11,6 +11,7 @@ describe('ProjectUpdatesService', () => {
   const tasks = { findOne: jest.fn(), findAndCount: jest.fn() };
   const documents = { findOne: jest.fn(), findAndCount: jest.fn() };
   const memberships = { findOne: jest.fn() };
+  const milestones = { findOne: jest.fn(), findAndCount: jest.fn() };
   const notifications = { createNotification: jest.fn() };
   const service = new ProjectUpdatesService(
     { transaction: jest.fn() } as any,
@@ -21,6 +22,7 @@ describe('ProjectUpdatesService', () => {
     documents as any,
     users as any,
     memberships as any,
+    milestones as any,
     notifications as any,
   );
 
@@ -126,8 +128,27 @@ describe('ProjectUpdatesService', () => {
     expect(tasks.findOne).toHaveBeenCalledWith({ where: { id: 99, organization_id: 'org', project: { id: 3 } } });
   });
 
-  it('rejects milestone references until milestones have an authorized domain model', async () => {
-    await expect((service as any).buildReferences({ references: [{ type: 'milestone', id: 'release-1', label: 'Release 1' }] }, 'org', 3, { create: jest.fn() }, 12)).rejects.toThrow('Milestone references are unavailable');
+  it('validates and snapshots project-scoped milestone references', async () => {
+    milestones.findOne.mockResolvedValue({ id: 'release-1', title: 'Release 1' });
+    const create = jest.fn((value) => value);
+    const result = await (service as any).buildReferences({ references: [{ type: 'milestone', id: 'release-1' }] }, 'org', 3, { create }, 12);
+    expect(milestones.findOne).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'release-1', organization_id: 'org', project_id: 3 }),
+    });
+    expect(result[0]).toEqual(expect.objectContaining({ reference_type: 'milestone', snapshot_label: 'Release 1' }));
+  });
+
+  it('rejects milestone references outside the authorized project scope', async () => {
+    milestones.findOne.mockResolvedValue(null);
+    await expect(
+      (service as any).buildReferences(
+        { references: [{ type: 'milestone', id: 'outside' }] },
+        'org',
+        3,
+        { create: jest.fn() },
+        12,
+      ),
+    ).rejects.toThrow('Invalid milestone reference outside');
   });
 
   it('notifies each connected member once and excludes the publisher', async () => {

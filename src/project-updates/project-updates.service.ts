@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Like, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Like, Repository } from 'typeorm';
 import { Document } from 'src/typeorm/entities/Document';
 import { Project } from 'src/typeorm/entities/Project';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
@@ -14,6 +14,7 @@ import { NotificationsService } from 'src/notifications/services/notifications.s
 import { SaveProjectUpdateDto } from './dto/project-update.dto';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { ProjectRolePolicy } from 'src/common/authorization/project-role.policy';
+import { Milestone } from 'src/typeorm/entities/Milestone';
 
 @Injectable()
 export class ProjectUpdatesService {
@@ -26,6 +27,7 @@ export class ProjectUpdatesService {
     @InjectRepository(Document) private readonly documents: Repository<Document>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(UserOrganization) private readonly memberships: Repository<UserOrganization>,
+    @InjectRepository(Milestone) private readonly milestones: Repository<Milestone>,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -53,7 +55,7 @@ export class ProjectUpdatesService {
     return update;
   }
 
-  async referenceOptions(actor: any, organizationId: string, projectId: number, type: 'task' | 'document' | 'user' = 'task', search = '', page = 1, limit = 20) {
+  async referenceOptions(actor: any, organizationId: string, projectId: number, type: 'task' | 'milestone' | 'document' | 'user' = 'task', search = '', page = 1, limit = 20) {
     const access = await this.assertAccess(actor, organizationId, projectId);
     const pagination = this.pagination(page, limit);
     const term = search.trim();
@@ -63,6 +65,10 @@ export class ProjectUpdatesService {
     }
     if (type === 'document') {
       const [items, total] = await this.documents.findAndCount({ where: { project: { id: projectId }, organization_id: organizationId, ...(term ? { title: Like(`%${term}%`) } : {}) }, select: ['id', 'title'], order: { title: 'ASC' }, skip: pagination.skip, take: pagination.limit });
+      return { data: items.map((item) => ({ id: item.id, label: item.title })), meta: this.meta(pagination.page, pagination.limit, total, items.length) };
+    }
+    if (type === 'milestone') {
+      const [items, total] = await this.milestones.findAndCount({ where: { project_id: projectId, organization_id: organizationId, archived_at: IsNull(), ...(term ? { title: Like(`%${term}%`) } : {}) }, select: ['id', 'title'], order: { target_date: 'ASC', title: 'ASC' }, skip: pagination.skip, take: pagination.limit });
       return { data: items.map((item) => ({ id: item.id, label: item.title })), meta: this.meta(pagination.page, pagination.limit, total, items.length) };
     }
     const peers = await this.peers.find({ where: { project: { id: projectId }, organization_id: organizationId, status: ProjectPeerStatus.CONNECTED, is_confirmed: true }, relations: ['user'] });
@@ -190,7 +196,7 @@ export class ProjectUpdatesService {
       if (ref.type === ProjectUpdateReferenceType.TASK) { const item = await this.tasks.findOne({ where: { id: Number(ref.id), organization_id: org, project: { id: projectId } } }); if (!item) throw new BadRequestException(`Invalid task reference ${ref.id}`); label = item.title; }
       if (ref.type === ProjectUpdateReferenceType.DOCUMENT) { const item = await this.documents.findOne({ where: { id: ref.id, organization_id: org, project: { id: projectId } } }); if (!item) throw new BadRequestException(`Invalid document reference ${ref.id}`); label = item.title; }
       if (ref.type === ProjectUpdateReferenceType.USER) { const member = await this.memberships.findOne({ where: { organization_id: org, user: { id: Number(ref.id) } } }); if (!member) throw new BadRequestException(`Invalid user reference ${ref.id}`); const item = await this.users.findOne({ where: { id: Number(ref.id) } }); label = item?.fullName || item?.email; }
-      if (ref.type === ProjectUpdateReferenceType.MILESTONE) throw new BadRequestException('Milestone references are unavailable until the dedicated milestone model is implemented');
+      if (ref.type === ProjectUpdateReferenceType.MILESTONE) { const item = await this.milestones.findOne({ where: { id: ref.id, organization_id: org, project_id: projectId, archived_at: IsNull() } }); if (!item) throw new BadRequestException(`Invalid milestone reference ${ref.id}`); label = item.title; }
       refs.push(repo.create({ project_update_id: updateId, reference_type: ref.type, reference_id: ref.id, snapshot_label: label! }));
     }
     return refs;

@@ -10,8 +10,9 @@ import { ProjectUpdateReference } from 'src/typeorm/entities/ProjectUpdateRefere
 import { Task } from 'src/typeorm/entities/Task';
 import { User } from 'src/typeorm/entities/User';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
+import { Milestone } from 'src/typeorm/entities/Milestone';
 import { ProjectUpdatesController } from './project-updates.controller';
 import { ProjectUpdatesService } from './project-updates.service';
 
-@Module({ imports: [TypeOrmModule.forFeature([ProjectUpdate, ProjectUpdateReference, Project, ProjectPeer, Task, Document, User, UserOrganization]), EntitlementsModule, NotificationsModule], controllers: [ProjectUpdatesController], providers: [ProjectUpdatesService] })
+@Module({ imports: [TypeOrmModule.forFeature([ProjectUpdate, ProjectUpdateReference, Project, ProjectPeer, Task, Document, User, UserOrganization, Milestone]), EntitlementsModule, NotificationsModule], controllers: [ProjectUpdatesController], providers: [ProjectUpdatesService] })
 export class ProjectUpdatesModule {}

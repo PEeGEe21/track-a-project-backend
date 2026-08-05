@@ -69,6 +69,8 @@ import { ProjectWorkflowVersion } from './typeorm/entities/ProjectWorkflowVersio
 import { ProjectWorkflowStatus } from './typeorm/entities/ProjectWorkflowStatus';
 import { ProjectWorkflowTransition } from './typeorm/entities/ProjectWorkflowTransition';
 import { TaskTransitionHistory } from './typeorm/entities/TaskTransitionHistory';
+import { Milestone } from './typeorm/entities/Milestone';
+import { MilestoneTask } from './typeorm/entities/MilestoneTask';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -154,6 +156,8 @@ export const AppDataSource = new DataSource({
     ProjectWorkflowStatus,
     ProjectWorkflowTransition,
     TaskTransitionHistory,
+    Milestone,
+    MilestoneTask,
   ],
   migrationsTransactionMode: 'each',
 });

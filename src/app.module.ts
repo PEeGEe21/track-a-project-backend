@@ -110,6 +110,9 @@ import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
 import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.module';
+import { Milestone } from './typeorm/entities/Milestone';
+import { MilestoneTask } from './typeorm/entities/MilestoneTask';
+import { MilestonesModule } from './milestones/milestones.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -212,6 +215,8 @@ import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.modul
             CustomFieldDefinition,
             CustomFieldOption,
             TaskCustomFieldValue,
+            Milestone,
+            MilestoneTask,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -270,7 +275,9 @@ import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.modul
       ProjectStatusTemplate,
       UserProjectSidebarPin,
       AiRequestAudit,
-      DataLifecycleEvent,
+            DataLifecycleEvent,
+            Milestone,
+            MilestoneTask,
     ]),
     UsersModule,
     ProjectsModule,
@@ -307,6 +314,7 @@ import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.modul
     GlobalSearchModule,
     CustomFieldsModule,
     CustomWorkflowsModule,
+    MilestonesModule,
   ],
   controllers: [AppController],
   providers: [

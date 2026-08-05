@@ -8,6 +8,7 @@ export enum CapabilityKey {
   AI_ASSISTANCE = 'ai_assistance',
   CUSTOM_FIELDS = 'custom_fields',
   CUSTOM_WORKFLOWS = 'custom_workflows',
+  MILESTONES = 'milestones',
 }
 
 export type CapabilityDefinition = {
@@ -67,6 +68,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Custom Workflows',
     description:
       'Versioned project status transitions with role and field requirements.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.MILESTONES]: {
+    key: CapabilityKey.MILESTONES,
+    label: 'Milestones',
+    description:
+      'Project outcomes with owners, target dates, health, and task-based progress.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },
