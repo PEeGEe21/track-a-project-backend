@@ -11,6 +11,7 @@ import { StatusService } from './services/status.service';
 import { AuthorizationModule } from 'src/common/authorization/authorization.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
       UserOrganization,
     ]),
     AuthorizationModule,
+    EntitlementsModule,
   ],
   controllers: [StatusController],
   providers: [StatusService, OrganizationAccessGuard],

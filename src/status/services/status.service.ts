@@ -19,6 +19,8 @@ import {
   AuthorizationService,
   ProjectPermission,
 } from 'src/common/authorization/authorization.service';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
 
 @Injectable()
 export class StatusService {
@@ -30,6 +32,7 @@ export class StatusService {
     @InjectRepository(Task) private taskRepository: Repository<Task>,
     @InjectRepository(Status) private statusRepository: Repository<Status>,
     private readonly authorizationService: AuthorizationService,
+    private readonly entitlementsService: EntitlementsService,
   ) {}
 
   async getTaskById(id: number): Promise<Status | undefined> {
@@ -249,6 +252,15 @@ export class StatusService {
         existingStatus.project.id,
         ProjectPermission.EDIT,
       );
+      const workflowEnabled = (
+        await this.entitlementsService.resolveForActor(user, organizationId)
+      ).find((item) => item.key === CapabilityKey.CUSTOM_WORKFLOWS)?.enabled;
+      if (workflowEnabled) {
+        throw new HttpException(
+          'Publish a workflow draft with status migration instructions before removing this status',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
       const existingTasks = await this.taskRepository.find({
         where: { status: existingStatus },

@@ -17,13 +17,12 @@ import { Task } from 'src/typeorm/entities/Task';
 import { User } from 'src/typeorm/entities/User';
 import { ActivityType } from 'src/utils/constants/activity';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import {
-  CreateIngestedTaskDto,
-} from '../dto/create-ingested-task.dto';
+import { CreateIngestedTaskDto } from '../dto/create-ingested-task.dto';
 import { IngestionRequestContext } from '../guards/ingestion-api-key.guard';
 import { ClosedTaskDedupeBehavior } from '../constants/closed-task-dedupe-behavior';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectsGateway } from 'src/projects/projects.gateway';
+import { CustomWorkflowsService } from 'src/custom-workflows/custom-workflows.service';
 
 type IngestionMutationResult = {
   status: 'created' | 'deduped';
@@ -38,6 +37,7 @@ export class IngestionService {
     private readonly projectActivitiesService: ProjectActivitiesService,
     @Inject(forwardRef(() => ProjectsGateway))
     private readonly projectsGateway: ProjectsGateway,
+    private readonly customWorkflowsService: CustomWorkflowsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @InjectRepository(Project)
@@ -313,8 +313,17 @@ export class IngestionService {
     let realtimeAction: IngestionMutationResult['realtimeAction'] = 'deduped';
 
     if (task.status?.isTerminal) {
-      task.status = targetStatus;
-      await taskRepository.save(task);
+      await this.customWorkflowsService.transitionTask(
+        manager,
+        {
+          userId: Number(project.user.id),
+          email: project.user.email ?? '',
+          role: 'user',
+        },
+        project.organization_id,
+        task,
+        targetStatus.id,
+      );
       realtimeAction = 'reopened';
 
       await this.createActivityWithManager(manager, {

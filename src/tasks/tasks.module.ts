@@ -25,6 +25,7 @@ import { EntitlementsModule } from 'src/entitlements/entitlements.module';
 import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
 import { RecurringTasksModule } from 'src/recurring-tasks/recurring-tasks.module';
 import { CustomFieldsModule } from 'src/custom-fields/custom-fields.module';
+import { CustomWorkflowsModule } from 'src/custom-workflows/custom-workflows.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { CustomFieldsModule } from 'src/custom-fields/custom-fields.module';
     EntitlementsModule,
     RecurringTasksModule,
     CustomFieldsModule,
+    CustomWorkflowsModule,
   ],
   controllers: [TasksController],
   providers: [TasksService, OrganizationAccessGuard],

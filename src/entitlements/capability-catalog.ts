@@ -7,6 +7,7 @@ export enum CapabilityKey {
   DECISION_REGISTER = 'decision_register',
   AI_ASSISTANCE = 'ai_assistance',
   CUSTOM_FIELDS = 'custom_fields',
+  CUSTOM_WORKFLOWS = 'custom_workflows',
 }
 
 export type CapabilityDefinition = {
@@ -58,6 +59,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     key: CapabilityKey.CUSTOM_FIELDS,
     label: 'Custom Fields',
     description: 'Project-defined typed fields for tasks and intake.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.CUSTOM_WORKFLOWS]: {
+    key: CapabilityKey.CUSTOM_WORKFLOWS,
+    label: 'Custom Workflows',
+    description:
+      'Versioned project status transitions with role and field requirements.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

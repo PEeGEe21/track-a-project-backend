@@ -6,6 +6,7 @@ describe('StatusService', () => {
   const projects = { findOne: jest.fn() };
   const statuses = { find: jest.fn() };
   const authorization = { assertProjectPermission: jest.fn() };
+  const entitlements = { resolveForActor: jest.fn().mockResolvedValue([]) };
   let service: StatusService;
 
   beforeEach(() => {
@@ -17,6 +18,7 @@ describe('StatusService', () => {
       {} as any,
       statuses as any,
       authorization as any,
+      entitlements as any,
     );
   });
 

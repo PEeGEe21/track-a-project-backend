@@ -64,6 +64,11 @@ import { AuditLog } from './typeorm/entities/AuditLog';
 import { CustomFieldDefinition } from './typeorm/entities/CustomFieldDefinition';
 import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
 import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
+import { ProjectWorkflow } from './typeorm/entities/ProjectWorkflow';
+import { ProjectWorkflowVersion } from './typeorm/entities/ProjectWorkflowVersion';
+import { ProjectWorkflowStatus } from './typeorm/entities/ProjectWorkflowStatus';
+import { ProjectWorkflowTransition } from './typeorm/entities/ProjectWorkflowTransition';
+import { TaskTransitionHistory } from './typeorm/entities/TaskTransitionHistory';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -144,6 +149,11 @@ export const AppDataSource = new DataSource({
     CustomFieldDefinition,
     CustomFieldOption,
     TaskCustomFieldValue,
+    ProjectWorkflow,
+    ProjectWorkflowVersion,
+    ProjectWorkflowStatus,
+    ProjectWorkflowTransition,
+    TaskTransitionHistory,
   ],
   migrationsTransactionMode: 'each',
 });

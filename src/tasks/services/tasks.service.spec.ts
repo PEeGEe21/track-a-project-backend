@@ -22,6 +22,7 @@ describe('TasksService', () => {
     resolveForActor: jest.fn().mockResolvedValue([]),
     assertCapability: jest.fn(),
   };
+  const customWorkflowsService = { transitionTask: jest.fn() };
 
   const queryBuilder = () => {
     const query = {
@@ -52,6 +53,7 @@ describe('TasksService', () => {
       recurringTasksService as any,
       customFieldsService as any,
       entitlementsService as any,
+      customWorkflowsService as any,
     );
     entitlementsService.resolveForActor.mockResolvedValue([]);
   });

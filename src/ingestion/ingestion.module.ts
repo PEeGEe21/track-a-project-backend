@@ -15,6 +15,7 @@ import { IngestionRateLimitGuard } from './guards/ingestion-rate-limit.guard';
 import { IngestionBodySizeGuard } from './guards/ingestion-body-size.guard';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectsModule } from 'src/projects/projects.module';
+import { CustomWorkflowsModule } from 'src/custom-workflows/custom-workflows.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ProjectsModule } from 'src/projects/projects.module';
     ]),
     ProjectActivitiesModule,
     forwardRef(() => ProjectsModule),
+    CustomWorkflowsModule,
   ],
   controllers: [IngestionController],
   providers: [

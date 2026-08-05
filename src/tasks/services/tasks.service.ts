@@ -64,6 +64,7 @@ import { EntitlementsService } from 'src/entitlements/entitlements.service';
 import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import { PreparedCustomFieldFilter } from 'src/custom-fields/custom-fields.service';
 import { CustomFieldType } from 'src/custom-fields/custom-field-type';
+import { CustomWorkflowsService } from 'src/custom-workflows/custom-workflows.service';
 
 @Injectable()
 export class TasksService {
@@ -90,6 +91,7 @@ export class TasksService {
     private recurringTasksService: RecurringTasksService,
     private readonly customFieldsService: CustomFieldsService,
     private readonly entitlementsService: EntitlementsService,
+    private readonly customWorkflowsService: CustomWorkflowsService,
   ) {}
 
   private async customFieldsEnabled(actor: AuthUser, organizationId: string) {
@@ -799,7 +801,10 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
-      const task = await this.findOne(id);
+      const task = await this.taskRepository.findOne({
+        where: { id, organization_id: organizationId },
+        relations: ['project', 'status', 'assignees'],
+      });
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
@@ -866,8 +871,6 @@ export class TasksService {
         if (!statusEntity) {
           throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
         }
-
-        data.status = statusEntity;
       }
 
       if (Object.keys(data).length === 0 && !hasCustomFieldUpdate) {
@@ -963,6 +966,24 @@ export class TasksService {
           // Unknown type -> clear to be safe
           await clearAssignees();
         }
+      }
+
+      if (statusEntity && task.status.id !== statusEntity.id) {
+        await this.dataSource.transaction(async (manager) => {
+          const transitionTask = await manager.getRepository(Task).findOne({
+            where: { id, organization_id: organizationId },
+            relations: ['project', 'status', 'assignees'],
+          });
+          if (!transitionTask)
+            throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+          await this.customWorkflowsService.transitionTask(
+            manager,
+            user,
+            organizationId,
+            transitionTask,
+            statusEntity.id,
+          );
+        });
       }
 
       await this.projectActivitiesService.createActivity({
@@ -1132,15 +1153,20 @@ export class TasksService {
           task.due_date = normalizedDueDate;
         }
 
-        if (updateTaskDetails.status) {
+        const destinationStatusId = updateTaskDetails.status
+          ? Number(updateTaskDetails.status)
+          : null;
+        if (destinationStatusId) {
           const statusEntity = await manager.getRepository(Status).findOne({
-            where: { id: Number(updateTaskDetails.status) },
+            where: {
+              id: destinationStatusId,
+              project: { id: task.project.id },
+              organization_id: organizationId,
+            },
           });
           if (!statusEntity) {
             throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
           }
-
-          task.status = statusEntity;
         }
 
         let addedAssignees: User[] = [];
@@ -1206,6 +1232,15 @@ export class TasksService {
             task.id,
             customFieldInputs,
             false,
+          );
+        }
+        if (destinationStatusId && task.status.id !== destinationStatusId) {
+          await this.customWorkflowsService.transitionTask(
+            manager,
+            user,
+            organizationId,
+            task,
+            destinationStatusId,
           );
         }
 
@@ -1570,8 +1605,13 @@ export class TasksService {
           throw new HttpException('Status not found', HttpStatus.NOT_FOUND);
         }
 
-        task.status = newStatus;
-        await manager.getRepository(Task).save(task);
+        await this.customWorkflowsService.transitionTask(
+          manager,
+          user,
+          organizationId,
+          task,
+          newStatus.id,
+        );
       }
 
       await this.bulkUpdateTaskPositions(

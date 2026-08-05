@@ -109,6 +109,7 @@ import { CustomFieldDefinition } from './typeorm/entities/CustomFieldDefinition'
 import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
 import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
+import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -305,6 +306,7 @@ import { CustomFieldsModule } from './custom-fields/custom-fields.module';
     DataLifecycleModule,
     GlobalSearchModule,
     CustomFieldsModule,
+    CustomWorkflowsModule,
   ],
   controllers: [AppController],
   providers: [

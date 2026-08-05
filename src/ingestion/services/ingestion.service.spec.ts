@@ -47,6 +47,7 @@ describe('IngestionService', () => {
   const projectsGateway = {
     emitIngestionUpdated: jest.fn(),
   };
+  const customWorkflowsService = { transitionTask: jest.fn() };
 
   let service: IngestionService;
 
@@ -70,9 +71,16 @@ describe('IngestionService', () => {
     );
     projectActivityRepository.create.mockImplementation((value) => value);
     projectActivityRepository.save.mockImplementation(async (value) => value);
+    customWorkflowsService.transitionTask.mockImplementation(
+      async (_manager, _actor, _organizationId, task, destinationStatusId) => {
+        task.status = { id: destinationStatusId };
+        return taskRepository.save(task);
+      },
+    );
     service = new IngestionService(
       projectActivitiesService as any,
       projectsGateway as any,
+      customWorkflowsService as any,
       dataSource as any,
       projectRepository as any,
       taskRepository as any,
@@ -308,6 +316,13 @@ describe('IngestionService', () => {
         activityType: ActivityType.TASK_REOPENED_BY_INGESTION,
         entityId: 21,
       }),
+    );
+    expect(customWorkflowsService.transitionTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ userId: 11 }),
+      'org_1',
+      expect.objectContaining({ id: 21 }),
+      3,
     );
     expect(taskRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
