@@ -71,6 +71,16 @@ import { ProjectWorkflowTransition } from './typeorm/entities/ProjectWorkflowTra
 import { TaskTransitionHistory } from './typeorm/entities/TaskTransitionHistory';
 import { Milestone } from './typeorm/entities/Milestone';
 import { MilestoneTask } from './typeorm/entities/MilestoneTask';
+import { RequestForm } from './typeorm/entities/RequestForm';
+import { RequestFormVersion } from './typeorm/entities/RequestFormVersion';
+import { RequestFormField } from './typeorm/entities/RequestFormField';
+import { RequestFormSubmission } from './typeorm/entities/RequestFormSubmission';
+import { RequestFormSubmissionAttachment } from './typeorm/entities/RequestFormSubmissionAttachment';
+import { ApprovalRequest } from './typeorm/entities/ApprovalRequest';
+import { ApprovalReviewer } from './typeorm/entities/ApprovalReviewer';
+import { ApprovalResponse } from './typeorm/entities/ApprovalResponse';
+import { ReusableTemplate } from './typeorm/entities/ReusableTemplate';
+import { ReusableTemplateVersion } from './typeorm/entities/ReusableTemplateVersion';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -158,6 +168,16 @@ export const AppDataSource = new DataSource({
     TaskTransitionHistory,
     Milestone,
     MilestoneTask,
+    RequestForm,
+    RequestFormVersion,
+    RequestFormField,
+    RequestFormSubmission,
+    RequestFormSubmissionAttachment,
+    ApprovalRequest,
+    ApprovalReviewer,
+    ApprovalResponse,
+    ReusableTemplate,
+    ReusableTemplateVersion,
   ],
   migrationsTransactionMode: 'each',
 });

@@ -9,6 +9,9 @@ export enum CapabilityKey {
   CUSTOM_FIELDS = 'custom_fields',
   CUSTOM_WORKFLOWS = 'custom_workflows',
   MILESTONES = 'milestones',
+  REQUEST_FORMS = 'request_forms',
+  REUSABLE_TEMPLATES = 'reusable_templates',
+  BASIC_APPROVALS = 'basic_approvals',
 }
 
 export type CapabilityDefinition = {
@@ -76,6 +79,30 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Milestones',
     description:
       'Project outcomes with owners, target dates, health, and task-based progress.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.REQUEST_FORMS]: {
+    key: CapabilityKey.REQUEST_FORMS,
+    label: 'Forms and Request Intake',
+    description:
+      'Versioned public or organization forms that create validated project tasks.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.BASIC_APPROVALS]: {
+    key: CapabilityKey.BASIC_APPROVALS,
+    label: 'Basic Approvals',
+    description:
+      'Audited reviewer approvals for tasks, documents, and milestones.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.REUSABLE_TEMPLATES]: {
+    key: CapabilityKey.REUSABLE_TEMPLATES,
+    label: 'Reusable Templates',
+    description:
+      'Versioned task, checklist, and project snapshots with compatibility previews.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

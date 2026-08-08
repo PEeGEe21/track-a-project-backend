@@ -113,6 +113,19 @@ import { CustomWorkflowsModule } from './custom-workflows/custom-workflows.modul
 import { Milestone } from './typeorm/entities/Milestone';
 import { MilestoneTask } from './typeorm/entities/MilestoneTask';
 import { MilestonesModule } from './milestones/milestones.module';
+import { RequestForm } from './typeorm/entities/RequestForm';
+import { RequestFormVersion } from './typeorm/entities/RequestFormVersion';
+import { RequestFormField } from './typeorm/entities/RequestFormField';
+import { RequestFormSubmission } from './typeorm/entities/RequestFormSubmission';
+import { RequestFormSubmissionAttachment } from './typeorm/entities/RequestFormSubmissionAttachment';
+import { RequestFormsModule } from './request-forms/request-forms.module';
+import { ApprovalRequest } from './typeorm/entities/ApprovalRequest';
+import { ApprovalReviewer } from './typeorm/entities/ApprovalReviewer';
+import { ApprovalResponse } from './typeorm/entities/ApprovalResponse';
+import { ApprovalsModule } from './approvals/approvals.module';
+import { ReusableTemplate } from './typeorm/entities/ReusableTemplate';
+import { ReusableTemplateVersion } from './typeorm/entities/ReusableTemplateVersion';
+import { TemplatesModule } from './templates/templates.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -217,6 +230,16 @@ import { MilestonesModule } from './milestones/milestones.module';
             TaskCustomFieldValue,
             Milestone,
             MilestoneTask,
+            RequestForm,
+            RequestFormVersion,
+            RequestFormField,
+            RequestFormSubmission,
+            RequestFormSubmissionAttachment,
+            ApprovalRequest,
+            ApprovalReviewer,
+            ApprovalResponse,
+            ReusableTemplate,
+            ReusableTemplateVersion,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -275,9 +298,19 @@ import { MilestonesModule } from './milestones/milestones.module';
       ProjectStatusTemplate,
       UserProjectSidebarPin,
       AiRequestAudit,
-            DataLifecycleEvent,
-            Milestone,
-            MilestoneTask,
+      DataLifecycleEvent,
+      Milestone,
+      MilestoneTask,
+      RequestForm,
+      RequestFormVersion,
+      RequestFormField,
+      RequestFormSubmission,
+      RequestFormSubmissionAttachment,
+      ApprovalRequest,
+      ApprovalReviewer,
+      ApprovalResponse,
+      ReusableTemplate,
+      ReusableTemplateVersion,
     ]),
     UsersModule,
     ProjectsModule,
@@ -315,6 +348,9 @@ import { MilestonesModule } from './milestones/milestones.module';
     CustomFieldsModule,
     CustomWorkflowsModule,
     MilestonesModule,
+    RequestFormsModule,
+    ApprovalsModule,
+    TemplatesModule,
   ],
   controllers: [AppController],
   providers: [
