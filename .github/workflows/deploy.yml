@@ -27,8 +27,11 @@ jobs:
       AI_ORGANIZATION_HOURLY_LIMIT: ${{ vars.AI_ORGANIZATION_HOURLY_LIMIT || '500' }}
       AI_INPUT_COST_PER_MILLION: ${{ vars.AI_INPUT_COST_PER_MILLION || '0' }}
       AI_OUTPUT_COST_PER_MILLION: ${{ vars.AI_OUTPUT_COST_PER_MILLION || '0' }}
+      INBOUND_EMAIL_DOMAIN: ${{ vars.INBOUND_EMAIL_DOMAIN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      SENDGRID_INBOUND_ACCESS_TOKEN: ${{ secrets.SENDGRID_INBOUND_ACCESS_TOKEN }}
+      WEBHOOK_SECRET_ENCRYPTION_KEY: ${{ secrets.WEBHOOK_SECRET_ENCRYPTION_KEY }}
     steps:
       - name: Validate AI deployment configuration
         run: |
@@ -47,6 +50,14 @@ jobs:
             echo "AI timeout and usage limits must be greater than zero"
             exit 1
           }
+      - name: Validate Universal Intake deployment configuration
+        run: |
+          test -n "$INBOUND_EMAIL_DOMAIN" || { echo "INBOUND_EMAIL_DOMAIN repository/environment variable is required"; exit 1; }
+          test -n "$SENDGRID_INBOUND_ACCESS_TOKEN" || { echo "SENDGRID_INBOUND_ACCESS_TOKEN environment secret is required"; exit 1; }
+          test -n "$WEBHOOK_SECRET_ENCRYPTION_KEY" || { echo "WEBHOOK_SECRET_ENCRYPTION_KEY environment secret is required"; exit 1; }
+          case "$INBOUND_EMAIL_DOMAIN" in
+            *://*|*/*|*@*|.*|*.) echo "INBOUND_EMAIL_DOMAIN must be a bare DNS name"; exit 1 ;;
+          esac
       - name: Trigger hosting provider deployment
         env:
           DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}

@@ -81,6 +81,14 @@ import { ApprovalReviewer } from './typeorm/entities/ApprovalReviewer';
 import { ApprovalResponse } from './typeorm/entities/ApprovalResponse';
 import { ReusableTemplate } from './typeorm/entities/ReusableTemplate';
 import { ReusableTemplateVersion } from './typeorm/entities/ReusableTemplateVersion';
+import { IntakeEvent } from './typeorm/entities/IntakeEvent';
+import { IntakeEventAttempt } from './typeorm/entities/IntakeEventAttempt';
+import { IntakeImportBatch } from './typeorm/entities/IntakeImportBatch';
+import { IntakeImportRow } from './typeorm/entities/IntakeImportRow';
+import { IntakeWebhookSource } from './typeorm/entities/IntakeWebhookSource';
+import { IntakeEmailAddress } from './typeorm/entities/IntakeEmailAddress';
+import { IntakeEmailAttachment } from './typeorm/entities/IntakeEmailAttachment';
+import { IntakeAiSuggestion } from './typeorm/entities/IntakeAiSuggestion';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -178,6 +186,14 @@ export const AppDataSource = new DataSource({
     ApprovalResponse,
     ReusableTemplate,
     ReusableTemplateVersion,
+    IntakeEvent,
+    IntakeEventAttempt,
+    IntakeImportBatch,
+    IntakeImportRow,
+    IntakeWebhookSource,
+    IntakeEmailAddress,
+    IntakeEmailAttachment,
+    IntakeAiSuggestion,
   ],
   migrationsTransactionMode: 'each',
 });

@@ -15,7 +15,7 @@ process.env.TZ = 'UTC';
 async function bootstrap() {
   bootTailpointMonitoring();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.use(helmet());
   app.useGlobalPipes(
@@ -40,7 +40,10 @@ async function bootstrap() {
         return callback(null, true);
       }
 
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`), false);
+      return callback(
+        new Error(`Origin ${origin} is not allowed by CORS`),
+        false,
+      );
     },
     credentials: true,
     optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204

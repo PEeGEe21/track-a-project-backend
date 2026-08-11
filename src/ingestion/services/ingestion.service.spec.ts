@@ -41,6 +41,8 @@ describe('IngestionService', () => {
     create: jest.fn(),
     save: jest.fn(),
   };
+  const transactionUserRepository = { find: jest.fn() };
+  const projectPeerRepository = { find: jest.fn() };
   const dataSource = {
     transaction: jest.fn(),
   };
@@ -48,6 +50,16 @@ describe('IngestionService', () => {
     emitIngestionUpdated: jest.fn(),
   };
   const customWorkflowsService = { transitionTask: jest.fn() };
+  const normalizedIntakeService = {
+    receive: jest.fn(),
+    process: jest.fn(),
+  };
+  const customFieldsService = {
+    setTaskValuesInTransaction: jest.fn(),
+  };
+  const authorizationService = {
+    assertProjectPermission: jest.fn(),
+  };
 
   let service: IngestionService;
 
@@ -65,6 +77,8 @@ describe('IngestionService', () => {
           if (entity?.name === 'ProjectActivity') {
             return projectActivityRepository;
           }
+          if (entity?.name === 'User') return transactionUserRepository;
+          if (entity?.name === 'ProjectPeer') return projectPeerRepository;
           throw new Error(`Unexpected repository request: ${entity?.name}`);
         },
       }),
@@ -77,11 +91,24 @@ describe('IngestionService', () => {
         return taskRepository.save(task);
       },
     );
+    normalizedIntakeService.receive.mockResolvedValue({
+      event: { id: 'event-1', state: 'received' },
+      idempotent: false,
+    });
+    normalizedIntakeService.process.mockImplementation(
+      async (event, processor) => ({
+        event,
+        outcome: await dataSource.transaction(processor),
+        idempotent: false,
+      }),
+    );
     service = new IngestionService(
       projectActivitiesService as any,
       projectsGateway as any,
       customWorkflowsService as any,
-      dataSource as any,
+      normalizedIntakeService as any,
+      customFieldsService as any,
+      authorizationService as any,
       projectRepository as any,
       taskRepository as any,
       statusRepository as any,
@@ -90,6 +117,69 @@ describe('IngestionService', () => {
       ingestedEventRepository as any,
       projectIngestionSettingsRepository as any,
     );
+  });
+
+  it('assigns imported tasks only to active project members resolved by email', async () => {
+    const owner = { id: 1, email: 'owner@example.com', is_active: true };
+    const member = { id: 2, email: 'member@example.com', is_active: true };
+    projectRepository.findOne.mockResolvedValue({
+      id: 7,
+      organization_id: 'org-1',
+      user: owner,
+      default_ingestion_status_id: 3,
+    });
+    statusRepository.findOne.mockResolvedValue({ id: 3, project: { id: 7 } });
+    transactionUserRepository.find.mockResolvedValue([owner, member]);
+    projectPeerRepository.find.mockResolvedValue([{ user: member }]);
+    taskRepository.create.mockImplementation((value) => value);
+    taskRepository.save.mockImplementation(async (value) => ({ id: 44, ...value }));
+
+    await service.processImportedRow({
+      organizationId: 'org-1',
+      projectId: 7,
+      channel: 'csv',
+      sourceKey: 'import:1',
+      idempotencyKey: 'row:2',
+      dto: {
+        source: 'manual',
+        title: 'Assigned import',
+        assigneeEmails: ['owner@example.com', 'member@example.com'],
+      },
+    });
+
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ assignees: [owner, member] }),
+    );
+  });
+
+  it('rejects imported assignees who are not confirmed project members', async () => {
+    const owner = { id: 1, email: 'owner@example.com', is_active: true };
+    const outsider = { id: 8, email: 'outside@example.com', is_active: true };
+    projectRepository.findOne.mockResolvedValue({
+      id: 7,
+      organization_id: 'org-1',
+      user: owner,
+      default_ingestion_status_id: 3,
+    });
+    statusRepository.findOne.mockResolvedValue({ id: 3, project: { id: 7 } });
+    transactionUserRepository.find.mockResolvedValue([outsider]);
+    projectPeerRepository.find.mockResolvedValue([]);
+
+    await expect(
+      service.processImportedRow({
+        organizationId: 'org-1',
+        projectId: 7,
+        channel: 'csv',
+        sourceKey: 'import:1',
+        idempotencyKey: 'row:2',
+        dto: {
+          source: 'manual',
+          title: 'Unsafe assignment',
+          assigneeEmails: ['outside@example.com'],
+        },
+      }),
+    ).rejects.toThrow('Assignees must be active project members');
+    expect(taskRepository.save).not.toHaveBeenCalled();
   });
 
   it('rejects live ingestion when the project has no default ingestion status', async () => {
@@ -119,10 +209,12 @@ describe('IngestionService', () => {
           organizationId: 'org_1',
         },
       ),
-    ).rejects.toThrow(new HttpException(
-      'Set a default ingestion status before using ingestion',
-      400,
-    ));
+    ).rejects.toThrow(
+      new HttpException(
+        'Set a default ingestion status before using ingestion',
+        400,
+      ),
+    );
   });
 
   it('returns a validated response for test keys without creating tasks', async () => {
@@ -206,6 +298,7 @@ describe('IngestionService', () => {
           severity: 'critical',
           priority: 0,
           dedupeKey: 'ci:prod:build-failed',
+          customFields: [{ fieldId: 'field-1', value: 'production' }],
         },
         {
           ingestKeyId: 5,
@@ -218,6 +311,8 @@ describe('IngestionService', () => {
       status: 'created',
       taskId: 21,
       occurrenceCount: 1,
+      eventId: 'event-1',
+      idempotent: false,
     });
 
     expect(taskRepository.create).toHaveBeenCalledWith(
@@ -231,6 +326,14 @@ describe('IngestionService', () => {
       expect.objectContaining({
         severity: 'critical',
       }),
+    );
+    expect(customFieldsService.setTaskValuesInTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      'org_1',
+      7,
+      21,
+      [{ fieldId: 'field-1', value: 'production' }],
+      true,
     );
     expect(projectsGateway.emitIngestionUpdated).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -300,6 +403,8 @@ describe('IngestionService', () => {
       status: 'deduped',
       taskId: 21,
       occurrenceCount: 2,
+      eventId: 'event-1',
+      idempotent: false,
     });
 
     expect(projectsGateway.emitIngestionUpdated).toHaveBeenCalledWith(
@@ -403,6 +508,8 @@ describe('IngestionService', () => {
       status: 'created',
       taskId: 44,
       occurrenceCount: 1,
+      eventId: 'event-1',
+      idempotent: false,
     });
 
     expect(taskRepository.save).toHaveBeenCalledWith(
@@ -477,6 +584,8 @@ describe('IngestionService', () => {
       status: 'deduped',
       taskId: 21,
       occurrenceCount: 2,
+      eventId: 'event-1',
+      idempotent: false,
     });
   });
 });

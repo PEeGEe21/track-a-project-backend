@@ -74,6 +74,13 @@ import { MessageStar } from './typeorm/entities/MessageStar';
 import { UserPushSubscription } from './typeorm/entities/UserPushSubscription';
 import { IngestApiKey } from './typeorm/entities/IngestApiKey';
 import { IngestedEvent } from './typeorm/entities/IngestedEvent';
+import { IntakeEvent } from './typeorm/entities/IntakeEvent';
+import { IntakeEventAttempt } from './typeorm/entities/IntakeEventAttempt';
+import { IntakeImportBatch } from './typeorm/entities/IntakeImportBatch';
+import { IntakeImportRow } from './typeorm/entities/IntakeImportRow';
+import { IntakeWebhookSource } from './typeorm/entities/IntakeWebhookSource';
+import { IntakeEmailAddress } from './typeorm/entities/IntakeEmailAddress';
+import { IntakeEmailAttachment } from './typeorm/entities/IntakeEmailAttachment';
 import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
 import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
@@ -101,6 +108,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { UserProjectSidebarPin } from './typeorm/entities/UserProjectSidebarPin';
 import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.module';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
+import { IntakeAiSuggestion } from './typeorm/entities/IntakeAiSuggestion';
 import { AiModule } from './ai/ai.module';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
@@ -205,6 +213,14 @@ import { TemplatesModule } from './templates/templates.module';
             UserPushSubscription,
             IngestApiKey,
             IngestedEvent,
+            IntakeEvent,
+            IntakeEventAttempt,
+            IntakeImportBatch,
+            IntakeImportRow,
+            IntakeWebhookSource,
+            IntakeEmailAddress,
+            IntakeEmailAttachment,
+            IntakeAiSuggestion,
             TaskDeadlineReminder,
             OrganizationSettings,
             ProjectStatusTemplate,
@@ -293,6 +309,8 @@ import { TemplatesModule } from './templates/templates.module';
       UserPushSubscription,
       IngestApiKey,
       IngestedEvent,
+      IntakeEvent,
+      IntakeEventAttempt,
       TaskDeadlineReminder,
       OrganizationSettings,
       ProjectStatusTemplate,

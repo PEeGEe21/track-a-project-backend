@@ -16,6 +16,12 @@ import { Status } from '../src/typeorm/entities/Status';
 import { User } from '../src/typeorm/entities/User';
 import { IngestApiKey } from '../src/typeorm/entities/IngestApiKey';
 import { IngestedEvent } from '../src/typeorm/entities/IngestedEvent';
+import { ProjectsGateway } from '../src/projects/projects.gateway';
+import { CustomWorkflowsService } from '../src/custom-workflows/custom-workflows.service';
+import { NormalizedIntakeService } from '../src/ingestion/services/normalized-intake.service';
+import { ProjectIngestionSettings } from '../src/typeorm/entities/ProjectIngestionSettings';
+import { CustomFieldsService } from '../src/custom-fields/custom-fields.service';
+import { AuthorizationService } from '../src/common/authorization/authorization.service';
 
 describe('Ingestion request lifecycle (integration)', () => {
   let controller: IngestionController;
@@ -68,9 +74,46 @@ describe('Ingestion request lifecycle (integration)', () => {
   const redisThrottlerStorage = {
     increment: jest.fn(),
   };
+  const projectsGateway = { emitIngestionUpdated: jest.fn() };
+  const customWorkflowsService = { transitionTask: jest.fn() };
+  const projectIngestionSettingsRepository = { findOne: jest.fn() };
+  const normalizedIntakeService = {
+    receive: jest.fn(),
+    process: jest.fn(),
+  };
+  const customFieldsService = {
+    setTaskValuesInTransaction: jest.fn(),
+  };
+  const authorizationService = {
+    assertProjectPermission: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    normalizedIntakeService.receive.mockResolvedValue({
+      event: { id: 'event-1', state: 'received' },
+      idempotent: false,
+    });
+    normalizedIntakeService.process.mockImplementation(
+      async (event, processor) => ({
+        event,
+        outcome: await processor({
+          getRepository: (entity: any) => {
+            if (entity?.name === 'Task') return taskRepository;
+            if (entity?.name === 'IngestedEvent')
+              return ingestedEventRepository;
+            if (entity?.name === 'ProjectActivity') {
+              return {
+                create: (value: unknown) => value,
+                save: async (value: unknown) => value,
+              };
+            }
+            throw new Error(`Unexpected repository: ${entity?.name}`);
+          },
+        }),
+        idempotent: false,
+      }),
+    );
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [IngestionController],
@@ -79,6 +122,11 @@ describe('Ingestion request lifecycle (integration)', () => {
         IngestionApiKeyGuard,
         IngestionRateLimitGuard,
         IngestionBodySizeGuard,
+        { provide: ProjectsGateway, useValue: projectsGateway },
+        { provide: CustomWorkflowsService, useValue: customWorkflowsService },
+        { provide: NormalizedIntakeService, useValue: normalizedIntakeService },
+        { provide: CustomFieldsService, useValue: customFieldsService },
+        { provide: AuthorizationService, useValue: authorizationService },
         {
           provide: ProjectActivitiesService,
           useValue: projectActivitiesService,
@@ -114,6 +162,10 @@ describe('Ingestion request lifecycle (integration)', () => {
         {
           provide: getRepositoryToken(IngestedEvent),
           useValue: ingestedEventRepository,
+        },
+        {
+          provide: getRepositoryToken(ProjectIngestionSettings),
+          useValue: projectIngestionSettingsRepository,
         },
       ],
     }).compile();
@@ -203,18 +255,23 @@ describe('Ingestion request lifecycle (integration)', () => {
     ingestedEventRepository.create.mockImplementation((value) => value);
     ingestedEventRepository.save.mockImplementation(async (value) => value);
 
-    const { result, response } = await executeRequest('Bearer trk_live_secret', {
-      source: 'sdk',
-      title: 'Build failed in production',
-      severity: 'high',
-      dedupeKey: 'ci:prod:build-failed',
-    });
+    const { result, response } = await executeRequest(
+      'Bearer trk_live_secret',
+      {
+        source: 'sdk',
+        title: 'Build failed in production',
+        severity: 'high',
+        dedupeKey: 'ci:prod:build-failed',
+      },
+    );
 
     expect(response.status).toHaveBeenCalledWith(201);
     expect(result).toEqual({
       status: 'created',
       taskId: 21,
       occurrenceCount: 1,
+      eventId: 'event-1',
+      idempotent: false,
     });
   });
 
@@ -237,28 +294,36 @@ describe('Ingestion request lifecycle (integration)', () => {
     taskRepository.save.mockImplementation(async (value) => value);
     ingestedEventRepository.save.mockImplementation(async (value) => value);
 
-    const { result, response } = await executeRequest('Bearer trk_live_secret', {
-      source: 'sdk',
-      title: 'Build failed in production',
-      severity: 'critical',
-      dedupeKey: 'ci:prod:build-failed',
-    });
+    const { result, response } = await executeRequest(
+      'Bearer trk_live_secret',
+      {
+        source: 'sdk',
+        title: 'Build failed in production',
+        severity: 'critical',
+        dedupeKey: 'ci:prod:build-failed',
+      },
+    );
 
     expect(response.status).toHaveBeenCalledWith(200);
     expect(result).toEqual({
       status: 'deduped',
       taskId: 21,
       occurrenceCount: 2,
+      eventId: 'event-1',
+      idempotent: false,
     });
   });
 
   it('validates without writing for a test key', async () => {
     ingestionKeyService.isTestKey.mockReturnValue(true);
 
-    const { result, response } = await executeRequest('Bearer trk_test_secret', {
-      source: 'sdk',
-      title: 'Build failed in staging',
-    });
+    const { result, response } = await executeRequest(
+      'Bearer trk_test_secret',
+      {
+        source: 'sdk',
+        title: 'Build failed in staging',
+      },
+    );
 
     expect(response.status).toHaveBeenCalledWith(200);
     expect(result).toEqual({

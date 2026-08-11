@@ -345,6 +345,75 @@ export class CustomFieldsService {
     return finalValues;
   }
 
+  async prepareImportedValues(
+    organizationId: string,
+    projectId: number,
+    inputs: Array<{ fieldId: string; value: unknown }>,
+  ): Promise<TaskCustomFieldValueDto[]> {
+    if (!inputs.length) return [];
+    const definitions = await this.definitions.find({
+      where: {
+        organization_id: organizationId,
+        project_id: projectId,
+        id: In(inputs.map((input) => input.fieldId)),
+        archived_at: IsNull(),
+      },
+      relations: ['options'],
+    });
+    const byId = new Map(
+      definitions.map((definition) => [definition.id, definition]),
+    );
+    if (
+      definitions.length !== new Set(inputs.map((input) => input.fieldId)).size
+    ) {
+      throw new BadRequestException(
+        'Every imported Custom Field must be active in this project',
+      );
+    }
+    return Promise.all(
+      inputs.map(async (input) => {
+        const definition = byId.get(input.fieldId)!;
+        const raw = input.value;
+        if (raw === null || raw === undefined || raw === '')
+          return { fieldId: input.fieldId, value: null };
+        let value: unknown = raw;
+        if (typeof raw === 'string') {
+          const text = raw.trim();
+          if (
+            definition.type === CustomFieldType.NUMBER ||
+            definition.type === CustomFieldType.PERSON
+          )
+            value = Number(text);
+          else if (definition.type === CustomFieldType.CHECKBOX) {
+            if (
+              !['true', 'false', 'yes', 'no', '1', '0'].includes(
+                text.toLowerCase(),
+              )
+            )
+              value = text;
+            else value = ['true', 'yes', '1'].includes(text.toLowerCase());
+          } else if (definition.type === CustomFieldType.MULTI_SELECT) {
+            value = text
+              ? text
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              : [];
+          } else value = text;
+        }
+        return {
+          fieldId: input.fieldId,
+          value: await this.normalizeValue(
+            this.dataSource.manager,
+            organizationId,
+            definition,
+            value,
+          ),
+        };
+      }),
+    );
+  }
+
   async serializeTaskValues(
     organizationId: string,
     projectId: number,

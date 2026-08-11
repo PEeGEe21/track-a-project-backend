@@ -19,6 +19,13 @@ import { TEXT_GENERATION_PROVIDER } from './provider.tokens';
 import { HuggingFaceTextGenerationProvider } from './huggingface-ai.provider';
 import { AiTaskContextService } from './ai-task-context.service';
 import { AiProjectContextService } from './ai-project-context.service';
+import { IntakeEvent } from 'src/typeorm/entities/IntakeEvent';
+import { IntakeAiSuggestion } from 'src/typeorm/entities/IntakeAiSuggestion';
+import { IntakeAiSuggestionsService } from './intake-ai-suggestions.service';
+import { AiIntakeMatchingContextService } from './ai-intake-matching-context.service';
+import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
+import { Category } from 'src/typeorm/entities/Category';
+import { AuditLog } from 'src/typeorm/entities/AuditLog';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -28,6 +35,11 @@ import { AiProjectContextService } from './ai-project-context.service';
       TaskComment,
       Project,
       ProjectUpdate,
+      IntakeEvent,
+      IntakeAiSuggestion,
+      ProjectPeer,
+      Category,
+      AuditLog,
     ]),
     EntitlementsModule,
     AuthorizationModule,
@@ -42,6 +54,8 @@ import { AiProjectContextService } from './ai-project-context.service';
     RedactionService,
     AiTaskContextService,
     AiProjectContextService,
+    IntakeAiSuggestionsService,
+    AiIntakeMatchingContextService,
     OrganizationAccessGuard,
     {
       provide: TEXT_GENERATION_PROVIDER,

@@ -11,6 +11,7 @@ import { RedactionService } from './redaction.service';
 import { AiGovernanceService } from './ai-governance.service';
 import { AiTaskContextService } from './ai-task-context.service';
 import { AiProjectContextService } from './ai-project-context.service';
+import { AppLogger } from 'src/common/logging/app-logger';
 
 @Injectable()
 export class AiAssistanceService {
@@ -128,8 +129,13 @@ export class AiAssistanceService {
         requiresReview: true,
       };
     } catch (error: any) {
-      // Keep this content-free diagnostic until the pilot flow is confirmed.
-      console.error('AI assistance error', error);
+      AppLogger.error('AiAssistanceService', 'AI provider request failed', {
+        correlationId: audit.correlation_id,
+        errorCode:
+          error instanceof TextGenerationProviderError
+            ? error.errorCode
+            : error?.name ?? 'provider_error',
+      });
       await this.governance.finish(audit, started, {
         status: 'failed',
         errorCode:

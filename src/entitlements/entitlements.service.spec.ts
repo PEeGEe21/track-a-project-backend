@@ -43,6 +43,23 @@ describe('EntitlementsService', () => {
     );
   });
 
+  it('keeps AI assistance default-off for explicit pilot activation', async () => {
+    organizationRepository.findOne.mockResolvedValue({
+      id: 'org-1',
+      subscription_tier: SubscriptionTier.FREE,
+    });
+    settingsRepository.findOne.mockResolvedValue(null);
+    await expect(service.resolveOrganization('org-1')).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: CapabilityKey.AI_ASSISTANCE,
+          enabled: false,
+          reason: 'disabled_by_default_rollout',
+        }),
+      ]),
+    );
+  });
+
   it('enables an eligible capability through an organization override', async () => {
     organizationRepository.findOne.mockResolvedValue({
       id: 'org-1',

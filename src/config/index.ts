@@ -150,6 +150,12 @@ const envVarsSchema = joi
     TAILPOINT_INGESTION_KEY: joi.string().optional(),
     TAILPOINT_INGESTION_ENDPOINT: joi.string().uri().optional(),
     TAILPOINT_INGESTION_SOURCE: joi.string().optional(),
+    SENDGRID_INBOUND_ACCESS_TOKEN: joi.string().min(32).optional(),
+    INBOUND_EMAIL_DOMAIN: joi
+      .string()
+      .hostname()
+      .optional(),
+    WEBHOOK_SECRET_ENCRYPTION_KEY: joi.string().min(32).optional(),
     TRANSCRIPTION_ENABLED: joi
       .boolean()
       .truthy('TRUE')

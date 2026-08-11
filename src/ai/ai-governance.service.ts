@@ -132,4 +132,15 @@ export class AiGovernanceService {
     });
     await this.audits.save(audit);
   }
+
+  async markPostprocessingFailure(
+    organizationId: string,
+    correlationId: string,
+    errorCode: string,
+  ) {
+    await this.audits.update(
+      { organization_id: organizationId, correlation_id: correlationId },
+      { status: 'failed', error_code: errorCode.slice(0, 100) },
+    );
+  }
 }

@@ -854,6 +854,25 @@ export class ProjectsService {
 
       // return;
       await this.entityManager.transaction(async (manager) => {
+        // These project-owned graphs reference project statuses with RESTRICT
+        // constraints. Remove them first so MySQL does not attempt to delete a
+        // status while it is still referenced through a parallel cascade path.
+        await manager.query(
+          'DELETE FROM `task_transition_history` WHERE `project_id` = ? AND `organization_id` = ?',
+          [id, organizationId],
+        );
+        await manager.query(
+          'DELETE FROM `project_workflows` WHERE `project_id` = ? AND `organization_id` = ?',
+          [id, organizationId],
+        );
+        await manager.query(
+          'DELETE FROM `request_form_submissions` WHERE `project_id` = ? AND `organization_id` = ?',
+          [id, organizationId],
+        );
+        await manager.query(
+          'DELETE FROM `request_forms` WHERE `project_id` = ? AND `organization_id` = ?',
+          [id, organizationId],
+        );
         const result = await manager.getRepository(Project).delete({
           id,
           organization_id: organizationId,

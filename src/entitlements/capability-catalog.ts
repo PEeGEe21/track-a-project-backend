@@ -12,6 +12,7 @@ export enum CapabilityKey {
   REQUEST_FORMS = 'request_forms',
   REUSABLE_TEMPLATES = 'reusable_templates',
   BASIC_APPROVALS = 'basic_approvals',
+  UNIVERSAL_INTAKE = 'universal_intake',
 }
 
 export type CapabilityDefinition = {
@@ -103,6 +104,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Reusable Templates',
     description:
       'Versioned task, checklist, and project snapshots with compatibility previews.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.UNIVERSAL_INTAKE]: {
+    key: CapabilityKey.UNIVERSAL_INTAKE,
+    label: 'Universal Intake',
+    description:
+      'Normalized, observable task intake across imports, webhooks, email, API, and SDK channels.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },
