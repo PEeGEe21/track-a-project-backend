@@ -34,6 +34,9 @@ import { IntakeEvent } from 'src/typeorm/entities/IntakeEvent';
 import { IntakeChannel } from 'src/typeorm/entities/IntakeEvent';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
+import { AutomationEventsService } from 'src/automations/automation-events.service';
+import { NotificationsService } from 'src/notifications/services/notifications.service';
+import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 
 type IngestionMutationResult = {
   status: 'created' | 'deduped';
@@ -52,6 +55,9 @@ export class IngestionService {
     private readonly normalizedIntakeService: NormalizedIntakeService,
     private readonly customFieldsService: CustomFieldsService,
     private readonly authorizationService: AuthorizationService,
+    @Inject(forwardRef(() => AutomationEventsService))
+    private readonly automationEventsService: AutomationEventsService,
+    private readonly notificationsService: NotificationsService,
     @InjectRepository(Project)
     private readonly projectRepository: Repository<Project>,
     @InjectRepository(Task)
@@ -184,6 +190,7 @@ export class IngestionService {
       limit?: number;
       state?: IntakeEvent['state'];
       channel?: IntakeEvent['channel'];
+      cursor?: string;
     },
   ) {
     await this.authorizationService.assertProjectPermission(
@@ -195,10 +202,10 @@ export class IngestionService {
     return this.normalizedIntakeService.listScoped(
       organizationId,
       projectId,
-      Math.max(1, options.page ?? 1),
       Math.min(100, Math.max(1, options.limit ?? 25)),
       options.state,
       options.channel,
+      options.cursor,
     );
   }
 
@@ -351,14 +358,14 @@ export class IngestionService {
     };
   }
 
-  private processEvent(
+  private async processEvent(
     event: IntakeEvent,
     dto: CreateIngestedTaskDto,
     project: Project,
     trigger?: 'manual_retry' | 'reprocess',
   ) {
     const dedupeKey = event.task_dedupe_key ?? dto.dedupeKey?.trim() ?? null;
-    return this.normalizedIntakeService.process(
+    const processed = await this.normalizedIntakeService.process(
       event,
       async (manager) => {
         const targetStatus = await this.resolveTargetStatus(project);
@@ -366,13 +373,14 @@ export class IngestionService {
           await this.projectIngestionSettingsRepository.findOne({
             where: { projectId: project.id },
           });
+        let outcome: IngestionMutationResult | null = null;
         if (dedupeKey) {
           const existing = await manager.getRepository(IngestedEvent).findOne({
             where: { projectId: project.id, dedupe_key: dedupeKey },
             relations: ['task', 'task.status'],
           });
           if (existing) {
-            return this.handleDuplicateEvent(
+            outcome = await this.handleDuplicateEvent(
               manager,
               existing,
               dto,
@@ -383,15 +391,98 @@ export class IngestionService {
             );
           }
         }
-        return this.createTaskFromEvent(
+        outcome ??= await this.createTaskFromEvent(
           manager,
           dto,
           project,
           targetStatus,
           dedupeKey,
         );
+        await this.captureTaskIngested(manager, event, dto, project, outcome);
+        return outcome;
       },
       trigger,
+    );
+    if (!processed.idempotent)
+      await this.notifyTaskIngested(event, project, processed.outcome);
+    return processed;
+  }
+
+  private async captureTaskIngested(
+    manager: EntityManager,
+    event: IntakeEvent,
+    dto: CreateIngestedTaskDto,
+    project: Project,
+    outcome: IngestionMutationResult,
+  ) {
+    const snapshot = await this.automationEventsService.taskSnapshot(
+      manager,
+      outcome.taskId,
+    );
+    if (!snapshot) return;
+    await this.automationEventsService.capture(manager, {
+      organizationId: project.organization_id,
+      projectId: project.id,
+      eventType: 'task.ingested',
+      subjectType: 'task',
+      subjectId: outcome.taskId,
+      dedupeKey: `task-ingested:${event.id}`,
+      actorType: 'system',
+      occurredAt: event.received_at ?? new Date(),
+      correlationId: event.id,
+      after: {
+        ...snapshot,
+        intakeEventId: event.id,
+        channel: event.channel,
+        source: dto.source,
+        outcome: outcome.realtimeAction,
+        occurrence_count: outcome.occurrenceCount,
+      },
+    });
+  }
+
+  private async notifyTaskIngested(
+    event: IntakeEvent,
+    project: Project,
+    outcome: IngestionMutationResult,
+  ) {
+    const task = await this.taskRepository.findOne({
+      where: {
+        id: outcome.taskId,
+        organization_id: project.organization_id,
+      },
+      relations: ['assignees'],
+    });
+    if (!task) return;
+    const recipients = new Map<number, User>();
+    if (project.user?.id) recipients.set(Number(project.user.id), project.user);
+    for (const assignee of task.assignees ?? [])
+      recipients.set(Number(assignee.id), assignee);
+    await Promise.allSettled(
+      [...recipients.values()].map((recipient) =>
+        this.notificationsService.enqueueNotification(
+          {
+            recipient,
+            sender: null,
+            title: 'Task ingested',
+            message: `${task.title || `Task ${task.id}`} was ${
+              outcome.realtimeAction
+            } through ${event.channel}.`,
+            type: NOTIFICATION_TYPES.TASK_INGESTED,
+            metadata: {
+              projectId: project.id,
+              taskId: task.id,
+              intakeEventId: event.id,
+              channel: event.channel,
+              outcome: outcome.realtimeAction,
+              occurrenceCount: outcome.occurrenceCount,
+              path: `/projects/${project.id}?task=${task.id}`,
+              deliveryKey: `task-ingested:${event.id}:${recipient.id}`,
+            },
+          },
+          project.organization_id,
+        ),
+      ),
     );
   }
 
@@ -436,7 +527,11 @@ export class IngestionService {
 
     const taskRepository = manager.getRepository(Task);
     const ingestedEventRepository = manager.getRepository(IngestedEvent);
-    const assignees = await this.resolveIngestionAssignees(manager, dto, project);
+    const assignees = await this.resolveIngestionAssignees(
+      manager,
+      dto,
+      project,
+    );
 
     const task = taskRepository.create({
       title: dto.title,

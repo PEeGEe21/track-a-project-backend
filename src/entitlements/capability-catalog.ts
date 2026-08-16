@@ -13,6 +13,7 @@ export enum CapabilityKey {
   REUSABLE_TEMPLATES = 'reusable_templates',
   BASIC_APPROVALS = 'basic_approvals',
   UNIVERSAL_INTAKE = 'universal_intake',
+  RULE_BASED_AUTOMATION = 'rule_based_automation',
 }
 
 export type CapabilityDefinition = {
@@ -112,6 +113,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Universal Intake',
     description:
       'Normalized, observable task intake across imports, webhooks, email, API, and SDK channels.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.RULE_BASED_AUTOMATION]: {
+    key: CapabilityKey.RULE_BASED_AUTOMATION,
+    label: 'Rule-Based Automation',
+    description:
+      'Versioned, observable rules that automate authorized project actions.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

@@ -17,7 +17,12 @@ import { WebsocketRateLimiterService } from 'src/common/rate-limit/websocket-rat
 import { config } from 'src/config';
 
 type CallType = 'video' | 'voice';
-type ProjectCallStatus = 'ringing' | 'connected' | 'rejected' | 'missed' | 'ended';
+type ProjectCallStatus =
+  | 'ringing'
+  | 'connected'
+  | 'rejected'
+  | 'missed'
+  | 'ended';
 
 type ProjectCallParticipant = {
   userId: number;
@@ -53,6 +58,14 @@ type ProjectIngestionRealtimePayload = {
   occurrenceCount: number;
   source?: string;
   dedupeKey?: string | null;
+};
+
+type ProjectTaskUpdatedPayload = {
+  projectId: number;
+  taskId: number;
+  source: 'automation';
+  actionType: string;
+  runId: string;
 };
 
 @WebSocketGateway({
@@ -241,8 +254,8 @@ export class ProjectsGateway
 
     this.logger.log(`Broadcasting new comment to project_${projectId}`, {
       roomSize:
-        this.server?.sockets?.adapter?.rooms?.get(`project_${projectId}`)?.size ||
-        0,
+        this.server?.sockets?.adapter?.rooms?.get(`project_${projectId}`)
+          ?.size || 0,
     });
 
     // Ensure the payload has a consistent format
@@ -445,11 +458,15 @@ export class ProjectsGateway
     await this.projectService.createSystemProjectComment({
       projectId: call.projectId,
       actorUserId: call.callerId,
-      content: `${call.callType === 'voice' ? 'Voice' : 'Video'} call started in the project room.`,
+      content: `${
+        call.callType === 'voice' ? 'Voice' : 'Video'
+      } call started in the project room.`,
       organizationId: call.organizationId,
     });
 
-    this.server.to(`user_${callerId}`).emit('call:outgoing', this.serializeCall(call));
+    this.server
+      .to(`user_${callerId}`)
+      .emit('call:outgoing', this.serializeCall(call));
     participantIds.forEach((participantId) => {
       this.server
         .to(`user_${participantId}`)
@@ -557,7 +574,9 @@ export class ProjectsGateway
     await this.projectService.createSystemProjectComment({
       projectId: call.projectId,
       actorUserId: userId,
-      content: `${call.callType === 'voice' ? 'Voice' : 'Video'} call was declined.`,
+      content: `${
+        call.callType === 'voice' ? 'Voice' : 'Video'
+      } call was declined.`,
       organizationId: call.organizationId,
     });
 
@@ -609,7 +628,9 @@ export class ProjectsGateway
       content:
         call.answeredAt != null
           ? `${call.callType === 'voice' ? 'Voice' : 'Video'} call ended.`
-          : `${call.callType === 'voice' ? 'Voice' : 'Video'} call ended before anyone joined.`,
+          : `${
+              call.callType === 'voice' ? 'Voice' : 'Video'
+            } call ended before anyone joined.`,
       organizationId: call.organizationId,
     });
 
@@ -680,14 +701,18 @@ export class ProjectsGateway
         ? {
             name: call.callerName,
           }
-        : call.participants.find((participant) => participant.userId === userId);
+        : call.participants.find(
+            (participant) => participant.userId === userId,
+          );
 
     const payload = {
       ...this.serializeCall(call),
       joinedById: userId,
       joinedByName: joiningParticipant?.name ?? 'Collaborator',
     };
-    this.server.to(`user_${call.callerId}`).emit('call:participant_joined', payload);
+    this.server
+      .to(`user_${call.callerId}`)
+      .emit('call:participant_joined', payload);
     call.participantIds.forEach((participantId) => {
       this.server
         .to(`user_${participantId}`)
@@ -761,6 +786,12 @@ export class ProjectsGateway
     this.server
       .to(`project_${payload.projectId}`)
       .emit('project:ingestion-updated', payload);
+  }
+
+  emitTaskUpdated(payload: ProjectTaskUpdatedPayload) {
+    this.server
+      .to(`project_${payload.projectId}`)
+      .emit('project:task-updated', payload);
   }
 
   private clearCallTimer(call: ActiveProjectCall) {
@@ -881,7 +912,9 @@ export class ProjectsGateway
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+        error instanceof Error
+          ? error.message.toLowerCase()
+          : String(error).toLowerCase();
 
       if (!message.includes('already exists')) {
         const trace = error instanceof Error ? error.stack : undefined;

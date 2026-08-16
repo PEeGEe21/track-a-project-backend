@@ -5,7 +5,6 @@ import { IntakeChannel, IntakeEvent } from 'src/typeorm/entities/IntakeEvent';
 import { IntakeEventAttempt } from 'src/typeorm/entities/IntakeEventAttempt';
 import { IntakeAttemptTrigger } from 'src/typeorm/entities/IntakeEventAttempt';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { FindOptionsWhere } from 'typeorm';
 
 export type ReceiveIntakeEventInput = {
   organizationId: string;
@@ -48,10 +47,10 @@ export class NormalizedIntakeService {
   async listScoped(
     organizationId: string,
     projectId: number,
-    page = 1,
     limit = 25,
     state?: IntakeEvent['state'],
     channel?: IntakeEvent['channel'],
+    cursor?: string,
   ) {
     const validStates = new Set([
       'received',
@@ -74,23 +73,58 @@ export class NormalizedIntakeService {
       throw new HttpException('Invalid intake event state', 400);
     if (channel && !validChannels.has(channel))
       throw new HttpException('Invalid intake channel', 400);
-    const where: FindOptionsWhere<IntakeEvent> = {
-      organization_id: organizationId,
-      project_id: projectId,
-      ...(state ? { state } : {}),
-      ...(channel ? { channel } : {}),
-    };
-    const [data, total] = await this.intakeEventRepository.findAndCount({
-      where,
-      relations: ['attempts', 'task'],
-      order: { created_at: 'DESC', attempts: { attempt_number: 'ASC' } },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const position = this.decodeCursor(cursor);
+    const query = this.intakeEventRepository
+      .createQueryBuilder('event')
+      .leftJoinAndSelect('event.attempts', 'attempt')
+      .leftJoinAndSelect('event.task', 'task')
+      .where('event.organization_id = :organizationId', { organizationId })
+      .andWhere('event.project_id = :projectId', { projectId });
+    if (state) query.andWhere('event.state = :state', { state });
+    if (channel) query.andWhere('event.channel = :channel', { channel });
+    if (position)
+      query.andWhere(
+        '(event.created_at < :cursorTime OR (event.created_at = :cursorTime AND event.id < :cursorId))',
+        { cursorTime: position.createdAt, cursorId: position.id },
+      );
+    const rows = await query
+      .orderBy('event.created_at', 'DESC')
+      .addOrderBy('event.id', 'DESC')
+      .addOrderBy('attempt.attempt_number', 'ASC')
+      .take(limit + 1)
+      .getMany();
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit);
+    const last = data[data.length - 1];
     return {
       data,
-      meta: { page, limit, total, pages: Math.ceil(total / limit) },
+      meta: {
+        limit,
+        hasMore,
+        nextCursor:
+          hasMore && last ? this.encodeCursor(last.created_at, last.id) : null,
+      },
     };
+  }
+
+  private encodeCursor(createdAt: Date, id: string) {
+    return Buffer.from(`${createdAt.toISOString()}|${id}`).toString(
+      'base64url',
+    );
+  }
+
+  private decodeCursor(cursor?: string) {
+    if (!cursor) return null;
+    try {
+      const [timestamp, id] = Buffer.from(cursor, 'base64url')
+        .toString('utf8')
+        .split('|');
+      const createdAt = new Date(timestamp);
+      if (!id || Number.isNaN(createdAt.getTime())) throw new Error();
+      return { createdAt, id };
+    } catch {
+      throw new HttpException('Invalid intake pagination cursor', 400);
+    }
   }
 
   async retainDisposition(

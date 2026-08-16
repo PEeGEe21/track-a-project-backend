@@ -113,18 +113,66 @@ export class IntakeImportService {
     return batch;
   }
 
-  async list(actor: AuthUser, organizationId: string, projectId: number) {
+  async list(
+    actor: AuthUser,
+    organizationId: string,
+    projectId: number,
+    options: { limit?: number; cursor?: string } = {},
+  ) {
     await this.authorization.assertProjectPermission(
       actor,
       organizationId,
       projectId,
       ProjectPermission.EDIT,
     );
-    return this.batches.find({
-      where: { organization_id: organizationId, project_id: projectId },
-      order: { created_at: 'DESC' },
-      take: 25,
-    });
+    const limit = Math.min(100, Math.max(1, options.limit ?? 25));
+    const position = this.decodeCursor(options.cursor);
+    const query = this.batches
+      .createQueryBuilder('batch')
+      .where('batch.organization_id = :organizationId', { organizationId })
+      .andWhere('batch.project_id = :projectId', { projectId });
+    if (position)
+      query.andWhere(
+        '(batch.created_at < :cursorTime OR (batch.created_at = :cursorTime AND batch.id < :cursorId))',
+        { cursorTime: position.createdAt, cursorId: position.id },
+      );
+    const rows = await query
+      .orderBy('batch.created_at', 'DESC')
+      .addOrderBy('batch.id', 'DESC')
+      .take(limit + 1)
+      .getMany();
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit);
+    const last = data[data.length - 1];
+    return {
+      data,
+      meta: {
+        limit,
+        hasMore,
+        nextCursor:
+          hasMore && last ? this.encodeCursor(last.created_at, last.id) : null,
+      },
+    };
+  }
+
+  private encodeCursor(createdAt: Date, id: string) {
+    return Buffer.from(`${createdAt.toISOString()}|${id}`).toString(
+      'base64url',
+    );
+  }
+
+  private decodeCursor(cursor?: string) {
+    if (!cursor) return null;
+    try {
+      const [timestamp, id] = Buffer.from(cursor, 'base64url')
+        .toString('utf8')
+        .split('|');
+      const createdAt = new Date(timestamp);
+      if (!id || Number.isNaN(createdAt.getTime())) throw new Error();
+      return { createdAt, id };
+    } catch {
+      throw new BadRequestException('Invalid import pagination cursor');
+    }
   }
 
   async listRows(
@@ -163,6 +211,25 @@ export class IntakeImportService {
     });
     await this.batches.save(batch);
     return { removed: true, total_rows: batch.total_rows };
+  }
+
+  async clear(
+    actor: AuthUser,
+    organizationId: string,
+    projectId: number,
+    batchId: string,
+  ) {
+    const batch = await this.get(actor, organizationId, projectId, batchId);
+    if (batch.state === 'processing')
+      throw new BadRequestException(
+        'An import cannot be cleared while it is processing',
+      );
+    await this.batches.remove(batch);
+    return {
+      cleared: true,
+      batch_id: batch.id,
+      tasks_preserved: batch.accepted_rows,
+    };
   }
 
   async template(
@@ -224,7 +291,10 @@ export class IntakeImportService {
     const instructions = workbook.addWorksheet('Instructions');
     instructions.addRows([
       ['Column', 'How to use it'],
-      ['Title', 'Required. Select this column as the task title during preview.'],
+      [
+        'Title',
+        'Required. Select this column as the task title during preview.',
+      ],
       ['Description', 'Optional task description.'],
       ['Severity', 'Optional: low, medium, high, or critical.'],
       ['Priority', 'Optional whole number, zero or greater.'],

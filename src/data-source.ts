@@ -89,6 +89,13 @@ import { IntakeWebhookSource } from './typeorm/entities/IntakeWebhookSource';
 import { IntakeEmailAddress } from './typeorm/entities/IntakeEmailAddress';
 import { IntakeEmailAttachment } from './typeorm/entities/IntakeEmailAttachment';
 import { IntakeAiSuggestion } from './typeorm/entities/IntakeAiSuggestion';
+import { AutomationActor } from './typeorm/entities/AutomationActor';
+import { AutomationRule } from './typeorm/entities/AutomationRule';
+import { AutomationRuleVersion } from './typeorm/entities/AutomationRuleVersion';
+import { AutomationEvent } from './typeorm/entities/AutomationEvent';
+import { AutomationRun } from './typeorm/entities/AutomationRun';
+import { AutomationActionAttempt } from './typeorm/entities/AutomationActionAttempt';
+import { TaskWatcher } from './typeorm/entities/TaskWatcher';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -194,6 +201,13 @@ export const AppDataSource = new DataSource({
     IntakeEmailAddress,
     IntakeEmailAttachment,
     IntakeAiSuggestion,
+    AutomationActor,
+    AutomationRule,
+    AutomationRuleVersion,
+    AutomationEvent,
+    AutomationRun,
+    AutomationActionAttempt,
+    TaskWatcher,
   ],
   migrationsTransactionMode: 'each',
 });

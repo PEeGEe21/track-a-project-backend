@@ -19,6 +19,7 @@ describe('IntakeImportService', () => {
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => ({ id: 'batch-1', ...value })),
     findOne: jest.fn(),
+    remove: jest.fn(async (value) => value),
   };
   const rows = {
     create: jest.fn((value) => value),
@@ -70,16 +71,9 @@ describe('IntakeImportService', () => {
   });
 
   it('generates CSV and Excel starter templates with active Custom Fields', async () => {
-    const csv = await service.template(
-      { userId: 9 } as any,
-      'org-1',
-      7,
-      'csv',
-    );
+    const csv = await service.template({ userId: 9 } as any, 'org-1', 7, 'csv');
     expect(csv.filename).toBe('tailpoint-intake-template.csv');
-    expect(csv.buffer.toString()).toContain(
-      'Custom: Environment [field-1]',
-    );
+    expect(csv.buffer.toString()).toContain('Custom: Environment [field-1]');
     expect(csv.buffer.toString()).toContain('production');
     expect(csv.buffer.toString()).toContain('Assignee Emails');
 
@@ -109,13 +103,7 @@ describe('IntakeImportService', () => {
     rows.count.mockResolvedValue(2);
 
     await expect(
-      service.removeRow(
-        { userId: 9 } as any,
-        'org-1',
-        7,
-        'batch-1',
-        'row-2',
-      ),
+      service.removeRow({ userId: 9 } as any, 'org-1', 7, 'batch-1', 'row-2'),
     ).resolves.toEqual({ removed: true, total_rows: 2 });
     expect(rows.remove).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'row-2' }),
@@ -123,6 +111,41 @@ describe('IntakeImportService', () => {
     expect(batches.save).toHaveBeenCalledWith(
       expect.objectContaining({ total_rows: 2 }),
     );
+  });
+
+  it('clears an import batch without deleting its accepted tasks', async () => {
+    const batch = {
+      id: 'batch-1',
+      organization_id: 'org-1',
+      project_id: 7,
+      state: 'completed',
+      accepted_rows: 4,
+    };
+    batches.findOne.mockResolvedValue(batch);
+
+    await expect(
+      service.clear({ userId: 9 } as any, 'org-1', 7, 'batch-1'),
+    ).resolves.toEqual({
+      cleared: true,
+      batch_id: 'batch-1',
+      tasks_preserved: 4,
+    });
+    expect(batches.remove).toHaveBeenCalledWith(batch);
+    expect(ingestion.processImportedRow).not.toHaveBeenCalled();
+  });
+
+  it('does not clear an import while it is processing', async () => {
+    batches.findOne.mockResolvedValue({
+      id: 'batch-1',
+      organization_id: 'org-1',
+      project_id: 7,
+      state: 'processing',
+    });
+
+    await expect(
+      service.clear({ userId: 9 } as any, 'org-1', 7, 'batch-1'),
+    ).rejects.toThrow('cannot be cleared while it is processing');
+    expect(batches.remove).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate and blank headers before creating a batch', async () => {

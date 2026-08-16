@@ -134,6 +134,14 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { ReusableTemplate } from './typeorm/entities/ReusableTemplate';
 import { ReusableTemplateVersion } from './typeorm/entities/ReusableTemplateVersion';
 import { TemplatesModule } from './templates/templates.module';
+import { AutomationActor } from './typeorm/entities/AutomationActor';
+import { AutomationRule } from './typeorm/entities/AutomationRule';
+import { AutomationRuleVersion } from './typeorm/entities/AutomationRuleVersion';
+import { AutomationEvent } from './typeorm/entities/AutomationEvent';
+import { AutomationRun } from './typeorm/entities/AutomationRun';
+import { AutomationActionAttempt } from './typeorm/entities/AutomationActionAttempt';
+import { AutomationsModule } from './automations/automations.module';
+import { TaskWatcher } from './typeorm/entities/TaskWatcher';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -256,6 +264,13 @@ import { TemplatesModule } from './templates/templates.module';
             ApprovalResponse,
             ReusableTemplate,
             ReusableTemplateVersion,
+            AutomationActor,
+            AutomationRule,
+            AutomationRuleVersion,
+            AutomationEvent,
+            AutomationRun,
+            AutomationActionAttempt,
+            TaskWatcher,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -369,6 +384,7 @@ import { TemplatesModule } from './templates/templates.module';
     RequestFormsModule,
     ApprovalsModule,
     TemplatesModule,
+    AutomationsModule,
   ],
   controllers: [AppController],
   providers: [

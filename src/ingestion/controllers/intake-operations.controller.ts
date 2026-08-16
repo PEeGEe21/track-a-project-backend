@@ -28,20 +28,20 @@ export class IntakeOperationsController {
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
     @Param('projectId', ParseIntPipe) projectId: number,
-    @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('state') state?: any,
     @Query('channel') channel?: any,
+    @Query('cursor') cursor?: string,
   ) {
     return this.ingestion.listIntakeEvents(
       req.user,
       organizationId,
       projectId,
       {
-        page: Number(page) || 1,
         limit: Number(limit) || 25,
         state,
         channel,
+        cursor,
       },
     );
   }

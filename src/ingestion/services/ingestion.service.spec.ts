@@ -60,6 +60,13 @@ describe('IngestionService', () => {
   const authorizationService = {
     assertProjectPermission: jest.fn(),
   };
+  const automationEventsService = {
+    taskSnapshot: jest.fn(),
+    capture: jest.fn(),
+  };
+  const notificationsService = {
+    enqueueNotification: jest.fn(),
+  };
 
   let service: IngestionService;
 
@@ -109,6 +116,8 @@ describe('IngestionService', () => {
       normalizedIntakeService as any,
       customFieldsService as any,
       authorizationService as any,
+      automationEventsService as any,
+      notificationsService as any,
       projectRepository as any,
       taskRepository as any,
       statusRepository as any,
@@ -132,7 +141,10 @@ describe('IngestionService', () => {
     transactionUserRepository.find.mockResolvedValue([owner, member]);
     projectPeerRepository.find.mockResolvedValue([{ user: member }]);
     taskRepository.create.mockImplementation((value) => value);
-    taskRepository.save.mockImplementation(async (value) => ({ id: 44, ...value }));
+    taskRepository.save.mockImplementation(async (value) => ({
+      id: 44,
+      ...value,
+    }));
 
     await service.processImportedRow({
       organizationId: 'org-1',
@@ -587,5 +599,88 @@ describe('IngestionService', () => {
       eventId: 'event-1',
       idempotent: false,
     });
+  });
+
+  it('captures task.ingested and notifies the owner and assignees after commit', async () => {
+    const owner = { id: 11, email: 'owner@example.com' };
+    const assignee = { id: 12, email: 'assignee@example.com' };
+    ingestApiKeyRepository.findOne.mockResolvedValue({
+      id: 5,
+      projectId: 7,
+      organization_id: 'org_1',
+      revoked_at: null,
+    });
+    projectRepository.findOne.mockResolvedValue({
+      id: 7,
+      organization_id: 'org_1',
+      default_ingestion_status_id: 3,
+      user: owner,
+      organization: null,
+    });
+    statusRepository.findOne.mockResolvedValue({ id: 3, title: 'Inbox' });
+    taskRepository.create.mockImplementation((payload) => payload);
+    taskRepository.save.mockImplementation(async (task) => ({
+      id: 44,
+      ...task,
+    }));
+    taskRepository.findOne.mockResolvedValue({
+      id: 44,
+      title: 'Webhook incident',
+      assignees: [assignee],
+    });
+    automationEventsService.taskSnapshot.mockResolvedValue({
+      task: { id: 44, title: 'Webhook incident', assigneeIds: [12] },
+      customFields: {},
+    });
+    normalizedIntakeService.receive.mockResolvedValue({
+      event: {
+        id: 'event-1',
+        channel: 'webhook',
+        received_at: new Date('2026-08-16T10:00:00Z'),
+        state: 'received',
+      },
+      idempotent: false,
+    });
+
+    await service.ingestTaskEvent(
+      {
+        source: 'sentry',
+        title: 'Webhook incident',
+      },
+      {
+        ingestKeyId: 5,
+        isTestKey: false,
+        projectId: 7,
+        organizationId: 'org_1',
+      },
+    );
+
+    expect(automationEventsService.capture).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'task.ingested',
+        subjectId: 44,
+        dedupeKey: 'task-ingested:event-1',
+        correlationId: 'event-1',
+        after: expect.objectContaining({
+          channel: 'webhook',
+          source: 'sentry',
+          outcome: 'created',
+          occurrence_count: 1,
+        }),
+      }),
+    );
+    expect(notificationsService.enqueueNotification).toHaveBeenCalledTimes(2);
+    expect(notificationsService.enqueueNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: owner,
+        type: 'task_ingested',
+        metadata: expect.objectContaining({
+          intakeEventId: 'event-1',
+          taskId: 44,
+        }),
+      }),
+      'org_1',
+    );
   });
 });

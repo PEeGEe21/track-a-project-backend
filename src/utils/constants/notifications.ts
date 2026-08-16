@@ -8,6 +8,7 @@ export const NOTIFICATION_TYPES = {
   PEER_MESSAGE: 'peer_message',
   TASK_ASSIGNMENT: 'task_assignment',
   TASK_STATUS_CHANGE: 'task_status_change',
+  TASK_INGESTED: 'task_ingested',
   DEADLINE_REMINDER: 'deadline_reminder',
 };
 
@@ -48,6 +49,11 @@ export const NOTIFICATION_PREFERENCE_DETAILS = {
     label: 'Task status changes',
     description:
       'Important task completion and reopen updates for work you are involved in.',
+  },
+  [NOTIFICATION_TYPES.TASK_INGESTED]: {
+    label: 'Ingested tasks',
+    description:
+      'Tasks created, matched, or reopened through API, imports, webhooks, and email.',
   },
   [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {
     label: 'Deadline reminders',
@@ -108,6 +114,12 @@ export const NOTIFICATION_DEFAULT_PREFERENCES = {
     in_app: true,
     email: false,
     push: true,
+    sound: true,
+  },
+  [NOTIFICATION_TYPES.TASK_INGESTED]: {
+    in_app: true,
+    email: false,
+    push: false,
     sound: true,
   },
   [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {

@@ -2,11 +2,20 @@ import { NormalizedIntakeService } from './normalized-intake.service';
 import { BadRequestException } from '@nestjs/common';
 
 describe('NormalizedIntakeService', () => {
+  const listQuery: any = {
+    leftJoinAndSelect: jest.fn(() => listQuery),
+    where: jest.fn(() => listQuery),
+    andWhere: jest.fn(() => listQuery),
+    orderBy: jest.fn(() => listQuery),
+    addOrderBy: jest.fn(() => listQuery),
+    take: jest.fn(() => listQuery),
+    getMany: jest.fn(),
+  };
   const intakeEventRepository = {
     findOne: jest.fn(),
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => ({ id: 'event-1', ...value })),
-    findAndCount: jest.fn(),
+    createQueryBuilder: jest.fn(() => listQuery),
   };
   const eventRepository = {
     findOne: jest.fn(),
@@ -100,23 +109,22 @@ describe('NormalizedIntakeService', () => {
   });
 
   it('keeps event history tenant/project scoped and bounded', async () => {
-    intakeEventRepository.findAndCount.mockResolvedValue([[], 0]);
-    await service.listScoped('org-1', 7, 2, 500, 'failed', 'email');
-    expect(intakeEventRepository.findAndCount).toHaveBeenCalledWith(
-      expect.objectContaining({
-        relations: ['attempts', 'task'],
-        where: {
-          organization_id: 'org-1',
-          project_id: 7,
-          state: 'failed',
-          channel: 'email',
-        },
-        skip: 500,
-        take: 500,
-      }),
+    listQuery.getMany.mockResolvedValue([]);
+    await service.listScoped('org-1', 7, 100, 'failed', 'email');
+    expect(listQuery.where).toHaveBeenCalledWith(
+      'event.organization_id = :organizationId',
+      { organizationId: 'org-1' },
     );
+    expect(listQuery.andWhere).toHaveBeenCalledWith(
+      'event.project_id = :projectId',
+      { projectId: 7 },
+    );
+    expect(listQuery.andWhere).toHaveBeenCalledWith('event.state = :state', {
+      state: 'failed',
+    });
+    expect(listQuery.take).toHaveBeenCalledWith(101);
     await expect(
-      service.listScoped('org-1', 7, 1, 25, 'not-a-state' as any),
+      service.listScoped('org-1', 7, 25, 'not-a-state' as any),
     ).rejects.toThrow('Invalid intake event state');
   });
 

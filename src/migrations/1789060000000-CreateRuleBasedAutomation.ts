@@ -1,0 +1,43 @@
+import { MigrationInterface, QueryRunner } from 'typeorm';
+
+export class CreateRuleBasedAutomation1789060000000
+  implements MigrationInterface
+{
+  name = 'CreateRuleBasedAutomation1789060000000';
+
+  async up(q: QueryRunner): Promise<void> {
+    await q.query(
+      "CREATE TABLE `automation_actors` (`id` varchar(36) NOT NULL,`organization_id` varchar(36) NOT NULL,`stable_key` varchar(80) NOT NULL DEFAULT 'tailpoint_automation',`display_name` varchar(180) NOT NULL DEFAULT 'Tailpoint Automation',`active` tinyint NOT NULL DEFAULT 1,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),UNIQUE INDEX `UQ_automation_actor_org_key` (`organization_id`,`stable_key`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_actor_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE CASCADE) ENGINE=InnoDB",
+    );
+    await q.query(
+      "CREATE TABLE `automation_rules` (`id` varchar(36) NOT NULL,`organization_id` varchar(36) NOT NULL,`project_id` int NOT NULL,`stable_key` varchar(80) NOT NULL,`name` varchar(180) NOT NULL,`description` text NULL,`active` tinyint NOT NULL DEFAULT 0,`authorization_policy` enum ('editor','owner') NOT NULL,`execution_actor_id` varchar(36) NOT NULL,`published_version_id` varchar(36) NULL,`draft_version_id` varchar(36) NULL,`created_by_id` bigint NULL,`last_material_editor_id` bigint NULL,`archived_at` datetime(6) NULL,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),UNIQUE INDEX `UQ_automation_rule_project_key` (`project_id`,`stable_key`),INDEX `IDX_automation_rules_project_active` (`project_id`,`active`,`archived_at`),INDEX `IDX_automation_rules_org` (`organization_id`),INDEX `IDX_automation_rules_actor` (`execution_actor_id`),INDEX `IDX_automation_rules_published_version` (`published_version_id`),INDEX `IDX_automation_rules_draft_version` (`draft_version_id`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_rule_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_rule_project` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_rule_actor` FOREIGN KEY (`execution_actor_id`) REFERENCES `automation_actors`(`id`) ON DELETE RESTRICT,CONSTRAINT `FK_automation_rule_creator` FOREIGN KEY (`created_by_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,CONSTRAINT `FK_automation_rule_editor` FOREIGN KEY (`last_material_editor_id`) REFERENCES `users`(`id`) ON DELETE SET NULL) ENGINE=InnoDB",
+    );
+    await q.query(
+      "CREATE TABLE `automation_rule_versions` (`id` varchar(36) NOT NULL,`rule_id` varchar(36) NOT NULL,`version_number` int UNSIGNED NOT NULL,`state` enum ('draft','published','retired') NOT NULL,`schema_version` int UNSIGNED NOT NULL DEFAULT 1,`definition` json NOT NULL,`created_by_id` bigint NULL,`published_by_id` bigint NULL,`published_at` datetime(6) NULL,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),UNIQUE INDEX `UQ_automation_rule_version_number` (`rule_id`,`version_number`),INDEX `IDX_automation_rule_versions_rule_state` (`rule_id`,`state`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_rule_version_rule` FOREIGN KEY (`rule_id`) REFERENCES `automation_rules`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_rule_version_creator` FOREIGN KEY (`created_by_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,CONSTRAINT `FK_automation_rule_version_publisher` FOREIGN KEY (`published_by_id`) REFERENCES `users`(`id`) ON DELETE SET NULL) ENGINE=InnoDB",
+    );
+    await q.query(
+      'ALTER TABLE `automation_rules` ADD CONSTRAINT `FK_automation_rule_published_version` FOREIGN KEY (`published_version_id`) REFERENCES `automation_rule_versions`(`id`) ON DELETE SET NULL, ADD CONSTRAINT `FK_automation_rule_draft_version` FOREIGN KEY (`draft_version_id`) REFERENCES `automation_rule_versions`(`id`) ON DELETE SET NULL',
+    );
+    await q.query(
+      "CREATE TABLE `automation_events` (`id` varchar(36) NOT NULL,`organization_id` varchar(36) NOT NULL,`project_id` int NOT NULL,`event_type` varchar(100) NOT NULL,`subject_type` varchar(80) NOT NULL,`subject_id` varchar(80) NOT NULL,`before_snapshot` json NULL,`after_snapshot` json NULL,`actor_type` enum ('human','automation','system','integration') NOT NULL,`actor_id` varchar(80) NULL,`correlation_id` varchar(36) NOT NULL,`causation_event_id` varchar(36) NULL,`ancestor_rule_ids` json NULL,`chain_depth` int UNSIGNED NOT NULL DEFAULT 0,`action_count` int UNSIGNED NOT NULL DEFAULT 0,`occurred_at` datetime(6) NOT NULL,`available_at` datetime(6) NOT NULL,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),INDEX `IDX_automation_events_project_available` (`project_id`,`available_at`),INDEX `IDX_automation_events_org_correlation` (`organization_id`,`correlation_id`),INDEX `IDX_automation_events_subject` (`subject_type`,`subject_id`),INDEX `IDX_automation_events_causation` (`causation_event_id`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_event_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_event_project` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_event_causation` FOREIGN KEY (`causation_event_id`) REFERENCES `automation_events`(`id`) ON DELETE SET NULL) ENGINE=InnoDB",
+    );
+    await q.query(
+      "CREATE TABLE `automation_runs` (`id` varchar(36) NOT NULL,`organization_id` varchar(36) NOT NULL,`project_id` int NOT NULL,`rule_id` varchar(36) NOT NULL,`rule_version_id` varchar(36) NOT NULL,`event_id` varchar(36) NOT NULL,`state` enum ('queued','evaluating','running','succeeded','failed','skipped','cancelled') NOT NULL DEFAULT 'queued',`condition_trace` json NULL,`matched` tinyint NULL,`attempt_count` int UNSIGNED NOT NULL DEFAULT 0,`started_at` datetime(6) NULL,`finished_at` datetime(6) NULL,`failure_code` varchar(100) NULL,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),`updated_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),UNIQUE INDEX `UQ_automation_run_execution` (`rule_id`,`rule_version_id`,`event_id`),INDEX `IDX_automation_runs_project_created` (`project_id`,`created_at`),INDEX `IDX_automation_runs_rule_state` (`rule_id`,`state`),INDEX `IDX_automation_runs_org` (`organization_id`),INDEX `IDX_automation_runs_version` (`rule_version_id`),INDEX `IDX_automation_runs_event` (`event_id`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_run_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_run_project` FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_run_rule` FOREIGN KEY (`rule_id`) REFERENCES `automation_rules`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_run_version` FOREIGN KEY (`rule_version_id`) REFERENCES `automation_rule_versions`(`id`) ON DELETE CASCADE,CONSTRAINT `FK_automation_run_event` FOREIGN KEY (`event_id`) REFERENCES `automation_events`(`id`) ON DELETE CASCADE) ENGINE=InnoDB",
+    );
+    await q.query(
+      "CREATE TABLE `automation_action_attempts` (`id` varchar(36) NOT NULL,`run_id` varchar(36) NOT NULL,`action_key` varchar(80) NOT NULL,`idempotency_key` varchar(255) NOT NULL,`state` enum ('pending','running','succeeded','failed','skipped') NOT NULL,`attempt_number` int UNSIGNED NOT NULL,`input_snapshot` json NULL,`result_snapshot` json NULL,`started_at` datetime(6) NULL,`finished_at` datetime(6) NULL,`failure_code` varchar(100) NULL,`created_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),UNIQUE INDEX `UQ_automation_action_attempt_number` (`run_id`,`action_key`,`attempt_number`),UNIQUE INDEX `UQ_automation_action_idempotency` (`idempotency_key`),INDEX `IDX_automation_action_attempts_run_state` (`run_id`,`state`),PRIMARY KEY (`id`),CONSTRAINT `FK_automation_action_attempt_run` FOREIGN KEY (`run_id`) REFERENCES `automation_runs`(`id`) ON DELETE CASCADE) ENGINE=InnoDB",
+    );
+  }
+
+  async down(q: QueryRunner): Promise<void> {
+    await q.query('DROP TABLE `automation_action_attempts`');
+    await q.query('DROP TABLE `automation_runs`');
+    await q.query('DROP TABLE `automation_events`');
+    await q.query(
+      'ALTER TABLE `automation_rules` DROP FOREIGN KEY `FK_automation_rule_draft_version`, DROP FOREIGN KEY `FK_automation_rule_published_version`',
+    );
+    await q.query('DROP TABLE `automation_rule_versions`');
+    await q.query('DROP TABLE `automation_rules`');
+    await q.query('DROP TABLE `automation_actors`');
+  }
+}

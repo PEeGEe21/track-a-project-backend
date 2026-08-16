@@ -37,8 +37,13 @@ export class IntakeImportsController {
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
   ) {
-    return this.imports.list(req.user, org, projectId);
+    return this.imports.list(req.user, org, projectId, {
+      limit: Number(limit) || 25,
+      cursor,
+    });
   }
 
   @Get('template')
@@ -97,6 +102,16 @@ export class IntakeImportsController {
     @Param('batchId', ParseUUIDPipe) batchId: string,
   ) {
     return this.imports.listRows(req.user, org, projectId, batchId);
+  }
+
+  @Delete(':batchId')
+  clear(
+    @Req() req: any,
+    @Headers('x-organization-id') org: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ) {
+    return this.imports.clear(req.user, org, projectId, batchId);
   }
 
   @Delete(':batchId/rows/:rowId')

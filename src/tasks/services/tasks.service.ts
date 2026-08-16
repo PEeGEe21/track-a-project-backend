@@ -2121,6 +2121,7 @@ export class TasksService {
         due_date: normalizedDueDate ?? null,
         organization,
         organization_id: organization.id,
+        user: userFound,
       });
 
       // console.log(newTask, 'project')

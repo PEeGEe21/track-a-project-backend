@@ -289,9 +289,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   ) {
     const payload = this.toJobPayload(createNotificationDto, organizationId);
     const deliveryPlan = await this.getDeliveryPlan(payload);
-    const shouldSendEmail =
-      deliveryPlan.email &&
-      payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+    const shouldSendEmail = this.shouldSendPreferenceEmail(
+      payload.type,
+      deliveryPlan.email,
+    );
 
     if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
       return {
@@ -316,6 +317,30 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async deliverCommittedNotification(notification: Notification) {
+    const recipientId = Number((notification.recipient as any)?.id);
+    if (!recipientId) return { push: null };
+    const payload: NotificationJobPayload = {
+      organizationId: String(notification.organization_id),
+      recipientId,
+      senderId: (notification.sender as any)?.id ?? null,
+      title: notification.title,
+      message: notification.message,
+      type: notification.type,
+      metadata: notification.metadata,
+    };
+    const deliveryPlan = await this.getDeliveryPlan(payload);
+    this.notificationsGateway.sendNotificationToUser(
+      String(recipientId),
+      notification,
+    );
+    return {
+      push: deliveryPlan.push
+        ? await this.sendPushNotifications(payload)
+        : null,
+    };
+  }
+
   async enqueueNotification(
     createNotificationDto: CreateNotificationDto,
     organizationId: string,
@@ -323,9 +348,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     try {
       const payload = this.toJobPayload(createNotificationDto, organizationId);
       const deliveryPlan = await this.getDeliveryPlan(payload);
-      const shouldSendEmail =
-        deliveryPlan.email &&
-        payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+      const shouldSendEmail = this.shouldSendPreferenceEmail(
+        payload.type,
+        deliveryPlan.email,
+      );
 
       if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
         return {
@@ -626,9 +652,10 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     payload: NotificationJobPayload,
   ): Promise<DeliveryExecutionResult> {
     const deliveryPlan = await this.getDeliveryPlan(payload);
-    const shouldSendEmail =
-      deliveryPlan.email &&
-      payload.type === NOTIFICATION_TYPES.DEADLINE_REMINDER;
+    const shouldSendEmail = this.shouldSendPreferenceEmail(
+      payload.type,
+      deliveryPlan.email,
+    );
 
     if (!deliveryPlan.in_app && !deliveryPlan.push && !shouldSendEmail) {
       return {
@@ -682,6 +709,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       push: pushResult,
       emailed,
     };
+  }
+
+  private shouldSendPreferenceEmail(type: string, enabled: boolean) {
+    return (
+      enabled &&
+      [
+        NOTIFICATION_TYPES.DEADLINE_REMINDER,
+        NOTIFICATION_TYPES.TASK_INGESTED,
+      ].includes(type)
+    );
   }
 
   private async sendNotificationEmail(payload: NotificationJobPayload) {

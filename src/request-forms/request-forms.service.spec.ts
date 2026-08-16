@@ -39,6 +39,7 @@ describe('RequestFormsService', () => {
   const entitlements = { resolveOrganization: jest.fn() };
   const config = { get: jest.fn() };
   const storage = { uploadFile: jest.fn() };
+  const automationEvents = { capture: jest.fn() };
   let service: RequestFormsService;
 
   beforeEach(() => {
@@ -54,6 +55,7 @@ describe('RequestFormsService', () => {
       entitlements as any,
       config as any,
       storage as any,
+      automationEvents as any,
     );
   });
 

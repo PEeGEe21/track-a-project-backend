@@ -39,6 +39,8 @@ import { IntakeEmailService } from './services/intake-email.service';
 import { StorageModule } from 'src/storage/storage.module';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { AutomationsModule } from 'src/automations/automations.module';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -66,6 +68,8 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
     AuthorizationModule,
     EntitlementsModule,
     StorageModule,
+    forwardRef(() => AutomationsModule),
+    NotificationsModule,
   ],
   controllers: [
     IngestionController,

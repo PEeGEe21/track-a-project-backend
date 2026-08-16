@@ -46,6 +46,7 @@ import {
 import { StorageService } from 'src/types/storage.interface';
 import { MulterFile } from 'src/types/multer.types';
 import { AuthUser } from 'src/types/users';
+import { AutomationEventsService } from 'src/automations/automation-events.service';
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
@@ -90,6 +91,7 @@ export class RequestFormsService {
     private readonly entitlements: EntitlementsService,
     private readonly config: ConfigService,
     @Inject('STORAGE_SERVICE') private readonly storage: StorageService,
+    private readonly automationEvents: AutomationEventsService,
   ) {}
 
   async publicPublished(publicKey: string) {
@@ -463,6 +465,22 @@ export class RequestFormsService {
         locked.validation_snapshot = validation;
         locked.failure_reason = null;
         await manager.getRepository(RequestFormSubmission).save(locked);
+        await this.automationEvents.capture(manager, {
+          organizationId: org,
+          projectId,
+          eventType: 'form.submitted',
+          subjectType: 'request_form_submission',
+          subjectId: locked.id,
+          dedupeKey: `form-submitted:${locked.id}`,
+          after: {
+            formId,
+            formVersionId: version.id,
+            submissionId: locked.id,
+            taskId: savedTask.id,
+          },
+          actorType: context?.public ? 'integration' : 'human',
+          actorId: context?.public ? null : actor.userId,
+        });
       });
     } catch (error) {
       submission = (await repo.findOneBy({ id: submission.id }))!;

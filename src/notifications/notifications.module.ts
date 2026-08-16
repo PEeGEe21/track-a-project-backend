@@ -58,7 +58,7 @@ import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings'
       Organization,
       OrganizationSettings,
       UserOrganization,
-      Note
+      Note,
     ]),
   ],
   controllers: [NotificationsController],
@@ -74,6 +74,7 @@ import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings'
     NotificationPreferencesService,
     PushSubscriptionsService,
     DeadlineRemindersService,
+    NotificationsGateway,
   ],
 })
 export class NotificationsModule {}

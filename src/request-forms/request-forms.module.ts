@@ -17,6 +17,7 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { RequestFormsController } from './request-forms.controller';
 import { PublicRequestFormsController } from './public-request-forms.controller';
 import { RequestFormsService } from './request-forms.service';
+import { AutomationsModule } from 'src/automations/automations.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { RequestFormsService } from './request-forms.service';
     ProjectActivitiesModule,
     CustomFieldsModule,
     StorageModule,
+    AutomationsModule,
   ],
   controllers: [RequestFormsController, PublicRequestFormsController],
   providers: [RequestFormsService, OrganizationAccessGuard],
