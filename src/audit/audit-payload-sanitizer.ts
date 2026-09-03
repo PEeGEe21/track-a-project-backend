@@ -83,6 +83,18 @@ export const AUDIT_FIELD_ALLOWLISTS: Record<
     'retention_days',
     'effective_at',
   ]),
+  [AuditSubjectType.INTEGRATION_ENDPOINT]: new Set([
+    'name',
+    'active',
+    'project_id',
+    'action_count',
+  ]),
+  [AuditSubjectType.INTEGRATION_DELIVERY]: new Set([
+    'status',
+    'generation',
+    'attempt_count',
+    'event_id',
+  ]),
 };
 
 @Injectable()

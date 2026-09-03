@@ -37,6 +37,8 @@ export enum AuditSubjectType {
   AI_SUGGESTION = 'ai_suggestion',
   AUDIT_EXPORT = 'audit_export',
   AUDIT_RETENTION_POLICY = 'audit_retention_policy',
+  INTEGRATION_ENDPOINT = 'integration_endpoint',
+  INTEGRATION_DELIVERY = 'integration_delivery',
 }
 
 export enum AuditAction {
@@ -85,6 +87,10 @@ export enum AuditAction {
   AUDIT_RETENTION_CHANGED = 'audit_retention.changed',
   AUDIT_ACCESS_DENIED = 'audit_access.denied',
   AUDIT_BREAK_GLASS_ACCESSED = 'audit_break_glass.accessed',
+  INTEGRATION_ENDPOINT_CREATED = 'integration_endpoint.created',
+  INTEGRATION_ENDPOINT_UPDATED = 'integration_endpoint.updated',
+  INTEGRATION_SECRET_ROTATED = 'integration_endpoint.secret_rotated',
+  INTEGRATION_DELIVERY_REPLAYED = 'integration_delivery.replayed',
   USER_IMPERSONATED = 'user.impersonated',
   SUBSCRIPTION_CHANGED = 'subscription.changed',
 }

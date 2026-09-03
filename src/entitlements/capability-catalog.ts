@@ -15,6 +15,7 @@ export enum CapabilityKey {
   UNIVERSAL_INTAKE = 'universal_intake',
   RULE_BASED_AUTOMATION = 'rule_based_automation',
   ADVANCED_AUDIT_TRAIL = 'advanced_audit_trail',
+  RELIABLE_INTEGRATION_DELIVERY = 'reliable_integration_delivery',
 }
 
 export type CapabilityDefinition = {
@@ -130,6 +131,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Advanced Audit Trail',
     description:
       'Organization event history with safe filtering, export, and retention controls.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.RELIABLE_INTEGRATION_DELIVERY]: {
+    key: CapabilityKey.RELIABLE_INTEGRATION_DELIVERY,
+    label: 'Reliable Integration Delivery',
+    description:
+      'Signed outbound event delivery with retries, replay, and dead-letter visibility.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

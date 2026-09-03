@@ -82,6 +82,10 @@ import { IntakeEventAttempt } from './typeorm/entities/IntakeEventAttempt';
 import { IntakeImportBatch } from './typeorm/entities/IntakeImportBatch';
 import { IntakeImportRow } from './typeorm/entities/IntakeImportRow';
 import { IntakeWebhookSource } from './typeorm/entities/IntakeWebhookSource';
+import { IntegrationEndpoint } from './typeorm/entities/IntegrationEndpoint';
+import { IntegrationPublisherCheckpoint } from './typeorm/entities/IntegrationPublisherCheckpoint';
+import { IntegrationDelivery } from './typeorm/entities/IntegrationDelivery';
+import { IntegrationDeliveryAttempt } from './typeorm/entities/IntegrationDeliveryAttempt';
 import { IntakeEmailAddress } from './typeorm/entities/IntakeEmailAddress';
 import { IntakeEmailAttachment } from './typeorm/entities/IntakeEmailAttachment';
 import { TaskDeadlineReminder } from './typeorm/entities/TaskDeadlineReminder';
@@ -89,6 +93,7 @@ import { OrganizationSettings } from './typeorm/entities/OrganizationSettings';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { ProjectStatusTemplate } from './typeorm/entities/ProjectStatusTemplate';
 import { EntitlementsModule } from './entitlements/entitlements.module';
+import { IntegrationDeliveryModule } from './integrations/integration-delivery.module';
 import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
 import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
 import { RecurringTasksModule } from './recurring-tasks/recurring-tasks.module';
@@ -233,6 +238,10 @@ import { AuditModule } from './audit/audit.module';
             IntakeImportBatch,
             IntakeImportRow,
             IntakeWebhookSource,
+            IntegrationEndpoint,
+            IntegrationPublisherCheckpoint,
+            IntegrationDelivery,
+            IntegrationDeliveryAttempt,
             IntakeEmailAddress,
             IntakeEmailAttachment,
             IntakeAiSuggestion,
@@ -376,6 +385,7 @@ import { AuditModule } from './audit/audit.module';
     HealthModule,
     IngestionModule,
     EntitlementsModule,
+    IntegrationDeliveryModule,
     RecurringTasksModule,
     ProjectUpdatesModule,
     DecisionsModule,

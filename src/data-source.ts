@@ -99,6 +99,10 @@ import { AutomationEvent } from './typeorm/entities/AutomationEvent';
 import { AutomationRun } from './typeorm/entities/AutomationRun';
 import { AutomationActionAttempt } from './typeorm/entities/AutomationActionAttempt';
 import { TaskWatcher } from './typeorm/entities/TaskWatcher';
+import { IntegrationEndpoint } from './typeorm/entities/IntegrationEndpoint';
+import { IntegrationPublisherCheckpoint } from './typeorm/entities/IntegrationPublisherCheckpoint';
+import { IntegrationDelivery } from './typeorm/entities/IntegrationDelivery';
+import { IntegrationDeliveryAttempt } from './typeorm/entities/IntegrationDeliveryAttempt';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -214,6 +218,10 @@ export const AppDataSource = new DataSource({
     AutomationRun,
     AutomationActionAttempt,
     TaskWatcher,
+    IntegrationEndpoint,
+    IntegrationPublisherCheckpoint,
+    IntegrationDelivery,
+    IntegrationDeliveryAttempt,
   ],
   migrationsTransactionMode: 'each',
 });
