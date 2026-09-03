@@ -35,6 +35,15 @@ import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { randomUUID } from 'crypto';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 import {
   AUTOMATION_STANDARD_FIELDS,
   AutomationActionType,
@@ -57,7 +66,48 @@ export class AutomationsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly authorization: AuthorizationService,
+    private readonly entitlements: EntitlementsService,
+    private readonly auditWriter: AuditWriterService,
   ) {}
+
+  private async auditEnabled(actor: AuthUser, organizationId: string) {
+    return Boolean(
+      (await this.entitlements.resolveForActor(actor, organizationId)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
+  }
+
+  private async auditRule(
+    manager: EntityManager,
+    actor: AuthUser,
+    organizationId: string,
+    projectId: number,
+    rule: AutomationRule,
+    action: AuditAction,
+    before?: Record<string, unknown>,
+    after?: Record<string, unknown>,
+  ) {
+    await this.auditWriter.append(manager, {
+      organizationId,
+      projectId,
+      action,
+      actor: {
+        type: AuditActorType.HUMAN,
+        id: actor.userId,
+        label: `User ${actor.userId}`,
+      },
+      subject: {
+        type: AuditSubjectType.AUTOMATION_RULE,
+        id: rule.id,
+        label: rule.name,
+      },
+      source: AuditSource.API,
+      correlationId: this.auditWriter.correlationId(),
+      before,
+      after,
+    });
+  }
 
   async list(
     actor: AuthUser,
@@ -133,6 +183,7 @@ export class AutomationsService {
       projectId,
       dto,
     );
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     const id = await this.dataSource.transaction(async (manager) => {
       const executionActor = await this.ensureAutomationActor(
         manager,
@@ -165,6 +216,17 @@ export class AutomationsService {
       );
       rule.draft_version_id = draft.id;
       await ruleRepo.save(rule);
+      if (auditEnabled)
+        await this.auditRule(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          rule,
+          AuditAction.AUTOMATION_RULE_CREATED,
+          undefined,
+          { name: rule.name, status: 'draft', version: 1, enabled: false },
+        );
       return rule.id;
     });
     await this.recordActivity(actor, organizationId, projectId, id, 'created');
@@ -233,6 +295,7 @@ export class AutomationsService {
       projectId,
       dto,
     );
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     await this.dataSource.transaction(async (manager) => {
       const rule = await this.findScoped(
         manager,
@@ -256,6 +319,22 @@ export class AutomationsService {
         rule.authorization_policy = dto.authorizationPolicy;
       rule.last_material_editor_id = actor.userId;
       await manager.getRepository(AutomationRule).save(rule);
+      if (auditEnabled)
+        await this.auditRule(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          rule,
+          AuditAction.AUTOMATION_RULE_UPDATED,
+          undefined,
+          {
+            name: rule.name,
+            status: 'draft',
+            version: rule.draft_version.version_number,
+            enabled: rule.active,
+          },
+        );
     });
     await this.recordActivity(
       actor,
@@ -274,6 +353,7 @@ export class AutomationsService {
     ruleId: string,
   ) {
     await this.assertOwner(actor, organizationId, projectId, 'publish');
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     await this.dataSource.transaction(async (manager) => {
       const rule = await this.findScoped(
         manager,
@@ -306,6 +386,22 @@ export class AutomationsService {
       rule.draft_version_id = null;
       rule.last_material_editor_id = actor.userId;
       await manager.getRepository(AutomationRule).save(rule);
+      if (auditEnabled)
+        await this.auditRule(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          rule,
+          AuditAction.AUTOMATION_RULE_PUBLISHED,
+          undefined,
+          {
+            name: rule.name,
+            status: 'published',
+            version: published.version_number,
+            enabled: rule.active,
+          },
+        );
     });
     await this.recordActivity(
       actor,
@@ -330,29 +426,49 @@ export class AutomationsService {
       projectId,
       enabled ? 'enable' : 'disable',
     );
-    const rule = await this.findScoped(
-      this.dataSource.manager,
-      organizationId,
-      projectId,
-      ruleId,
-    );
-    if (rule.archived_at)
-      throw new BadRequestException('Archived rules cannot be enabled');
-    if (enabled) {
-      if (!rule.published_version)
-        throw new BadRequestException('Publish the rule before enabling it');
-      await this.validateDefinition(
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
+    await this.dataSource.transaction(async (manager) => {
+      const rule = await this.findScoped(
+        manager,
         organizationId,
         projectId,
-        rule.published_version.definition as unknown as AutomationDefinitionDto,
+        ruleId,
+        true,
       );
-      if (!rule.execution_actor?.active)
-        throw new BadRequestException('Automation actor is unavailable');
-    }
-    rule.active = enabled;
-    rule.active_since = enabled ? new Date() : null;
-    rule.last_material_editor_id = actor.userId;
-    await this.dataSource.getRepository(AutomationRule).save(rule);
+      if (rule.archived_at)
+        throw new BadRequestException('Archived rules cannot be enabled');
+      if (enabled) {
+        if (!rule.published_version)
+          throw new BadRequestException('Publish the rule before enabling it');
+        await this.validateDefinition(
+          organizationId,
+          projectId,
+          rule.published_version
+            .definition as unknown as AutomationDefinitionDto,
+          manager,
+        );
+        if (!rule.execution_actor?.active)
+          throw new BadRequestException('Automation actor is unavailable');
+      }
+      const before = rule.active;
+      rule.active = enabled;
+      rule.active_since = enabled ? new Date() : null;
+      rule.last_material_editor_id = actor.userId;
+      await manager.getRepository(AutomationRule).save(rule);
+      if (auditEnabled && before !== enabled)
+        await this.auditRule(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          rule,
+          enabled
+            ? AuditAction.AUTOMATION_RULE_ENABLED
+            : AuditAction.AUTOMATION_RULE_DISABLED,
+          { enabled: before },
+          { enabled },
+        );
+    });
     await this.recordActivity(
       actor,
       organizationId,
@@ -370,18 +486,36 @@ export class AutomationsService {
     ruleId: string,
   ) {
     await this.assertOwner(actor, organizationId, projectId, 'archive');
-    const rule = await this.findScoped(
-      this.dataSource.manager,
-      organizationId,
-      projectId,
-      ruleId,
-    );
-    if (!rule.archived_at) {
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
+    const archived = await this.dataSource.transaction(async (manager) => {
+      const rule = await this.findScoped(
+        manager,
+        organizationId,
+        projectId,
+        ruleId,
+        true,
+      );
+      if (rule.archived_at) return false;
+      const before = { status: 'active', enabled: rule.active };
       rule.active = false;
       rule.active_since = null;
       rule.archived_at = new Date();
       rule.last_material_editor_id = actor.userId;
-      await this.dataSource.getRepository(AutomationRule).save(rule);
+      await manager.getRepository(AutomationRule).save(rule);
+      if (auditEnabled)
+        await this.auditRule(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          rule,
+          AuditAction.AUTOMATION_RULE_ARCHIVED,
+          before,
+          { status: 'archived', enabled: false },
+        );
+      return true;
+    });
+    if (archived) {
       await this.recordActivity(
         actor,
         organizationId,
@@ -535,32 +669,58 @@ export class AutomationsService {
       projectId,
       ProjectPermission.EDIT,
     );
-    const repo = this.dataSource.getRepository(AutomationRun);
-    const run = await repo.findOne({
-      where: {
-        id: runId,
-        organization_id: organizationId,
-        project_id: projectId,
-      },
-      relations: ['rule'],
-    });
-    if (!run) throw new NotFoundException('Automation run not found');
-    if (run.state !== 'failed')
-      throw new BadRequestException(
-        'Only failed automation runs can be retried',
-      );
-    if (!run.rule?.active || run.rule.archived_at)
-      throw new BadRequestException('Enable the automation before retrying');
-    await repo.update(run.id, {
-      state: 'queued',
-      failure_code: null,
-      finished_at: null,
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
+    let ruleId: string;
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(AutomationRun);
+      const run = await repo.findOne({
+        where: {
+          id: runId,
+          organization_id: organizationId,
+          project_id: projectId,
+        },
+        relations: ['rule'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!run) throw new NotFoundException('Automation run not found');
+      if (run.state !== 'failed')
+        throw new BadRequestException(
+          'Only failed automation runs can be retried',
+        );
+      if (!run.rule?.active || run.rule.archived_at)
+        throw new BadRequestException('Enable the automation before retrying');
+      ruleId = run.rule_id;
+      const failureCode = run.failure_code;
+      run.state = 'queued';
+      run.failure_code = null;
+      run.finished_at = null;
+      await repo.save(run);
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId,
+          projectId,
+          action: AuditAction.AUTOMATION_RUN_RETRIED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
+          },
+          subject: {
+            type: AuditSubjectType.AUTOMATION_RUN,
+            id: run.id,
+            label: run.rule?.name ?? 'Automation run',
+          },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          before: { status: 'failed', reason: failureCode },
+          after: { status: 'queued', rule_id: run.rule_id },
+        });
     });
     await this.recordActivity(
       actor,
       organizationId,
       projectId,
-      run.rule_id,
+      ruleId!,
       'run_retry_requested',
     );
     return { success: true, message: 'Automation run queued for retry' };

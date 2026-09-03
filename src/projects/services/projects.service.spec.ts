@@ -78,6 +78,7 @@ describe('ProjectsService ingestion settings', () => {
       authorizationService as any,
       customFieldsService as any,
       entitlementsService as any,
+      {} as any,
     );
     authorizationService.assertProjectPermission.mockImplementation(
       async () => ({

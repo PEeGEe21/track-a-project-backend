@@ -25,6 +25,10 @@ describe('AutomationsService', () => {
   const authorization = {
     assertProjectPermission: jest.fn(),
   } as any;
+  const entitlements = {
+    resolveForActor: jest.fn().mockResolvedValue([]),
+  } as any;
+  const auditWriter = { append: jest.fn(), correlationId: jest.fn() } as any;
   let service: AutomationsService;
 
   const definition = () => ({
@@ -43,7 +47,12 @@ describe('AutomationsService', () => {
     jest.clearAllMocks();
     repository.count.mockResolvedValue(0);
     repository.find.mockResolvedValue([]);
-    service = new AutomationsService(dataSource, authorization);
+    service = new AutomationsService(
+      dataSource,
+      authorization,
+      entitlements,
+      auditWriter,
+    );
   });
 
   it('accepts a bounded rule contract and returns a detached snapshot', async () => {

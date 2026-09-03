@@ -65,6 +65,13 @@ import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import { PreparedCustomFieldFilter } from 'src/custom-fields/custom-fields.service';
 import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 import { CustomWorkflowsService } from 'src/custom-workflows/custom-workflows.service';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 @Injectable()
 export class TasksService {
@@ -92,7 +99,26 @@ export class TasksService {
     private readonly customFieldsService: CustomFieldsService,
     private readonly entitlementsService: EntitlementsService,
     private readonly customWorkflowsService: CustomWorkflowsService,
+    private readonly auditWriter: AuditWriterService,
   ) {}
+
+  private humanAuditActor(user: User) {
+    return {
+      type: AuditActorType.HUMAN,
+      id: user.id,
+      label: user.fullName || user.email || `User ${user.id}`,
+    };
+  }
+
+  private taskAuditChanges(task: Task) {
+    return {
+      title: task.title,
+      status_id: task.status?.id ?? null,
+      priority: task.priority,
+      assignee_ids: (task.assignees ?? []).map((assignee) => assignee.id),
+      due_date: task.due_date,
+    };
+  }
 
   private async customFieldsEnabled(actor: AuthUser, organizationId: string) {
     const entitlements = await this.entitlementsService.resolveForActor(
@@ -102,6 +128,18 @@ export class TasksService {
     return Boolean(
       entitlements.find((item) => item.key === CapabilityKey.CUSTOM_FIELDS)
         ?.enabled,
+    );
+  }
+
+  private async advancedAuditEnabled(actor: AuthUser, organizationId: string) {
+    const entitlements = await this.entitlementsService.resolveForActor(
+      actor,
+      organizationId,
+    );
+    return Boolean(
+      entitlements.find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
     );
   }
 
@@ -791,6 +829,7 @@ export class TasksService {
 
   async updateTask(id: number, updateTaskDetails: any, user, organizationId) {
     await this.assertTaskWriteAccess(id, user, organizationId);
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -873,117 +912,165 @@ export class TasksService {
         }
       }
 
-      if (Object.keys(data).length === 0 && !hasCustomFieldUpdate) {
+      const hasAssigneeUpdate = Object.prototype.hasOwnProperty.call(
+        updateTaskDetails,
+        'assignees',
+      );
+      if (
+        Object.keys(data).length === 0 &&
+        !hasCustomFieldUpdate &&
+        !hasAssigneeUpdate &&
+        !statusEntity
+      ) {
         throw new HttpException(
           'No update values provided',
           HttpStatus.BAD_REQUEST,
         );
       }
 
-      const updatedResult = hasCustomFieldUpdate
-        ? await this.dataSource.transaction(async (manager) => {
-            const result = Object.keys(data).length
-              ? await manager.getRepository(Task).update({ id }, { ...data })
-              : { affected: 1 };
-            await this.customFieldsService.setTaskValuesInTransaction(
-              manager,
-              organizationId,
-              task.project.id,
-              id,
-              customFieldInputs,
-              false,
-            );
-            return result;
-          })
-        : await this.taskRepository.update({ id }, { ...data });
+      const taskResult = await this.dataSource.transaction(async (manager) => {
+        const repository = manager.getRepository(Task);
+        const lockedTask = await repository.findOne({
+          where: { id, organization_id: organizationId },
+          relations: ['project', 'status', 'assignees'],
+        });
+        if (!lockedTask)
+          throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+        const beforeAudit = this.taskAuditChanges(lockedTask);
 
-      console.log(updatedResult, 'rererr');
-
-      if (updatedResult.affected < 1) {
-        return {
-          error: 'error',
-          message: 'Task update failed',
-        };
-      }
-
-      const updatedTask = await this.taskRepository.findOne({
-        where: { id },
-        relations: ['status', 'project'],
-      });
-
-      // Assignee updates: clear if empty ("", null, [], or "[]"), otherwise attach
-      if (
-        Object.prototype.hasOwnProperty.call(updateTaskDetails, 'assignees')
-      ) {
-        const raw = updateTaskDetails.assignees;
-
-        const clearAssignees = async () => {
-          updatedTask.assignees = [];
-          await this.taskRepository.save(updatedTask);
-        };
-
-        if (raw === null || raw === undefined) {
-          await clearAssignees();
-        } else if (typeof raw === 'string') {
-          const trimmed = raw.trim();
-          if (trimmed === '') {
-            await clearAssignees();
-          } else {
-            try {
-              const parsed = JSON.parse(trimmed);
-              if (Array.isArray(parsed) && parsed.length === 0) {
-                await clearAssignees();
-              } else {
-                await this.addAssigneeToTask(
-                  userFound,
-                  raw,
-                  updatedTask,
-                  organizationId,
-                );
-              }
-            } catch {
-              // Not JSON, treat as non-empty string list
-              await this.addAssigneeToTask(
-                userFound,
-                raw,
-                updatedTask,
-                organizationId,
-              );
-            }
-          }
-        } else if (Array.isArray(raw)) {
-          if (raw.length === 0) {
-            await clearAssignees();
-          } else {
-            await this.addAssigneeToTask(
-              userFound,
-              JSON.stringify(raw),
-              updatedTask,
-              organizationId,
-            );
-          }
-        } else {
-          // Unknown type -> clear to be safe
-          await clearAssignees();
+        if (Object.keys(data).length > 0) {
+          Object.assign(lockedTask, data);
         }
-      }
+        if (hasCustomFieldUpdate) {
+          await this.customFieldsService.setTaskValuesInTransaction(
+            manager,
+            organizationId,
+            lockedTask.project.id,
+            id,
+            customFieldInputs,
+            false,
+          );
+        }
 
-      if (statusEntity && task.status.id !== statusEntity.id) {
-        await this.dataSource.transaction(async (manager) => {
-          const transitionTask = await manager.getRepository(Task).findOne({
-            where: { id, organization_id: organizationId },
-            relations: ['project', 'status', 'assignees'],
-          });
-          if (!transitionTask)
-            throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+        let addedAssignees: User[] = [];
+        if (hasAssigneeUpdate) {
+          const assigneeEmails = this.parseAssigneeList(
+            updateTaskDetails.assignees,
+          );
+          if (assigneeEmails.length === 0) {
+            lockedTask.assignees = [];
+          } else {
+            const foundUsers = await manager.getRepository(User).find({
+              where: assigneeEmails.map((email) => ({ email })),
+            });
+            const existingIds = new Set(
+              (lockedTask.assignees ?? []).map((assignee) => assignee.id),
+            );
+            addedAssignees = foundUsers.filter(
+              (assignee) => !existingIds.has(assignee.id),
+            );
+            lockedTask.assignees = [
+              ...(lockedTask.assignees ?? []),
+              ...addedAssignees,
+            ];
+          }
+        }
+        if (Object.keys(data).length > 0 || hasAssigneeUpdate) {
+          await repository.save(lockedTask);
+        }
+
+        if (statusEntity && lockedTask.status.id !== statusEntity.id) {
           await this.customWorkflowsService.transitionTask(
             manager,
             user,
             organizationId,
-            transitionTask,
+            lockedTask,
             statusEntity.id,
           );
+        }
+
+        const updatedTask = await repository.findOne({
+          where: { id, organization_id: organizationId },
+          relations: ['status', 'project', 'assignees'],
         });
+        if (!updatedTask)
+          throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
+        const afterAudit = {
+          ...this.taskAuditChanges(updatedTask),
+          ...(hasCustomFieldUpdate
+            ? { custom_fields_changed: customFieldInputs.length }
+            : {}),
+        };
+        if (auditEnabled) {
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: updatedTask.project.id,
+            action: AuditAction.TASK_UPDATED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id,
+              label: updatedTask.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: beforeAudit,
+            after: afterAudit,
+          });
+          if (
+            beforeAudit.assignee_ids.join(',') !==
+            afterAudit.assignee_ids.join(',')
+          ) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: updatedTask.project.id,
+              action: AuditAction.TASK_ASSIGNED,
+              actor: this.humanAuditActor(userFound),
+              subject: {
+                type: AuditSubjectType.TASK,
+                id,
+                label: updatedTask.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { assignee_ids: beforeAudit.assignee_ids },
+              after: { assignee_ids: afterAudit.assignee_ids },
+            });
+          }
+          if (beforeAudit.status_id !== afterAudit.status_id) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: updatedTask.project.id,
+              action: AuditAction.TASK_STATUS_CHANGED,
+              actor: this.humanAuditActor(userFound),
+              subject: {
+                type: AuditSubjectType.TASK,
+                id,
+                label: updatedTask.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { status_id: beforeAudit.status_id },
+              after: { status_id: afterAudit.status_id },
+            });
+          }
+        }
+        return { updatedTask, addedAssignees };
+      });
+
+      const updatedTask = taskResult.updatedTask;
+      for (const assignee of taskResult.addedAssignees) {
+        await this.notificationService.createNotification(
+          userFound,
+          {
+            recipient: assignee,
+            sender: userFound,
+            title: 'Task Assignment',
+            message: `${userFound.fullName} assigned the task ${updatedTask.title} to you.`,
+            type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
+          },
+          organizationId,
+        );
       }
 
       await this.projectActivitiesService.createActivity({
@@ -1030,6 +1117,7 @@ export class TasksService {
     organizationId: string,
   ) {
     await this.assertTaskWriteAccess(id, user, organizationId);
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     let customFieldInputs = updateTaskDetails.customFields;
     if (typeof customFieldInputs === 'string') {
       try {
@@ -1120,6 +1208,7 @@ export class TasksService {
         if (!task) {
           throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
         }
+        const beforeAudit = this.taskAuditChanges(task);
 
         if (
           updateTaskDetails.description !== undefined ||
@@ -1324,6 +1413,67 @@ export class TasksService {
             manager.getRepository(Resource),
             task.id,
           );
+        }
+
+        if (auditEnabled && updatedTask) {
+          const afterAudit = {
+            ...this.taskAuditChanges(updatedTask),
+            ...(hasCustomFieldUpdate
+              ? { custom_fields_changed: customFieldInputs.length }
+              : {}),
+          };
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: task.project.id,
+            action: AuditAction.TASK_UPDATED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id: task.id,
+              label: updatedTask.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: beforeAudit,
+            after: afterAudit,
+          });
+
+          const beforeAssignees = beforeAudit.assignee_ids.join(',');
+          const afterAssignees = afterAudit.assignee_ids.join(',');
+          if (beforeAssignees !== afterAssignees) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: task.project.id,
+              action: AuditAction.TASK_ASSIGNED,
+              actor: this.humanAuditActor(userFound),
+              subject: {
+                type: AuditSubjectType.TASK,
+                id: task.id,
+                label: updatedTask.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { assignee_ids: beforeAudit.assignee_ids },
+              after: { assignee_ids: afterAudit.assignee_ids },
+            });
+          }
+          if (beforeAudit.status_id !== afterAudit.status_id) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: task.project.id,
+              action: AuditAction.TASK_STATUS_CHANGED,
+              actor: this.humanAuditActor(userFound),
+              subject: {
+                type: AuditSubjectType.TASK,
+                id: task.id,
+                label: updatedTask.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { status_id: beforeAudit.status_id },
+              after: { status_id: afterAudit.status_id },
+            });
+          }
         }
 
         return {
@@ -1566,6 +1716,7 @@ export class TasksService {
     organizationId: string,
   ) {
     await this.assertTaskWriteAccess(taskId, user, organizationId);
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     return await this.dataSource.transaction(async (manager) => {
       const userFound = await manager.getRepository(User).findOne({
         where: { id: user.userId },
@@ -1663,6 +1814,24 @@ export class TasksService {
         await this.recurringTasksService.generateAfterCompletion(
           updatedTask.id,
         );
+      }
+
+      if (auditEnabled && previousStatus.id !== updatedTask.status.id) {
+        await this.auditWriter.append(manager, {
+          organizationId,
+          projectId: updatedTask.project.id,
+          action: AuditAction.TASK_STATUS_CHANGED,
+          actor: this.humanAuditActor(userFound),
+          subject: {
+            type: AuditSubjectType.TASK,
+            id: updatedTask.id,
+            label: updatedTask.title,
+          },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          before: { status_id: previousStatus.id },
+          after: { status_id: updatedTask.status.id },
+        });
       }
 
       return {
@@ -1823,6 +1992,7 @@ export class TasksService {
     organizationId: string,
   ): Promise<any> {
     await this.assertTaskWriteAccess(id, user, organizationId);
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -1833,7 +2003,10 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
-      const task = this.taskRepository.findOneBy({ id });
+      const task = await this.taskRepository.findOne({
+        where: { id, organization_id: organizationId },
+        relations: ['project', 'status', 'assignees'],
+      });
       if (!task)
         throw new HttpException('Task not found', HttpStatus.BAD_REQUEST);
 
@@ -1847,21 +2020,40 @@ export class TasksService {
         priorityStatus.priority,
       );
       // console.log(priorityStatus, priorityStatus === true ? 1 : 0, 'priorty');
-      const updatedResult = await this.taskRepository.update(
-        { id },
-        { priority: priorityStatus.priority ? 0 : 1 },
-      );
-
-      // console.log(updatedResult);
-
-      if (updatedResult.affected < 1) {
-        return {
-          error: 'error',
-          message: 'Task update failed',
-        };
-      }
-
-      const updatedTask = await this.findOne(id);
+      const nextPriority = priorityStatus.priority ? 0 : 1;
+      const updatedTask = await this.dataSource.transaction(async (manager) => {
+        const repository = manager.getRepository(Task);
+        const updatedResult = await repository.update(
+          { id, organization_id: organizationId },
+          { priority: nextPriority },
+        );
+        if (!updatedResult.affected) {
+          throw new NotFoundException('Task not found');
+        }
+        const updated = await repository.findOne({
+          where: { id, organization_id: organizationId },
+          relations: ['project', 'status', 'assignees'],
+        });
+        if (!updated) throw new NotFoundException('Task not found');
+        if (auditEnabled && task.priority !== updated.priority) {
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: updated.project.id,
+            action: AuditAction.TASK_UPDATED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id: updated.id,
+              label: updated.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: { priority: task.priority },
+            after: { priority: updated.priority },
+          });
+        }
+        return updated;
+      });
       console.log(updatedTask, 'updatedTask');
 
       await this.projectActivitiesService.createActivity({
@@ -1909,6 +2101,7 @@ export class TasksService {
       organizationId,
       ProjectPermission.EDIT,
     );
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -1919,12 +2112,36 @@ export class TasksService {
           HttpStatus.BAD_REQUEST,
         );
 
-      const task = await this.findOne(id);
+      const task = await this.taskRepository.findOne({
+        where: { id, organization_id: organizationId },
+        relations: ['project', 'status', 'assignees'],
+      });
       if (!task) {
         return { error: 'error', message: 'Task not found' }; // Or throw a NotFoundException
       }
 
-      await this.taskRepository.delete(id);
+      await this.dataSource.transaction(async (manager) => {
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: task.project.id,
+            action: AuditAction.TASK_DELETED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id: task.id,
+              label: task.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: this.taskAuditChanges(task),
+          });
+        const result = await manager.getRepository(Task).delete({
+          id,
+          organization_id: organizationId,
+        });
+        if (!result.affected) throw new NotFoundException('Task not found');
+      });
 
       await this.projectActivitiesService.createActivity({
         organization_id: organizationId,
@@ -2008,6 +2225,7 @@ export class TasksService {
       id,
       ProjectPermission.CONTRIBUTE,
     );
+    const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
     try {
       const userFound = await this.userRepository.findOneBy({
         id: user.userId,
@@ -2109,6 +2327,12 @@ export class TasksService {
           CapabilityKey.CUSTOM_FIELDS,
         );
       }
+      const initialAssigneeEmails = this.parseAssigneeList(assignees);
+      const initialAssignees = initialAssigneeEmails.length
+        ? await this.userRepository.find({
+            where: initialAssigneeEmails.map((email) => ({ email })),
+          })
+        : [];
 
       const newTask = this.taskRepository.create({
         title,
@@ -2122,6 +2346,7 @@ export class TasksService {
         organization,
         organization_id: organization.id,
         user: userFound,
+        assignees: initialAssignees,
       });
 
       // console.log(newTask, 'project')
@@ -2157,15 +2382,34 @@ export class TasksService {
             organizationId,
           );
         }
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: project.id,
+            action: AuditAction.TASK_CREATED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id: task.id,
+              label: task.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            after: this.taskAuditChanges(task),
+          });
         return task;
       });
 
-      // Attach assignees by emails if provided
-      if (assignees && typeof assignees === 'string' && assignees.length > 0) {
-        await this.addAssigneeToTask(
+      for (const assignee of initialAssignees) {
+        await this.notificationService.createNotification(
           userFound,
-          assignees,
-          newTask,
+          {
+            recipient: assignee,
+            sender: userFound,
+            title: 'Task Assignment',
+            message: `${userFound.fullName} assigned the task ${savedTask.title} to you.`,
+            type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
+          },
           organizationId,
         );
       }
@@ -2209,109 +2453,6 @@ export class TasksService {
       if (err instanceof HttpException) throw err;
       throw new HttpException(
         'Error saving task',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  async addAssigneeToTask(
-    user: any,
-    emails: string,
-    task: Task,
-    organizationId: string,
-  ): Promise<any> {
-    const parseEmailList = (raw: unknown): string[] => {
-      if (Array.isArray(raw)) {
-        return raw.map((entry) => String(entry ?? ''));
-      }
-
-      if (typeof raw !== 'string') {
-        throw new HttpException(
-          'Invalid assignees payload',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return [];
-      }
-
-      if (trimmed.startsWith('[')) {
-        const parsed = JSON.parse(trimmed);
-        if (!Array.isArray(parsed)) {
-          throw new HttpException(
-            'Invalid assignees payload',
-            HttpStatus.BAD_REQUEST,
-          );
-        }
-
-        return parsed.map((entry) => {
-          if (typeof entry === 'string') {
-            return entry;
-          }
-
-          if (entry && typeof entry === 'object' && 'email' in entry) {
-            return String((entry as { email?: unknown }).email ?? '');
-          }
-
-          return String(entry ?? '');
-        });
-      }
-
-      if (trimmed.includes(',')) {
-        return trimmed.split(',');
-      }
-
-      return [trimmed];
-    };
-
-    try {
-      const emailList = parseEmailList(emails);
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const validEmails = emailList
-        .map((e) => String(e).trim().toLowerCase())
-        .filter((e) => emailRegex.test(e));
-
-      if (validEmails.length === 0) {
-        return { success: true };
-      }
-
-      const foundUsers = await this.userRepository.find({
-        where: validEmails.map((email) => ({ email })),
-      });
-
-      const existingAssignees = task.assignees ?? [];
-      const existingIds = new Set(existingAssignees.map((u) => u.id));
-      const toAdd = foundUsers.filter((u) => !existingIds.has(u.id));
-      task.assignees = [...existingAssignees, ...toAdd];
-
-      await this.taskRepository.save(task);
-
-      for (const add of toAdd) {
-        await this.notificationService.createNotification(
-          user,
-          {
-            recipient: add,
-            sender: user,
-            title: 'Task Assignment',
-            message: `${user?.fullName} assigned the task ${task?.title} to you.`,
-            type: NOTIFICATION_TYPES.TASK_ASSIGNMENT,
-          },
-          organizationId,
-        );
-      }
-
-      return {
-        success: true,
-      };
-    } catch (err) {
-      if (err instanceof HttpException) {
-        throw err;
-      }
-
-      throw new HttpException(
-        err?.message || 'Failed to assign task',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

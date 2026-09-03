@@ -16,8 +16,15 @@ import { FindUsersQueryDto } from 'src/users/dtos/FindUsersQuery.dto';
 import { UsersService } from 'src/users/services/users.service';
 import { ProjectStatus } from 'src/utils/constants/project';
 import { UserStatus } from 'src/utils/types';
-import { Between, Repository } from 'typeorm';
+import { Between, In, Repository } from 'typeorm';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 @Injectable()
 export class AdminService {
@@ -36,6 +43,7 @@ export class AdminService {
     private projectStatusTemplateRepository: Repository<ProjectStatusTemplate>,
     // private jwtService: JwtService,
     private usersService: UsersService,
+    private auditWriter: AuditWriterService,
   ) {}
 
   private getFallbackProjectStatusTemplates() {
@@ -82,7 +90,10 @@ export class AdminService {
     const cleaned = source
       .map((template, index) => ({
         title: String(template?.title ?? '').trim(),
-        color: template?.color?.trim() || this.getFallbackProjectStatusTemplates()[index]?.color || '#94A3B8',
+        color:
+          template?.color?.trim() ||
+          this.getFallbackProjectStatusTemplates()[index]?.color ||
+          '#94A3B8',
         tabId: index,
         isDefault: template?.isDefault ?? true,
         isActive: true,
@@ -93,7 +104,9 @@ export class AdminService {
     const normalized =
       cleaned.length > 0 ? cleaned : this.getFallbackProjectStatusTemplates();
 
-    const firstTerminalIndex = normalized.findIndex((template) => template.isTerminal);
+    const firstTerminalIndex = normalized.findIndex(
+      (template) => template.isTerminal,
+    );
     const doneIndex = normalized.findIndex(
       (template) => template.title.trim().toLowerCase() === 'done',
     );
@@ -344,13 +357,26 @@ export class AdminService {
     org.max_users = limits[tier]?.users || 5;
     org.max_projects = limits[tier]?.projects || 10;
 
-    await this.orgRepository.save(org);
-
-    // Log the change
-    await this.auditLogRepository.save({
-      action: 'SUBSCRIPTION_CHANGE',
-      organization_id: orgId,
-      metadata: { old_tier: oldTier, new_tier: tier, notes },
+    await this.orgRepository.manager.transaction(async (manager) => {
+      await manager.getRepository(Organization).save(org);
+      await this.auditWriter.append(manager, {
+        organizationId: orgId,
+        action: AuditAction.SUBSCRIPTION_CHANGED,
+        actor: {
+          type: AuditActorType.SYSTEM,
+          id: 'admin_subscription_service',
+          label: 'Admin subscription service',
+        },
+        subject: {
+          type: AuditSubjectType.ORGANIZATION,
+          id: orgId,
+          label: org.name,
+        },
+        source: AuditSource.ADMIN,
+        correlationId: this.auditWriter.correlationId(),
+        before: { subscription_tier: oldTier },
+        after: { subscription_tier: tier },
+      });
     });
 
     return { message: 'Subscription updated', organization: org };
@@ -358,7 +384,10 @@ export class AdminService {
 
   async getBillingHistory(orgId: string) {
     const history = await this.auditLogRepository.find({
-      where: { organization_id: orgId, action: 'SUBSCRIPTION_CHANGE' },
+      where: {
+        organization_id: orgId,
+        action: In(['SUBSCRIPTION_CHANGE', AuditAction.SUBSCRIPTION_CHANGED]),
+      },
       order: { created_at: 'DESC' },
     });
 
@@ -367,8 +396,10 @@ export class AdminService {
         id: log.id,
         date: log.created_at,
         action: 'Plan Change',
-        old_plan: log.metadata.old_tier,
-        new_plan: log.metadata.new_tier,
+        old_plan:
+          log.before_changes?.subscription_tier ?? log.metadata?.old_tier,
+        new_plan:
+          log.after_changes?.subscription_tier ?? log.metadata?.new_tier,
         amount: 0, // calculate based on pricing
         admin: log.admin_id ? `Admin #${log.admin_id}` : 'System',
       })),

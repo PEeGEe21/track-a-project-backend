@@ -54,6 +54,7 @@ describe('CustomWorkflowsService', () => {
       authorization as any,
       entitlements as any,
       dataSource as any,
+      { append: jest.fn(), correlationId: jest.fn() } as any,
     );
   });
 

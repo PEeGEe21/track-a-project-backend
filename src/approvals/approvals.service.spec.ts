@@ -5,7 +5,13 @@ import {
 import { ApprovalDecision } from 'src/typeorm/entities/ApprovalResponse';
 import { ApprovalsService } from './approvals.service';
 describe('ApprovalsService contract', () => {
-  const service = new ApprovalsService({} as any, {} as any, {} as any);
+  const service = new ApprovalsService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
   it('only allows an assigned reviewer without an existing response to respond', () => {
     const base: any = {
       id: 'a',
@@ -71,6 +77,8 @@ describe('ApprovalsService contract', () => {
       dataSource as any,
       authorization as any,
       {} as any,
+      { resolveForActor: jest.fn().mockResolvedValue([]) } as any,
+      { append: jest.fn(), correlationId: jest.fn() } as any,
     );
     jest
       .spyOn(respondingService as any, 'snapshot')

@@ -2,7 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import { ReusableTemplateType } from 'src/typeorm/entities/ReusableTemplate';
 import { TemplatesService } from './templates.service';
 describe('TemplatesService contract', () => {
-  const service = new TemplatesService({} as any, {} as any);
+  const service = new TemplatesService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
   it('requires task titles and checklist items', () => {
     expect(() =>
       (service as any).validate(ReusableTemplateType.TASK, {}),

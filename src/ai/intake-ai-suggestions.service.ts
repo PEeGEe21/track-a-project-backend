@@ -32,7 +32,13 @@ import { Category } from 'src/typeorm/entities/Category';
 import { User } from 'src/typeorm/entities/User';
 import { ProjectPeer } from 'src/typeorm/entities/ProjectPeer';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 type PendingSuggestion = {
   eventId: string;
@@ -57,8 +63,7 @@ export class IntakeAiSuggestionsService {
     private readonly events: Repository<IntakeEvent>,
     @InjectRepository(IntakeAiSuggestion)
     private readonly suggestions: Repository<IntakeAiSuggestion>,
-    @InjectRepository(AuditLog)
-    private readonly audits: Repository<AuditLog>,
+    private readonly auditWriter: AuditWriterService,
   ) {}
 
   async generate(
@@ -67,7 +72,12 @@ export class IntakeAiSuggestionsService {
     projectId: number,
     eventId: string,
   ) {
-    await this.assertAccess(actor, organizationId, projectId, ProjectPermission.EDIT);
+    await this.assertAccess(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.EDIT,
+    );
     const event = await this.findEvent(organizationId, projectId, eventId);
     const matching = await this.matchingContext.assemble(
       actor,
@@ -83,7 +93,9 @@ export class IntakeAiSuggestionsService {
       featureId: 'suggest_intake',
       input: JSON.stringify(input),
     });
-    let parsed: ReturnType<IntakeAiSuggestionsService['parseGeneratedContract']>;
+    let parsed: ReturnType<
+      IntakeAiSuggestionsService['parseGeneratedContract']
+    >;
     try {
       parsed = this.parseGeneratedContract(result.draft, matching);
     } catch (error) {
@@ -120,9 +132,22 @@ export class IntakeAiSuggestionsService {
     projectId: number,
     input: PendingSuggestion,
   ) {
-    await this.assertAccess(actor, organizationId, projectId, ProjectPermission.EDIT);
-    const event = await this.findEvent(organizationId, projectId, input.eventId);
-    this.validateContract(input.proposedChanges, input.reasons, input.confidence);
+    await this.assertAccess(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.EDIT,
+    );
+    const event = await this.findEvent(
+      organizationId,
+      projectId,
+      input.eventId,
+    );
+    this.validateContract(
+      input.proposedChanges,
+      input.reasons,
+      input.confidence,
+    );
     return this.suggestions.save(
       this.suggestions.create({
         organization_id: organizationId,
@@ -151,10 +176,19 @@ export class IntakeAiSuggestionsService {
     projectId: number,
     eventId: string,
   ) {
-    await this.assertAccess(actor, organizationId, projectId, ProjectPermission.VIEW);
+    await this.assertAccess(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.VIEW,
+    );
     await this.findEvent(organizationId, projectId, eventId);
     return this.suggestions.find({
-      where: { organization_id: organizationId, project_id: projectId, event_id: eventId },
+      where: {
+        organization_id: organizationId,
+        project_id: projectId,
+        event_id: eventId,
+      },
       order: { created_at: 'DESC' },
     });
   }
@@ -166,38 +200,65 @@ export class IntakeAiSuggestionsService {
     suggestionId: string,
     note?: string,
   ) {
-    await this.assertAccess(actor, organizationId, projectId, ProjectPermission.EDIT);
+    await this.assertAccess(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.EDIT,
+    );
     const suggestion = await this.suggestions.findOne({
-      where: { id: suggestionId, organization_id: organizationId, project_id: projectId },
+      where: {
+        id: suggestionId,
+        organization_id: organizationId,
+        project_id: projectId,
+      },
     });
-    if (!suggestion) throw new NotFoundException('AI intake suggestion not found');
+    if (!suggestion)
+      throw new NotFoundException('AI intake suggestion not found');
     if (suggestion.state === 'dismissed') return suggestion;
     if (suggestion.state !== 'pending')
       throw new ConflictException(`Suggestion is already ${suggestion.state}`);
-    const result = await this.suggestions.update(
-      { id: suggestion.id, state: 'pending' },
-      {
-        state: 'dismissed',
-        reviewed_by_id: actor.userId,
-        reviewed_at: new Date(),
-        review_note: note?.trim() || null,
-      },
+    const auditEnabled = Boolean(
+      (await this.entitlements.resolveForActor(actor, organizationId)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
     );
-    if (!result.affected)
-      throw new ConflictException('Suggestion was reviewed concurrently');
-    await this.audits.save(
-      this.audits.create({
-        action: 'AI_INTAKE_SUGGESTION_DISMISSED',
-        admin_id: actor.userId,
-        target_user_id: null,
-        organization_id: organizationId,
-        metadata: {
-          project_id: projectId,
-          event_id: suggestion.event_id,
-          suggestion_id: suggestion.id,
+    await this.dataSource.transaction(async (manager) => {
+      const result = await manager.getRepository(IntakeAiSuggestion).update(
+        { id: suggestion.id, state: 'pending' },
+        {
+          state: 'dismissed',
+          reviewed_by_id: actor.userId,
+          reviewed_at: new Date(),
+          review_note: note?.trim() || null,
         },
-      }),
-    );
+      );
+      if (!result.affected)
+        throw new ConflictException('Suggestion was reviewed concurrently');
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId,
+          projectId,
+          action: AuditAction.AI_SUGGESTION_DISMISSED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
+          },
+          subject: {
+            type: AuditSubjectType.AI_SUGGESTION,
+            id: suggestion.id,
+            label: 'AI intake suggestion',
+          },
+          source: AuditSource.API,
+          correlationId:
+            suggestion.correlation_id || this.auditWriter.correlationId(),
+          causationId: suggestion.event_id,
+          sourceEventKey: `ai-suggestion:${suggestion.id}:dismissed`,
+          before: { status: 'pending' },
+          after: { status: 'dismissed' },
+        });
+    });
     return this.suggestions.findOneOrFail({ where: { id: suggestion.id } });
   }
 
@@ -208,19 +269,35 @@ export class IntakeAiSuggestionsService {
     suggestionId: string,
     dto: ApplyIntakeSuggestionDto,
   ) {
-    await this.assertAccess(actor, organizationId, projectId, ProjectPermission.EDIT);
+    await this.assertAccess(
+      actor,
+      organizationId,
+      projectId,
+      ProjectPermission.EDIT,
+    );
     const suggestion = await this.suggestions.findOne({
-      where: { id: suggestionId, organization_id: organizationId, project_id: projectId },
+      where: {
+        id: suggestionId,
+        organization_id: organizationId,
+        project_id: projectId,
+      },
     });
-    if (!suggestion) throw new NotFoundException('AI intake suggestion not found');
+    if (!suggestion)
+      throw new NotFoundException('AI intake suggestion not found');
     if (suggestion.state !== 'pending')
       throw new ConflictException(`Suggestion is already ${suggestion.state}`);
     const fields = [...new Set(dto.fields)];
-    if (fields.some((field) => suggestion.proposed_changes[field] === undefined))
-      throw new BadRequestException('Selected field is not part of this suggestion');
+    if (
+      fields.some((field) => suggestion.proposed_changes[field] === undefined)
+    )
+      throw new BadRequestException(
+        'Selected field is not part of this suggestion',
+      );
     if (
       fields.includes('duplicateTaskId') &&
-      fields.some((field) => !['duplicateTaskId', 'title', 'priority'].includes(field))
+      fields.some(
+        (field) => !['duplicateTaskId', 'title', 'priority'].includes(field),
+      )
     )
       throw new BadRequestException(
         'Duplicate merge may only include the selected title and priority changes',
@@ -230,8 +307,15 @@ export class IntakeAiSuggestionsService {
     if (fields.includes('destinationProjectId') && !dto.confirmRouting)
       throw new BadRequestException('Routing confirmation is required');
 
-    const event = await this.findEvent(organizationId, projectId, suggestion.event_id);
-    if (this.fingerprint(event.normalized_payload) !== suggestion.payload_fingerprint) {
+    const event = await this.findEvent(
+      organizationId,
+      projectId,
+      suggestion.event_id,
+    );
+    if (
+      this.fingerprint(event.normalized_payload) !==
+      suggestion.payload_fingerprint
+    ) {
       await this.suggestions.update(
         { id: suggestion.id, state: 'pending' },
         {
@@ -241,7 +325,9 @@ export class IntakeAiSuggestionsService {
           review_note: 'Source intake payload changed before review',
         },
       );
-      throw new ConflictException('Suggestion is stale because the intake payload changed');
+      throw new ConflictException(
+        'Suggestion is stale because the intake payload changed',
+      );
     }
     const destinationId = fields.includes('destinationProjectId')
       ? suggestion.proposed_changes.destinationProjectId!
@@ -255,10 +341,14 @@ export class IntakeAiSuggestionsService {
       );
     if (fields.includes('duplicateTaskId')) {
       const duplicate = await this.dataSource.getRepository(Task).findOne({
-        where: { id: suggestion.proposed_changes.duplicateTaskId, organization_id: organizationId },
+        where: {
+          id: suggestion.proposed_changes.duplicateTaskId,
+          organization_id: organizationId,
+        },
         relations: ['project'],
       });
-      if (!duplicate) throw new NotFoundException('Duplicate task candidate not found');
+      if (!duplicate)
+        throw new NotFoundException('Duplicate task candidate not found');
       await this.authorization.assertProjectPermission(
         actor,
         organizationId,
@@ -266,19 +356,36 @@ export class IntakeAiSuggestionsService {
         ProjectPermission.VIEW,
       );
     }
+    const auditEnabled = Boolean(
+      (await this.entitlements.resolveForActor(actor, organizationId)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
 
     const outcome = await this.dataSource.transaction(async (manager) => {
       const locked = await manager.getRepository(IntakeAiSuggestion).findOne({
-        where: { id: suggestion.id, organization_id: organizationId, project_id: projectId },
+        where: {
+          id: suggestion.id,
+          organization_id: organizationId,
+          project_id: projectId,
+        },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!locked || locked.state !== 'pending') return { concurrent: true } as const;
+      if (!locked || locked.state !== 'pending')
+        return { concurrent: true } as const;
       const currentEvent = await manager.getRepository(IntakeEvent).findOne({
-        where: { id: locked.event_id, organization_id: organizationId, project_id: projectId },
+        where: {
+          id: locked.event_id,
+          organization_id: organizationId,
+          project_id: projectId,
+        },
       });
       if (!currentEvent?.task_id)
         throw new ConflictException('Intake event has no task to update');
-      if (this.fingerprint(currentEvent.normalized_payload) !== locked.payload_fingerprint) {
+      if (
+        this.fingerprint(currentEvent.normalized_payload) !==
+        locked.payload_fingerprint
+      ) {
         Object.assign(locked, {
           state: 'stale',
           reviewed_by_id: actor.userId,
@@ -297,12 +404,16 @@ export class IntakeAiSuggestionsService {
 
       if (fields.includes('duplicateTaskId')) {
         const duplicate = await taskRepo.findOne({
-          where: { id: locked.proposed_changes.duplicateTaskId, organization_id: organizationId },
+          where: {
+            id: locked.proposed_changes.duplicateTaskId,
+            organization_id: organizationId,
+          },
           relations: ['project'],
         });
         if (!duplicate || Number(duplicate.id) === Number(task.id))
           throw new BadRequestException('Duplicate task candidate is invalid');
-        if (fields.includes('title')) duplicate.title = locked.proposed_changes.title!;
+        if (fields.includes('title'))
+          duplicate.title = locked.proposed_changes.title!;
         if (fields.includes('priority'))
           duplicate.priority = locked.proposed_changes.priority!;
         if (fields.includes('title') || fields.includes('priority'))
@@ -318,13 +429,17 @@ export class IntakeAiSuggestionsService {
             relations: ['defaultIngestionStatus'],
           });
           if (!project?.defaultIngestionStatus)
-            throw new BadRequestException('Destination project has no default intake status');
+            throw new BadRequestException(
+              'Destination project has no default intake status',
+            );
           targetProject = project;
           task.project = project;
           task.status = project.defaultIngestionStatus;
         }
-        if (fields.includes('title')) task.title = locked.proposed_changes.title!;
-        if (fields.includes('priority')) task.priority = locked.proposed_changes.priority!;
+        if (fields.includes('title'))
+          task.title = locked.proposed_changes.title!;
+        if (fields.includes('priority'))
+          task.priority = locked.proposed_changes.priority!;
         if (fields.includes('category')) {
           const category = await manager.getRepository(Category).findOne({
             where: {
@@ -334,7 +449,9 @@ export class IntakeAiSuggestionsService {
             },
           });
           if (!category)
-            throw new BadRequestException('Suggested category is not available in the target project');
+            throw new BadRequestException(
+              'Suggested category is not available in the target project',
+            );
           task.categories = [category];
         }
         if (fields.includes('assigneeId')) {
@@ -356,9 +473,14 @@ export class IntakeAiSuggestionsService {
                 },
               });
           if (!isMember)
-            throw new BadRequestException('Suggested assignee is no longer a project member');
-          const user = await manager.getRepository(User).findOneBy({ id: assigneeId });
-          if (!user) throw new NotFoundException('Suggested assignee not found');
+            throw new BadRequestException(
+              'Suggested assignee is no longer a project member',
+            );
+          const user = await manager
+            .getRepository(User)
+            .findOneBy({ id: assigneeId });
+          if (!user)
+            throw new NotFoundException('Suggested assignee not found');
           task.assignees = [user];
         }
         await taskRepo.save(task);
@@ -370,26 +492,41 @@ export class IntakeAiSuggestionsService {
         review_note: `Applied fields: ${fields.join(', ')}`,
       });
       await manager.save(locked);
-      await manager.getRepository(AuditLog).save(
-        manager.getRepository(AuditLog).create({
-          action: 'AI_INTAKE_SUGGESTION_APPLIED',
-          admin_id: actor.userId,
-          target_user_id: null,
-          organization_id: organizationId,
-          metadata: {
-            project_id: projectId,
-            event_id: locked.event_id,
-            suggestion_id: locked.id,
-            fields,
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId,
+          projectId,
+          action: AuditAction.AI_SUGGESTION_APPLIED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
           },
-        }),
-      );
+          subject: {
+            type: AuditSubjectType.AI_SUGGESTION,
+            id: locked.id,
+            label: 'AI intake suggestion',
+          },
+          source: AuditSource.API,
+          correlationId:
+            locked.correlation_id || this.auditWriter.correlationId(),
+          causationId: locked.event_id,
+          sourceEventKey: `ai-suggestion:${locked.id}:applied`,
+          before: { status: 'pending' },
+          after: {
+            status: 'applied',
+            field_count: fields.length,
+            created_task_id: currentEvent.task_id,
+          },
+        });
       return { applied: true, fields, taskId: currentEvent.task_id } as const;
     });
     if ('concurrent' in outcome)
       throw new ConflictException('Suggestion was reviewed concurrently');
     if ('stale' in outcome)
-      throw new ConflictException('Suggestion is stale because the intake payload changed');
+      throw new ConflictException(
+        'Suggestion is stale because the intake payload changed',
+      );
     return outcome;
   }
 
@@ -400,15 +537,36 @@ export class IntakeAiSuggestionsService {
     permission: ProjectPermission,
   ) {
     await Promise.all([
-      this.entitlements.assertCapability(actor, organizationId, CapabilityKey.AI_ASSISTANCE),
-      this.entitlements.assertCapability(actor, organizationId, CapabilityKey.UNIVERSAL_INTAKE),
-      this.authorization.assertProjectPermission(actor, organizationId, projectId, permission),
+      this.entitlements.assertCapability(
+        actor,
+        organizationId,
+        CapabilityKey.AI_ASSISTANCE,
+      ),
+      this.entitlements.assertCapability(
+        actor,
+        organizationId,
+        CapabilityKey.UNIVERSAL_INTAKE,
+      ),
+      this.authorization.assertProjectPermission(
+        actor,
+        organizationId,
+        projectId,
+        permission,
+      ),
     ]);
   }
 
-  private async findEvent(organizationId: string, projectId: number, eventId: string) {
+  private async findEvent(
+    organizationId: string,
+    projectId: number,
+    eventId: string,
+  ) {
     const event = await this.events.findOne({
-      where: { id: eventId, organization_id: organizationId, project_id: projectId },
+      where: {
+        id: eventId,
+        organization_id: organizationId,
+        project_id: projectId,
+      },
     });
     if (!event) throw new NotFoundException('Intake event not found');
     return event;
@@ -429,27 +587,39 @@ export class IntakeAiSuggestionsService {
     ]);
     const keys = Object.keys(changes);
     if (!keys.length || keys.some((key) => !allowed.has(key)))
-      throw new BadRequestException('AI intake suggestion has unsupported changes');
+      throw new BadRequestException(
+        'AI intake suggestion has unsupported changes',
+      );
     if (
       (changes.title !== undefined &&
-        (typeof changes.title !== 'string' || !changes.title.trim() || changes.title.length > 255)) ||
+        (typeof changes.title !== 'string' ||
+          !changes.title.trim() ||
+          changes.title.length > 255)) ||
       (changes.category !== undefined &&
-        (typeof changes.category !== 'string' || !changes.category.trim() || changes.category.length > 100)) ||
+        (typeof changes.category !== 'string' ||
+          !changes.category.trim() ||
+          changes.category.length > 100)) ||
       (changes.priority !== undefined &&
         (!Number.isInteger(changes.priority) || changes.priority < 0)) ||
       (changes.duplicateTaskId !== undefined &&
-        (!Number.isInteger(changes.duplicateTaskId) || changes.duplicateTaskId < 1)) ||
+        (!Number.isInteger(changes.duplicateTaskId) ||
+          changes.duplicateTaskId < 1)) ||
       (changes.assigneeId !== undefined &&
         (!Number.isInteger(changes.assigneeId) || changes.assigneeId < 1)) ||
       (changes.destinationProjectId !== undefined &&
-        (!Number.isInteger(changes.destinationProjectId) || changes.destinationProjectId < 1))
+        (!Number.isInteger(changes.destinationProjectId) ||
+          changes.destinationProjectId < 1))
     )
-      throw new BadRequestException('AI intake suggestion has invalid change values');
+      throw new BadRequestException(
+        'AI intake suggestion has invalid change values',
+      );
     if (
       Object.keys(reasons).some((key) => !keys.includes(key)) ||
       Object.keys(confidence).some((key) => !keys.includes(key))
     )
-      throw new BadRequestException('AI intake suggestion metadata has unsupported fields');
+      throw new BadRequestException(
+        'AI intake suggestion metadata has unsupported fields',
+      );
     for (const key of keys) {
       if (
         typeof reasons[key] !== 'string' ||
@@ -457,8 +627,14 @@ export class IntakeAiSuggestionsService {
         reasons[key].length > 500
       )
         throw new BadRequestException(`A reason is required for ${key}`);
-      if (!Number.isFinite(confidence[key]) || confidence[key] < 0 || confidence[key] > 1)
-        throw new BadRequestException(`Confidence for ${key} must be between 0 and 1`);
+      if (
+        !Number.isFinite(confidence[key]) ||
+        confidence[key] < 0 ||
+        confidence[key] > 1
+      )
+        throw new BadRequestException(
+          `Confidence for ${key} must be between 0 and 1`,
+        );
     }
   }
 
@@ -501,13 +677,17 @@ export class IntakeAiSuggestionsService {
     } catch {
       parsed = this.repairValueKeyedMetadata(source);
       if (!parsed)
-        throw new BadRequestException('AI returned an invalid suggestion format');
+        throw new BadRequestException(
+          'AI returned an invalid suggestion format',
+        );
     }
     const topLevel = Object.keys(parsed ?? {});
     if (
       !parsed ||
       typeof parsed !== 'object' ||
-      topLevel.some((key) => !['changes', 'reasons', 'confidence'].includes(key)) ||
+      topLevel.some(
+        (key) => !['changes', 'reasons', 'confidence'].includes(key),
+      ) ||
       !parsed.changes ||
       typeof parsed.changes !== 'object' ||
       !parsed.reasons ||
@@ -515,7 +695,9 @@ export class IntakeAiSuggestionsService {
       !parsed.confidence ||
       typeof parsed.confidence !== 'object'
     )
-      throw new BadRequestException('AI returned an invalid suggestion contract');
+      throw new BadRequestException(
+        'AI returned an invalid suggestion contract',
+      );
     const changes = Object.fromEntries(
       Object.entries(parsed.changes as Record<string, unknown>).filter(
         ([, value]) => value !== null && value !== undefined,
@@ -549,11 +731,15 @@ export class IntakeAiSuggestionsService {
     if (!keys.length) return { changes: {}, reasons: {}, confidence: {} };
     const invalidFields = [
       ...(changes.title !== undefined &&
-      (typeof changes.title !== 'string' || !changes.title.trim() || changes.title.length > 255)
+      (typeof changes.title !== 'string' ||
+        !changes.title.trim() ||
+        changes.title.length > 255)
         ? ['title']
         : []),
       ...(changes.category !== undefined &&
-      (typeof changes.category !== 'string' || !changes.category.trim() || changes.category.length > 100)
+      (typeof changes.category !== 'string' ||
+        !changes.category.trim() ||
+        changes.category.length > 100)
         ? ['category']
         : []),
       ...(changes.priority !== undefined &&
@@ -565,7 +751,9 @@ export class IntakeAiSuggestionsService {
     keys = Object.keys(changes);
     if (!keys.length) return { changes: {}, reasons: {}, confidence: {} };
     const projectIds = new Set(matching.projects.map((project) => project.id));
-    const duplicateIds = new Set(matching.duplicateTasks.map((task) => task.id));
+    const duplicateIds = new Set(
+      matching.duplicateTasks.map((task) => task.id),
+    );
     if (
       changes.category !== undefined &&
       !matching.categories.includes(String(changes.category).trim())
@@ -579,13 +767,17 @@ export class IntakeAiSuggestionsService {
       (!Number.isInteger(changes.destinationProjectId) ||
         !projectIds.has(Number(changes.destinationProjectId)))
     )
-      throw new BadRequestException('AI returned an unauthorized destination project');
+      throw new BadRequestException(
+        'AI returned an unauthorized destination project',
+      );
     if (
       changes.duplicateTaskId !== undefined &&
       (!Number.isInteger(changes.duplicateTaskId) ||
         !duplicateIds.has(Number(changes.duplicateTaskId)))
     )
-      throw new BadRequestException('AI returned an unauthorized duplicate task');
+      throw new BadRequestException(
+        'AI returned an unauthorized duplicate task',
+      );
     const assigneeProjectId =
       changes.destinationProjectId === undefined
         ? matching.sourceProjectId
@@ -602,9 +794,15 @@ export class IntakeAiSuggestionsService {
     )
       throw new BadRequestException('AI returned an unauthorized assignee');
     const normalized: IntakeAiProposedChanges = {
-      ...(typeof changes.title === 'string' ? { title: changes.title.trim() } : {}),
-      ...(typeof changes.category === 'string' ? { category: changes.category.trim() } : {}),
-      ...(typeof changes.priority === 'number' ? { priority: changes.priority } : {}),
+      ...(typeof changes.title === 'string'
+        ? { title: changes.title.trim() }
+        : {}),
+      ...(typeof changes.category === 'string'
+        ? { category: changes.category.trim() }
+        : {}),
+      ...(typeof changes.priority === 'number'
+        ? { priority: changes.priority }
+        : {}),
       ...(typeof changes.duplicateTaskId === 'number'
         ? { duplicateTaskId: changes.duplicateTaskId }
         : {}),
@@ -623,7 +821,8 @@ export class IntakeAiSuggestionsService {
         .filter(([key]) => keys.includes(key))
         .map(([key, value]) => [
           key,
-          typeof value === 'string' && /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(value.trim())
+          typeof value === 'string' &&
+          /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/.test(value.trim())
             ? Number(value.trim())
             : value,
         ]),
@@ -682,7 +881,9 @@ export class IntakeAiSuggestionsService {
   }
 
   private extractObject(source: string, key: string) {
-    const match = new RegExp(`${this.escapeRegExp(JSON.stringify(key))}\\s*:`).exec(source);
+    const match = new RegExp(
+      `${this.escapeRegExp(JSON.stringify(key))}\\s*:`,
+    ).exec(source);
     if (!match) return null;
     const start = source.indexOf('{', match.index + match[0].length);
     if (start < 0) return null;
@@ -702,7 +903,8 @@ export class IntakeAiSuggestionsService {
       if (character === '"') quoted = !quoted;
       if (quoted) continue;
       if (character === '{') depth += 1;
-      if (character === '}' && --depth === 0) return source.slice(start, index + 1);
+      if (character === '}' && --depth === 0)
+        return source.slice(start, index + 1);
     }
     return null;
   }
@@ -712,7 +914,8 @@ export class IntakeAiSuggestionsService {
   }
 
   private stableJson(value: unknown): string {
-    if (Array.isArray(value)) return `[${value.map((item) => this.stableJson(item)).join(',')}]`;
+    if (Array.isArray(value))
+      return `[${value.map((item) => this.stableJson(item)).join(',')}]`;
     if (value && typeof value === 'object')
       return `{${Object.entries(value as Record<string, unknown>)
         .sort(([left], [right]) => left.localeCompare(right))

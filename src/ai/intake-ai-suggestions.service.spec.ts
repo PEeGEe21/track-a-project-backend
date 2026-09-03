@@ -2,12 +2,14 @@ import { IntakeAiSuggestionsService } from './intake-ai-suggestions.service';
 import { IntakeAiSuggestion } from 'src/typeorm/entities/IntakeAiSuggestion';
 import { IntakeEvent } from 'src/typeorm/entities/IntakeEvent';
 import { Task } from 'src/typeorm/entities/Task';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
 
 describe('IntakeAiSuggestionsService', () => {
   const actor = { userId: 7 } as any;
   const authorization = { assertProjectPermission: jest.fn() };
-  const entitlements = { assertCapability: jest.fn() };
+  const entitlements = {
+    assertCapability: jest.fn(),
+    resolveForActor: jest.fn().mockResolvedValue([]),
+  };
   const ai = { assist: jest.fn() };
   const governance = { markPostprocessingFailure: jest.fn() };
   const matchingContext = { assemble: jest.fn() };
@@ -15,6 +17,10 @@ describe('IntakeAiSuggestionsService', () => {
   const audits = {
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => value),
+  };
+  const auditWriter = {
+    append: jest.fn(),
+    correlationId: jest.fn().mockReturnValue('correlation-1'),
   };
   const events = { findOne: jest.fn() };
   const suggestions = {
@@ -29,6 +35,13 @@ describe('IntakeAiSuggestionsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    entitlements.resolveForActor.mockResolvedValue([
+      { key: 'advanced_audit_trail', enabled: true },
+    ]);
+    auditWriter.correlationId.mockReturnValue('correlation-1');
+    dataSource.transaction.mockImplementation(async (callback) =>
+      callback({ getRepository: () => suggestions }),
+    );
     governance.markPostprocessingFailure.mockResolvedValue(undefined);
     service = new IntakeAiSuggestionsService(
       authorization as any,
@@ -39,7 +52,7 @@ describe('IntakeAiSuggestionsService', () => {
       dataSource as any,
       events as any,
       suggestions as any,
-      audits as any,
+      auditWriter as any,
     );
     events.findOne.mockResolvedValue({
       id: 'event-1',
@@ -99,13 +112,13 @@ describe('IntakeAiSuggestionsService', () => {
             ? eventRepo
             : entity === Task
               ? taskRepo
-              : entity === AuditLog
-                ? auditRepo
               : {},
       ),
       save: jest.fn(async (value) => value),
     };
-    dataSource.transaction.mockImplementation(async (callback) => callback(manager));
+    dataSource.transaction.mockImplementation(async (callback) =>
+      callback(manager),
+    );
 
     await expect(
       service.apply(actor, 'org-1', 4, 'suggestion-1', {
@@ -122,10 +135,11 @@ describe('IntakeAiSuggestionsService', () => {
     expect(manager.save).toHaveBeenCalledWith(
       expect.objectContaining({ state: 'applied', reviewed_by_id: 7 }),
     );
-    expect(auditRepo.save).toHaveBeenCalledWith(
+    expect(auditWriter.append).toHaveBeenCalledWith(
+      manager,
       expect.objectContaining({
-        action: 'AI_INTAKE_SUGGESTION_APPLIED',
-        metadata: expect.objectContaining({ fields: ['title', 'priority'] }),
+        action: 'ai_suggestion.applied',
+        after: expect.objectContaining({ field_count: 2 }),
       }),
     );
   });
@@ -200,17 +214,19 @@ describe('IntakeAiSuggestionsService', () => {
 
     await expect(
       service.generate(actor, 'org-1', 4, 'event-1'),
-    ).resolves.toEqual(expect.objectContaining({
-      state: 'pending',
-      correlation_id: 'audit-2',
-      proposed_changes: {
-        title: 'Investigate checkout alert',
-        priority: 1,
-        duplicateTaskId: 21,
-        destinationProjectId: 8,
-        assigneeId: 9,
-      },
-    }));
+    ).resolves.toEqual(
+      expect.objectContaining({
+        state: 'pending',
+        correlation_id: 'audit-2',
+        proposed_changes: {
+          title: 'Investigate checkout alert',
+          priority: 1,
+          duplicateTaskId: 21,
+          destinationProjectId: 8,
+          assigneeId: 9,
+        },
+      }),
+    );
     expect(ai.assist).toHaveBeenCalledWith(
       actor,
       'org-1',
@@ -232,10 +248,13 @@ describe('IntakeAiSuggestionsService', () => {
   });
 
   it('rejects malformed or unauthorized output and drops unexplained fields', async () => {
-    ai.assist.mockResolvedValueOnce({ correlationId: 'audit-2', draft: 'not json' });
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).rejects.toThrow(
-      'invalid suggestion format',
-    );
+    ai.assist.mockResolvedValueOnce({
+      correlationId: 'audit-2',
+      draft: 'not json',
+    });
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).rejects.toThrow('invalid suggestion format');
     expect(governance.markPostprocessingFailure).toHaveBeenCalledWith(
       'org-1',
       'audit-2',
@@ -250,9 +269,9 @@ describe('IntakeAiSuggestionsService', () => {
         confidence: { statusId: 0.8 },
       }),
     });
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).rejects.toThrow(
-      'unsupported intake changes',
-    );
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).rejects.toThrow('unsupported intake changes');
 
     ai.assist.mockResolvedValueOnce({
       correlationId: 'audit-unauthorized',
@@ -262,9 +281,9 @@ describe('IntakeAiSuggestionsService', () => {
         confidence: { destinationProjectId: 0.9 },
       }),
     });
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).rejects.toThrow(
-      'unauthorized destination project',
-    );
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).rejects.toThrow('unauthorized destination project');
 
     ai.assist.mockResolvedValueOnce({
       correlationId: 'audit-4',
@@ -274,7 +293,9 @@ describe('IntakeAiSuggestionsService', () => {
         confidence: { priority: 0.8 },
       }),
     });
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).resolves.toEqual(
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).resolves.toEqual(
       expect.objectContaining({ noChanges: true, suggestion: null }),
     );
   });
@@ -288,7 +309,9 @@ describe('IntakeAiSuggestionsService', () => {
         confidence: { title: 0.8 },
       }),
     });
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).resolves.toEqual({
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).resolves.toEqual({
       suggestion: null,
       noChanges: true,
       correlationId: 'audit-invalid-title',
@@ -321,7 +344,9 @@ describe('IntakeAiSuggestionsService', () => {
       }`,
     });
 
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).resolves.toEqual(
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).resolves.toEqual(
       expect.objectContaining({
         proposed_changes: expect.objectContaining({
           title: 'Checkout delete failed',
@@ -341,7 +366,9 @@ describe('IntakeAiSuggestionsService', () => {
       draft: JSON.stringify({ changes: {}, reasons: {}, confidence: {} }),
     });
 
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).resolves.toEqual({
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).resolves.toEqual({
       suggestion: null,
       noChanges: true,
       correlationId: 'audit-no-change',
@@ -365,7 +392,9 @@ describe('IntakeAiSuggestionsService', () => {
       }),
     });
 
-    await expect(service.generate(actor, 'org-1', 4, 'event-1')).resolves.toEqual(
+    await expect(
+      service.generate(actor, 'org-1', 4, 'event-1'),
+    ).resolves.toEqual(
       expect.objectContaining({
         proposed_changes: { priority: 1, duplicateTaskId: 21 },
         confidence: { priority: 0.8, duplicateTaskId: 0.75 },
@@ -377,7 +406,10 @@ describe('IntakeAiSuggestionsService', () => {
     const result = await service.createPending(actor, 'org-1', 4, {
       eventId: 'event-1',
       proposedChanges: { title: 'Investigate checkout alert', priority: 1 },
-      reasons: { title: 'Clarifies the affected service', priority: 'Production impact' },
+      reasons: {
+        title: 'Clarifies the affected service',
+        priority: 'Production impact',
+      },
       confidence: { title: 0.94, priority: 0.8 },
       correlationId: 'audit-1',
       templateId: 'intake_suggestions',
@@ -447,13 +479,17 @@ describe('IntakeAiSuggestionsService', () => {
         review_note: 'Not relevant',
       }),
     );
-    expect(audits.save).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'AI_INTAKE_SUGGESTION_DISMISSED' }),
+    expect(auditWriter.append).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: 'ai_suggestion.dismissed' }),
     );
   });
 
   it('rejects a concurrent second review decision', async () => {
-    suggestions.findOne.mockResolvedValue({ id: 'suggestion-1', state: 'pending' });
+    suggestions.findOne.mockResolvedValue({
+      id: 'suggestion-1',
+      state: 'pending',
+    });
     suggestions.update.mockResolvedValue({ affected: 0 });
     await expect(
       service.dismiss(actor, 'org-1', 4, 'suggestion-1'),

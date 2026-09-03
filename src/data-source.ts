@@ -61,6 +61,9 @@ import { WorkflowStep } from './typeorm/entities/WorkflowStep';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { AuditLog } from './typeorm/entities/AuditLog';
+import { AuditExport } from './typeorm/entities/AuditExport';
+import { AuditRetentionPolicy } from './typeorm/entities/AuditRetentionPolicy';
+import { AuditPurgeRun } from './typeorm/entities/AuditPurgeRun';
 import { CustomFieldDefinition } from './typeorm/entities/CustomFieldDefinition';
 import { CustomFieldOption } from './typeorm/entities/CustomFieldOption';
 import { TaskCustomFieldValue } from './typeorm/entities/TaskCustomFieldValue';
@@ -173,6 +176,9 @@ export const AppDataSource = new DataSource({
     AiRequestAudit,
     DataLifecycleEvent,
     AuditLog,
+    AuditExport,
+    AuditRetentionPolicy,
+    AuditPurgeRun,
     CustomFieldDefinition,
     CustomFieldOption,
     TaskCustomFieldValue,

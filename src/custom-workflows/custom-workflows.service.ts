@@ -31,6 +31,13 @@ import {
   WorkflowTransitionDto,
 } from './dto/custom-workflow.dto';
 import { TRANSITION_ROLES, WorkflowVersionState } from './workflow-contract';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 @Injectable()
 export class CustomWorkflowsService {
@@ -40,7 +47,49 @@ export class CustomWorkflowsService {
     private readonly authorization: AuthorizationService,
     private readonly entitlements: EntitlementsService,
     private readonly dataSource: DataSource,
+    private readonly auditWriter: AuditWriterService,
   ) {}
+
+  private async auditEnabled(actor: AuthUser, organizationId: string) {
+    return Boolean(
+      (await this.entitlements.resolveForActor(actor, organizationId)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
+  }
+
+  private async auditWorkflow(
+    manager: EntityManager,
+    actor: AuthUser,
+    organizationId: string,
+    projectId: number,
+    workflowId: string,
+    version: ProjectWorkflowVersion,
+    action: AuditAction,
+  ) {
+    await this.auditWriter.append(manager, {
+      organizationId,
+      projectId,
+      action,
+      actor: {
+        type: AuditActorType.HUMAN,
+        id: actor.userId,
+        label: `User ${actor.userId}`,
+      },
+      subject: {
+        type: AuditSubjectType.WORKFLOW,
+        id: workflowId,
+        label: version.name,
+      },
+      source: AuditSource.API,
+      correlationId: this.auditWriter.correlationId(),
+      after: {
+        name: version.name,
+        version: version.version_number,
+        status: version.state,
+      },
+    });
+  }
 
   async transitionTask(
     manager: EntityManager,
@@ -275,6 +324,7 @@ export class CustomWorkflowsService {
       ProjectPermission.EDIT,
     );
     await this.ensureWorkflow(organizationId, projectId);
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     return this.dataSource.transaction(async (manager) => {
       const workflow = await this.loadWorkflow(
         organizationId,
@@ -326,6 +376,16 @@ export class CustomWorkflowsService {
         })),
       );
       const saved = await this.loadVersion(draft.id, manager);
+      if (auditEnabled)
+        await this.auditWorkflow(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          workflow.id,
+          saved,
+          AuditAction.WORKFLOW_UPDATED,
+        );
       return { success: true, data: this.serializeVersion(saved) };
     });
   }
@@ -343,6 +403,7 @@ export class CustomWorkflowsService {
       ProjectPermission.EDIT,
     );
     await this.validateDefinition(organizationId, projectId, dto);
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     return this.dataSource.transaction(async (manager) => {
       const workflow = await this.loadWorkflow(
         organizationId,
@@ -363,10 +424,21 @@ export class CustomWorkflowsService {
         dto.statuses,
         dto.transitions,
       );
+      const saved = await this.loadVersion(draft.id, manager);
+      if (auditEnabled)
+        await this.auditWorkflow(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          workflow.id,
+          saved,
+          AuditAction.WORKFLOW_UPDATED,
+        );
       return {
         success: true,
         message: 'Workflow draft updated',
-        data: this.serializeVersion(await this.loadVersion(draft.id, manager)),
+        data: this.serializeVersion(saved),
       };
     });
   }
@@ -385,6 +457,7 @@ export class CustomWorkflowsService {
     );
     if (context.role !== ProjectRole.OWNER && actor.role !== 'super_admin')
       throw new ForbiddenException('Only project owners can publish workflows');
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
 
     return this.dataSource.transaction(async (manager) => {
       const workflow = await manager.getRepository(ProjectWorkflow).findOne({
@@ -479,6 +552,16 @@ export class CustomWorkflowsService {
       draft.published_by = { id: actor.userId } as User;
       draft.published_at = new Date();
       await manager.getRepository(ProjectWorkflowVersion).save(draft);
+      if (auditEnabled)
+        await this.auditWorkflow(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          workflow.id,
+          draft,
+          AuditAction.WORKFLOW_PUBLISHED,
+        );
       return {
         success: true,
         message: 'Workflow published',
@@ -502,6 +585,7 @@ export class CustomWorkflowsService {
       throw new ForbiddenException('Only project owners can reset workflows');
 
     await this.ensureWorkflow(organizationId, projectId);
+    const auditEnabled = await this.auditEnabled(actor, organizationId);
     return this.dataSource.transaction(async (manager) => {
       const workflow = await manager.getRepository(ProjectWorkflow).findOne({
         where: {
@@ -576,6 +660,16 @@ export class CustomWorkflowsService {
           })),
       );
       await this.replaceDefinition(manager, reset, definitions, transitions);
+      if (auditEnabled)
+        await this.auditWorkflow(
+          manager,
+          actor,
+          organizationId,
+          projectId,
+          workflow.id,
+          reset,
+          AuditAction.WORKFLOW_PUBLISHED,
+        );
 
       return {
         success: true,

@@ -34,6 +34,7 @@ describe('AutomationEngineService', () => {
       context,
       notificationsService,
       projectsGateway,
+      { append: jest.fn(), correlationId: jest.fn() } as any,
     );
   });
 
@@ -168,10 +169,9 @@ describe('AutomationEngineService', () => {
       { key: 'rule_based_automation', enabled: false },
     ]);
     await service.executeRun('run-1');
-    expect(run.state).toBe('evaluating');
+    expect(run.state).toBe('failed');
     expect(run.attempt_count).toBe(1);
-    expect(repository.update).toHaveBeenCalledWith(
-      'run-1',
+    expect(repository.save).toHaveBeenCalledWith(
       expect.objectContaining({
         state: 'failed',
         failure_code: 'terminal:capability_disabled',

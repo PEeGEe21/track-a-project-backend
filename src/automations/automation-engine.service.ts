@@ -32,6 +32,13 @@ import { AutomationEventsService } from './automation-events.service';
 import { AutomationExecutionContextService } from './automation-execution-context.service';
 import { NotificationsService } from 'src/notifications/services/notifications.service';
 import { ProjectsGateway } from 'src/projects/projects.gateway';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 type Definition = {
   trigger: { type: string; config?: Record<string, unknown> };
@@ -62,6 +69,7 @@ export class AutomationEngineService {
     private readonly executionContext: AutomationExecutionContextService,
     private readonly notificationsService: NotificationsService,
     private readonly projectsGateway: ProjectsGateway,
+    private readonly auditWriter: AuditWriterService,
   ) {}
 
   @Cron('*/10 * * * * *')
@@ -700,12 +708,65 @@ export class AutomationEngineService {
     matched: boolean | null,
     failure: string | null,
   ) {
-    await this.dataSource.getRepository(AutomationRun).update(id, {
-      state,
-      ...(trace ? { condition_trace: trace } : {}),
-      ...(matched !== null ? { matched } : {}),
-      failure_code: failure,
-      finished_at: new Date(),
+    const current = await this.dataSource.getRepository(AutomationRun).findOne({
+      where: { id },
+      relations: ['rule', 'rule.execution_actor', 'event'],
+    });
+    if (!current) return;
+    const auditEnabled = Boolean(
+      (
+        await this.entitlements.resolveOrganization(current.organization_id)
+      ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+        ?.enabled,
+    );
+    await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(AutomationRun);
+      const run = await repository.findOne({
+        where: { id },
+        relations: ['rule', 'rule.execution_actor', 'event'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!run) return;
+      const previousState = run.state;
+      run.state = state;
+      if (trace) run.condition_trace = trace;
+      if (matched !== null) run.matched = matched;
+      run.failure_code = failure;
+      run.finished_at = new Date();
+      await repository.save(run);
+      if (auditEnabled) {
+        await this.auditWriter.append(manager, {
+          organizationId: run.organization_id,
+          projectId: run.project_id,
+          action:
+            state === 'failed'
+              ? AuditAction.AUTOMATION_RUN_FAILED
+              : AuditAction.AUTOMATION_RUN_COMPLETED,
+          actor: {
+            type: AuditActorType.AUTOMATION,
+            id: run.rule.execution_actor?.id ?? null,
+            label:
+              run.rule.execution_actor?.display_name ?? 'Tailpoint Automation',
+            responsibleUserId: run.rule.last_material_editor_id,
+          },
+          subject: {
+            type: AuditSubjectType.AUTOMATION_RUN,
+            id: run.id,
+            label: run.rule.name,
+          },
+          source: AuditSource.AUTOMATION,
+          correlationId:
+            run.event?.correlation_id ?? this.auditWriter.correlationId(),
+          causationId: run.event_id,
+          sourceEventKey: `run-finished:${run.id}:${run.attempt_count}`,
+          before: { status: previousState, rule_id: run.rule_id },
+          after: {
+            status: state,
+            rule_id: run.rule_id,
+            reason: failure,
+          },
+        });
+      }
     });
   }
 }

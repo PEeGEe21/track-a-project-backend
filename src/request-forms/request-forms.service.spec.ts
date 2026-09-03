@@ -36,7 +36,10 @@ describe('RequestFormsService', () => {
   const authorization = { assertProjectPermission: jest.fn() };
   const activities = { createActivity: jest.fn() };
   const customFieldValues = { setTaskValuesInTransaction: jest.fn() };
-  const entitlements = { resolveOrganization: jest.fn() };
+  const entitlements = {
+    resolveOrganization: jest.fn(),
+    resolveForActor: jest.fn().mockResolvedValue([]),
+  };
   const config = { get: jest.fn() };
   const storage = { uploadFile: jest.fn() };
   const automationEvents = { capture: jest.fn() };
@@ -56,6 +59,7 @@ describe('RequestFormsService', () => {
       config as any,
       storage as any,
       automationEvents as any,
+      { append: jest.fn(), correlationId: jest.fn() } as any,
     );
   });
 

@@ -60,7 +60,13 @@ import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { JoinOrganizationSignUpDto } from '../dtos/join-organization-signup.dto';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
 import { LoginDto } from '../dtos/login.dto';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 import { AppLogger } from 'src/common/logging/app-logger';
 import { GlobalMenu } from 'src/typeorm/entities/GlobalMenu';
 import { OrganizationMenu } from 'src/typeorm/entities/OrganizationMenu';
@@ -109,12 +115,11 @@ export class AuthService {
     private userOrganizationRepository: Repository<UserOrganization>,
     @InjectRepository(OrganizationInvitation)
     private orgInvitationRepository: Repository<OrganizationInvitation>,
-    @InjectRepository(AuditLog)
-    private auditLogRepository: Repository<AuditLog>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
     private mailingService: MailingService,
+    private auditWriter: AuditWriterService,
   ) {}
 
   private async provisionInitialFreeSubscription(
@@ -1163,7 +1168,11 @@ export class AuthService {
         };
       }
 
-      const tokens = await this.getTokens(payload.sub, payload.email, payload.role);
+      const tokens = await this.getTokens(
+        payload.sub,
+        payload.email,
+        payload.role,
+      );
       return {
         success: 'success',
         accessToken: tokens.accessToken,
@@ -1689,18 +1698,28 @@ export class AuthService {
 
     if (!user) throw new ForbiddenException('User not found');
 
-    // Log the impersonation
-    await this.auditLogRepository.save({
-      action: 'IMPERSONATE_USER',
-      admin_id: adminUserId,
-      admin: admin,
-      target_user_id: targetUserId,
-      target_user: user,
-      metadata: { user_email: user.email },
-    });
-
     // Generate token for impersonated user
     const firstOrg = user.user_organizations[0];
+    await this.userRepository.manager.transaction(async (manager) => {
+      await this.auditWriter.append(manager, {
+        organizationId: firstOrg.organization.id,
+        action: AuditAction.USER_IMPERSONATED,
+        actor: {
+          type: AuditActorType.ADMIN,
+          id: adminUserId,
+          label: admin?.fullName || `Administrator ${adminUserId}`,
+          responsibleUserId: adminUserId,
+        },
+        subject: {
+          type: AuditSubjectType.USER,
+          id: targetUserId,
+          label: user.fullName || `User ${targetUserId}`,
+        },
+        source: AuditSource.ADMIN,
+        correlationId: this.auditWriter.correlationId(),
+        after: { status: 'impersonated' },
+      });
+    });
     const token = await this.generateToken(
       user,
       firstOrg.organization,

@@ -19,6 +19,15 @@ import { User } from 'src/typeorm/entities/User';
 import { AuthUser } from 'src/types/users';
 import { ProjectStatus } from 'src/utils/constants/project';
 import { DataSource, IsNull } from 'typeorm';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 import {
   CreateTemplateDto,
   CreateTemplateVersionDto,
@@ -29,7 +38,16 @@ export class TemplatesService {
   constructor(
     private ds: DataSource,
     private auth: AuthorizationService,
+    private entitlements: EntitlementsService,
+    private auditWriter: AuditWriterService,
   ) {}
+  private async auditEnabled(actor: AuthUser, org: string) {
+    return Boolean(
+      (await this.entitlements.resolveForActor(actor, org)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
+  }
   async list(actor: AuthUser, org: string) {
     await this.auth.getProjectAccessScope(actor, org);
     const rows = await this.ds.getRepository(ReusableTemplate).find({
@@ -52,6 +70,7 @@ export class TemplatesService {
       ProjectPermission.EDIT,
     );
     this.validate(dto.type, dto.snapshot);
+    const auditEnabled = await this.auditEnabled(actor, org);
     const id = await this.ds.transaction(async (m) => {
       const r = m.getRepository(ReusableTemplate);
       const t = await r.save(
@@ -64,12 +83,32 @@ export class TemplatesService {
           created_by_id: actor.userId,
         }),
       );
-      await m.getRepository(ReusableTemplateVersion).save({
+      const version = await m.getRepository(ReusableTemplateVersion).save({
         template_id: t.id,
         version_number: 1,
         snapshot: dto.snapshot,
         created_by_id: actor.userId,
       });
+      if (auditEnabled)
+        await this.auditWriter.append(m, {
+          organizationId: org,
+          projectId,
+          action: AuditAction.TEMPLATE_CREATED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
+          },
+          subject: { type: AuditSubjectType.TEMPLATE, id: t.id, label: t.name },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          after: {
+            name: t.name,
+            status: 'active',
+            version: version.version_number,
+            template_type: t.type,
+          },
+        });
       return t.id;
     });
     return this.get(actor, org, id);
@@ -91,11 +130,35 @@ export class TemplatesService {
     );
     this.validate(t.type, dto.snapshot);
     const n = Math.max(...t.versions.map((v) => v.version_number)) + 1;
-    await this.ds.getRepository(ReusableTemplateVersion).save({
-      template_id: id,
-      version_number: n,
-      snapshot: dto.snapshot,
-      created_by_id: actor.userId,
+    const auditEnabled = await this.auditEnabled(actor, org);
+    await this.ds.transaction(async (manager) => {
+      await manager.getRepository(ReusableTemplateVersion).save({
+        template_id: id,
+        version_number: n,
+        snapshot: dto.snapshot,
+        created_by_id: actor.userId,
+      });
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId: org,
+          projectId: t.source_project_id,
+          action: AuditAction.TEMPLATE_UPDATED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
+          },
+          subject: { type: AuditSubjectType.TEMPLATE, id: t.id, label: t.name },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          before: { version: n - 1 },
+          after: {
+            name: t.name,
+            status: 'active',
+            version: n,
+            template_type: t.type,
+          },
+        });
     });
     return this.get(actor, org, id);
   }

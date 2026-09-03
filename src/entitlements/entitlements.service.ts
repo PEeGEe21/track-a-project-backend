@@ -4,7 +4,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings';
 import { AuthUser } from 'src/types/users';
@@ -12,6 +11,13 @@ import { SubscriptionTier } from 'src/utils/constants/subscriptionTier';
 import { Repository } from 'typeorm';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { CAPABILITY_CATALOG, CapabilityKey } from './capability-catalog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 const tierRank: Record<SubscriptionTier, number> = {
   [SubscriptionTier.FREE]: 0,
@@ -27,10 +33,9 @@ export class EntitlementsService {
     private readonly organizationRepository: Repository<Organization>,
     @InjectRepository(OrganizationSettings)
     private readonly settingsRepository: Repository<OrganizationSettings>,
-    @InjectRepository(AuditLog)
-    private readonly auditLogRepository: Repository<AuditLog>,
     @InjectRepository(UserOrganization)
     private readonly userOrganizationRepository: Repository<UserOrganization>,
+    private readonly auditWriter: AuditWriterService,
   ) {}
 
   async resolveOrganization(organizationId: string, permissionGranted = true) {
@@ -128,21 +133,32 @@ export class EntitlementsService {
       });
     }
 
-    const previousValue = settings.feature_overrides?.[capability] ?? null;
-    settings.feature_overrides = {
-      ...(settings.feature_overrides ?? {}),
-      [capability]: enabled,
-    };
-    await this.settingsRepository.save(settings);
-    await this.auditLogRepository.save({
-      action: 'ENTITLEMENT_OVERRIDE_CHANGE',
-      admin_id: actor.userId,
-      organization_id: organizationId,
-      metadata: {
-        capability,
-        previous_value: previousValue,
-        new_value: enabled,
-      },
+    await this.settingsRepository.manager.transaction(async (manager) => {
+      const repository = manager.getRepository(OrganizationSettings);
+      const previousValue = settings.feature_overrides?.[capability] ?? null;
+      settings.feature_overrides = {
+        ...(settings.feature_overrides ?? {}),
+        [capability]: enabled,
+      };
+      await repository.save(settings);
+      await this.auditWriter.append(manager, {
+        organizationId,
+        action: AuditAction.ENTITLEMENT_OVERRIDE_CHANGED,
+        actor: {
+          type: AuditActorType.ADMIN,
+          id: actor.userId,
+          label: `Administrator ${actor.userId}`,
+        },
+        subject: {
+          type: AuditSubjectType.ENTITLEMENT,
+          id: capability,
+          label: CAPABILITY_CATALOG[capability].label,
+        },
+        source: AuditSource.ADMIN,
+        correlationId: this.auditWriter.correlationId(),
+        before: { capability, enabled: previousValue },
+        after: { capability, enabled },
+      });
     });
 
     return this.resolveOrganization(organizationId);
@@ -160,22 +176,32 @@ export class EntitlementsService {
     const settings = await this.settingsRepository.findOne({
       where: { organization_id: organizationId },
     });
-    const previousValue = settings?.feature_overrides?.[capability] ?? null;
-    if (settings) {
-      const overrides = { ...(settings.feature_overrides ?? {}) };
-      delete overrides[capability];
-      settings.feature_overrides = overrides;
-      await this.settingsRepository.save(settings);
-    }
-    await this.auditLogRepository.save({
-      action: 'ENTITLEMENT_OVERRIDE_CHANGE',
-      admin_id: actor.userId,
-      organization_id: organizationId,
-      metadata: {
-        capability,
-        previous_value: previousValue,
-        new_value: null,
-      },
+    await this.settingsRepository.manager.transaction(async (manager) => {
+      const previousValue = settings?.feature_overrides?.[capability] ?? null;
+      if (settings) {
+        const overrides = { ...(settings.feature_overrides ?? {}) };
+        delete overrides[capability];
+        settings.feature_overrides = overrides;
+        await manager.getRepository(OrganizationSettings).save(settings);
+      }
+      await this.auditWriter.append(manager, {
+        organizationId,
+        action: AuditAction.ENTITLEMENT_OVERRIDE_CHANGED,
+        actor: {
+          type: AuditActorType.ADMIN,
+          id: actor.userId,
+          label: `Administrator ${actor.userId}`,
+        },
+        subject: {
+          type: AuditSubjectType.ENTITLEMENT,
+          id: capability,
+          label: CAPABILITY_CATALOG[capability].label,
+        },
+        source: AuditSource.ADMIN,
+        correlationId: this.auditWriter.correlationId(),
+        before: { capability, enabled: previousValue },
+        after: { capability, enabled: null },
+      });
     });
     return this.resolveOrganization(organizationId);
   }

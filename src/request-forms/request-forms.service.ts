@@ -50,6 +50,13 @@ import { AutomationEventsService } from 'src/automations/automation-events.servi
 import { ActivityType } from 'src/utils/constants/activity';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 import {
   RequestFormConditionOperator,
   RequestFormDefinitionDto,
@@ -92,7 +99,51 @@ export class RequestFormsService {
     private readonly config: ConfigService,
     @Inject('STORAGE_SERVICE') private readonly storage: StorageService,
     private readonly automationEvents: AutomationEventsService,
+    private readonly auditWriter: AuditWriterService,
   ) {}
+
+  private async auditEnabled(actor: AuthUser, org: string) {
+    return Boolean(
+      (await this.entitlements.resolveForActor(actor, org)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
+  }
+
+  private async auditForm(
+    manager: EntityManager,
+    actor: AuthUser,
+    org: string,
+    projectId: number,
+    form: RequestForm,
+    version: RequestFormVersion,
+    action: AuditAction,
+    status = version.state as string,
+  ) {
+    await this.auditWriter.append(manager, {
+      organizationId: org,
+      projectId,
+      action,
+      actor: {
+        type: AuditActorType.HUMAN,
+        id: actor.userId,
+        label: `User ${actor.userId}`,
+      },
+      subject: {
+        type: AuditSubjectType.REQUEST_FORM,
+        id: form.id,
+        label: form.name,
+      },
+      source: AuditSource.API,
+      correlationId: this.auditWriter.correlationId(),
+      after: {
+        name: form.name,
+        status,
+        version: version.version_number,
+        visibility: version.visibility,
+      },
+    });
+  }
 
   async publicPublished(publicKey: string) {
     const { form, version } = await this.findPublicPublished(publicKey);
@@ -301,6 +352,13 @@ export class RequestFormsService {
         projectId,
         ProjectPermission.CONTRIBUTE,
       );
+    const auditEnabled = Boolean(
+      (context?.public
+        ? await this.entitlements.resolveOrganization(org)
+        : await this.entitlements.resolveForActor(actor, org)
+      ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+        ?.enabled,
+    );
     const repo = this.dataSource.getRepository(RequestFormSubmission);
     const existing = await repo.findOne({
       where: { id: dto.submissionId },
@@ -370,10 +428,49 @@ export class RequestFormsService {
     }
     const validation = this.validateAnswers(version.fields, dto.answers);
     if (!validation.valid) {
-      submission.status = RequestFormSubmissionStatus.REJECTED;
-      submission.validation_snapshot = validation;
-      submission.failure_reason = 'Submission validation failed';
-      await repo.save(submission);
+      await this.dataSource.transaction(async (manager) => {
+        const locked = await manager
+          .getRepository(RequestFormSubmission)
+          .findOne({
+            where: { id: submission.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+        if (!locked) throw new Error('Submission record missing');
+        locked.status = RequestFormSubmissionStatus.REJECTED;
+        locked.validation_snapshot = validation;
+        locked.failure_reason = 'Submission validation failed';
+        await manager.getRepository(RequestFormSubmission).save(locked);
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId: org,
+            projectId,
+            action: AuditAction.REQUEST_SUBMISSION_CREATED,
+            actor: context?.public
+              ? {
+                  type: AuditActorType.SYSTEM,
+                  id: 'public_request_intake',
+                  label: 'Public request intake',
+                }
+              : {
+                  type: AuditActorType.HUMAN,
+                  id: actor.userId,
+                  label: `User ${actor.userId}`,
+                },
+            subject: {
+              type: AuditSubjectType.REQUEST_SUBMISSION,
+              id: locked.id,
+              label: 'Request submission',
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            sourceEventKey: `request-submission:${locked.id}:rejected`,
+            after: {
+              status: locked.status,
+              form_id: formId,
+              created_task_id: null,
+            },
+          });
+      });
       throw new BadRequestException({
         message: 'Submission validation failed',
         submissionId: submission.id,
@@ -381,10 +478,50 @@ export class RequestFormsService {
       });
     }
     if (version.requires_approval && !context?.approval) {
-      submission.status = RequestFormSubmissionStatus.PENDING_REVIEW;
-      submission.validation_snapshot = validation;
-      submission.failure_reason = null;
-      await repo.save(submission);
+      await this.dataSource.transaction(async (manager) => {
+        const locked = await manager
+          .getRepository(RequestFormSubmission)
+          .findOne({
+            where: { id: submission.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+        if (!locked) throw new Error('Submission record missing');
+        locked.status = RequestFormSubmissionStatus.PENDING_REVIEW;
+        locked.validation_snapshot = validation;
+        locked.failure_reason = null;
+        await manager.getRepository(RequestFormSubmission).save(locked);
+        submission = locked;
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId: org,
+            projectId,
+            action: AuditAction.REQUEST_SUBMISSION_CREATED,
+            actor: context?.public
+              ? {
+                  type: AuditActorType.SYSTEM,
+                  id: 'public_request_intake',
+                  label: 'Public request intake',
+                }
+              : {
+                  type: AuditActorType.HUMAN,
+                  id: actor.userId,
+                  label: `User ${actor.userId}`,
+                },
+            subject: {
+              type: AuditSubjectType.REQUEST_SUBMISSION,
+              id: locked.id,
+              label: 'Request submission',
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            sourceEventKey: `request-submission:${locked.id}:pending_review`,
+            after: {
+              status: locked.status,
+              form_id: formId,
+              created_task_id: null,
+            },
+          });
+      });
       return {
         success: true,
         idempotent: false,
@@ -481,6 +618,36 @@ export class RequestFormsService {
           actorType: context?.public ? 'integration' : 'human',
           actorId: context?.public ? null : actor.userId,
         });
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId: org,
+            projectId,
+            action: AuditAction.REQUEST_SUBMISSION_CREATED,
+            actor: context?.public
+              ? {
+                  type: AuditActorType.SYSTEM,
+                  id: 'public_request_intake',
+                  label: 'Public request intake',
+                }
+              : {
+                  type: AuditActorType.HUMAN,
+                  id: actor.userId,
+                  label: `User ${actor.userId}`,
+                },
+            subject: {
+              type: AuditSubjectType.REQUEST_SUBMISSION,
+              id: locked.id,
+              label: 'Request submission',
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            sourceEventKey: `request-submission:${locked.id}:accepted`,
+            after: {
+              status: locked.status,
+              form_id: formId,
+              created_task_id: savedTask.id,
+            },
+          });
       });
     } catch (error) {
       submission = (await repo.findOneBy({ id: submission.id }))!;
@@ -636,6 +803,7 @@ export class RequestFormsService {
       ProjectPermission.EDIT,
     );
     const normalized = await this.validateDefinition(org, projectId, dto);
+    const auditEnabled = await this.auditEnabled(actor, org);
     const formId = await this.dataSource.transaction(async (manager) => {
       const formRepo = manager.getRepository(RequestForm);
       const form = await formRepo.save(
@@ -658,6 +826,16 @@ export class RequestFormsService {
         }),
       );
       await this.replaceFields(manager, draft.id, normalized);
+      if (auditEnabled)
+        await this.auditForm(
+          manager,
+          actor,
+          org,
+          projectId,
+          form,
+          draft,
+          AuditAction.REQUEST_FORM_CREATED,
+        );
       return form.id;
     });
     const form = await this.findScoped(
@@ -744,6 +922,7 @@ export class RequestFormsService {
       ProjectPermission.EDIT,
     );
     const normalized = await this.validateDefinition(org, projectId, dto);
+    const auditEnabled = await this.auditEnabled(actor, org);
     await this.dataSource.transaction(async (manager) => {
       const form = await this.findScoped(manager, org, projectId, formId, true);
       if (form.archived_at)
@@ -757,6 +936,16 @@ export class RequestFormsService {
       Object.assign(draft, this.versionContent(dto));
       await manager.getRepository(RequestFormVersion).save(draft);
       await this.replaceFields(manager, draft.id, normalized);
+      if (auditEnabled)
+        await this.auditForm(
+          manager,
+          actor,
+          org,
+          projectId,
+          form,
+          draft,
+          AuditAction.REQUEST_FORM_UPDATED,
+        );
     });
     const form = await this.findScoped(
       this.forms.manager,
@@ -809,6 +998,7 @@ export class RequestFormsService {
       throw new ForbiddenException(
         'Only project owners can publish request forms',
       );
+    const auditEnabled = await this.auditEnabled(actor, org);
     await this.dataSource.transaction(async (manager) => {
       const form = await this.findScoped(manager, org, projectId, formId, true);
       if (form.archived_at)
@@ -833,6 +1023,16 @@ export class RequestFormsService {
       draft.published_by = { id: actor.userId } as User;
       draft.published_at = new Date();
       await manager.getRepository(RequestFormVersion).save(draft);
+      if (auditEnabled)
+        await this.auditForm(
+          manager,
+          actor,
+          org,
+          projectId,
+          form,
+          draft,
+          AuditAction.REQUEST_FORM_PUBLISHED,
+        );
     });
     const form = await this.findScoped(
       this.forms.manager,
@@ -864,16 +1064,31 @@ export class RequestFormsService {
       throw new ForbiddenException(
         'Only project owners can archive request forms',
       );
-    const form = await this.findScoped(
-      this.forms.manager,
-      org,
-      projectId,
-      formId,
-    );
-    if (!form.archived_at) {
+    const auditEnabled = await this.auditEnabled(actor, org);
+    const archived = await this.dataSource.transaction(async (manager) => {
+      const form = await this.findScoped(manager, org, projectId, formId, true);
+      if (form.archived_at) return null;
       form.archived_at = new Date();
-      await this.forms.save(form);
-      await this.activity(actor, org, projectId, 'archived', form);
+      await manager.getRepository(RequestForm).save(form);
+      const version =
+        form.versions.find(
+          (item) => item.state === RequestFormVersionState.PUBLISHED,
+        ) ?? form.versions[0];
+      if (auditEnabled && version)
+        await this.auditForm(
+          manager,
+          actor,
+          org,
+          projectId,
+          form,
+          version,
+          AuditAction.REQUEST_FORM_ARCHIVED,
+          'archived',
+        );
+      return form;
+    });
+    if (archived) {
+      await this.activity(actor, org, projectId, 'archived', archived);
     }
     return { success: true, message: 'Request form archived' };
   }

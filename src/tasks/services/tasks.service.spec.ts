@@ -6,6 +6,13 @@ import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 describe('TasksService', () => {
   let service: TasksService;
   const taskRepository = { findOne: jest.fn(), find: jest.fn() };
+  const dataSource = { transaction: jest.fn() };
+  const userRepository = { findOneBy: jest.fn(), find: jest.fn() };
+  const projectActivitiesService = { createActivity: jest.fn() };
+  const auditWriter = {
+    append: jest.fn(),
+    correlationId: jest.fn().mockReturnValue('correlation-1'),
+  };
   const authorizationService = {
     assertProjectAccess: jest.fn(),
     assertProjectPermission: jest.fn(),
@@ -37,11 +44,11 @@ describe('TasksService', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     service = new TasksService(
+      dataSource as any,
       {} as any,
+      projectActivitiesService as any,
       {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
+      userRepository as any,
       {} as any,
       {} as any,
       taskRepository as any,
@@ -54,12 +61,64 @@ describe('TasksService', () => {
       customFieldsService as any,
       entitlementsService as any,
       customWorkflowsService as any,
+      auditWriter as any,
     );
     entitlementsService.resolveForActor.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('commits a general task update and its audit event through one manager', async () => {
+    const actor = { userId: 2 };
+    const user = { id: 2, fullName: 'Task editor', email: 'editor@test' };
+    const task = {
+      id: 55,
+      title: 'Before',
+      priority: 0,
+      due_date: null,
+      project: { id: 7 },
+      status: { id: 3 },
+      user,
+      assignees: [],
+    };
+    const repository = {
+      findOne: jest.fn().mockResolvedValue(task),
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(repository),
+    };
+    dataSource.transaction.mockImplementation(async (work) => work(manager));
+    taskRepository.findOne.mockResolvedValue(task);
+    userRepository.findOneBy.mockResolvedValue(user);
+    authorizationService.assertProjectPermission.mockResolvedValue({
+      project: task.project,
+      role: 'editor',
+    });
+    entitlementsService.resolveForActor.mockResolvedValue([
+      { key: 'advanced_audit_trail', enabled: true },
+    ]);
+    jest
+      .spyOn(service as any, 'getHydratedTaskForResponse')
+      .mockResolvedValue({ id: 55, title: 'After' });
+
+    await service.updateTask(55, { title: 'After' }, actor, 'org-1');
+
+    expect(repository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 55, title: 'After' }),
+    );
+    expect(auditWriter.append).toHaveBeenCalledWith(
+      manager,
+      expect.objectContaining({
+        organizationId: 'org-1',
+        projectId: 7,
+        action: 'task.updated',
+        before: expect.objectContaining({ title: 'Before' }),
+        after: expect.objectContaining({ title: 'After' }),
+      }),
+    );
   });
 
   it('checks tenant and project authorization before a task mutation', async () => {

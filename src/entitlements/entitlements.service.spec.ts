@@ -8,18 +8,31 @@ describe('EntitlementsService', () => {
     findOne: jest.fn(),
     create: jest.fn((value) => value),
     save: jest.fn((value) => value),
+    manager: {
+      transaction: jest.fn(async (work) =>
+        work({ getRepository: () => settingsRepository }),
+      ),
+    },
   };
   const auditLogRepository = { save: jest.fn() };
+  const auditWriter = {
+    append: jest.fn(),
+    correlationId: jest.fn().mockReturnValue('correlation-1'),
+  };
   const userOrganizationRepository = { findOne: jest.fn() };
   let service: EntitlementsService;
 
   beforeEach(() => {
     jest.resetAllMocks();
+    settingsRepository.manager.transaction.mockImplementation(async (work) =>
+      work({ getRepository: () => settingsRepository }),
+    );
+    auditWriter.correlationId.mockReturnValue('correlation-1');
     service = new EntitlementsService(
       organizationRepository as any,
       settingsRepository as any,
-      auditLogRepository as any,
       userOrganizationRepository as any,
+      auditWriter as any,
     );
   });
 
@@ -160,16 +173,16 @@ describe('EntitlementsService', () => {
       true,
     );
 
-    expect(auditLogRepository.save).toHaveBeenCalledWith({
-      action: 'ENTITLEMENT_OVERRIDE_CHANGE',
-      admin_id: 9,
-      organization_id: 'org-1',
-      metadata: {
-        capability: CapabilityKey.PERSONAL_PRODUCTIVITY_HUB,
-        previous_value: false,
-        new_value: true,
-      },
-    });
+    expect(auditWriter.append).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: 'org-1',
+        action: 'entitlement.override_changed',
+        actor: expect.objectContaining({ type: 'admin', id: 9 }),
+        before: expect.objectContaining({ enabled: false }),
+        after: expect.objectContaining({ enabled: true }),
+      }),
+    );
   });
 
   it('clears an override back to catalog inheritance and audits it', async () => {
@@ -193,12 +206,11 @@ describe('EntitlementsService', () => {
     expect(settingsRepository.save).toHaveBeenCalledWith({
       feature_overrides: {},
     });
-    expect(auditLogRepository.save).toHaveBeenCalledWith(
+    expect(auditWriter.append).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({
-        metadata: expect.objectContaining({
-          previous_value: true,
-          new_value: null,
-        }),
+        before: expect.objectContaining({ enabled: true }),
+        after: expect.objectContaining({ enabled: null }),
       }),
     );
   });

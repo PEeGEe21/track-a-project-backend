@@ -17,7 +17,6 @@ import {
 } from 'src/typeorm/entities/ApprovalRequest';
 import { ApprovalReviewer } from 'src/typeorm/entities/ApprovalReviewer';
 import { ApprovalResponse } from 'src/typeorm/entities/ApprovalResponse';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { Document } from 'src/typeorm/entities/Document';
 import { Milestone } from 'src/typeorm/entities/Milestone';
 import { Project } from 'src/typeorm/entities/Project';
@@ -31,6 +30,15 @@ import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { randomUUID } from 'crypto';
 import { DataSource, In, IsNull, LessThanOrEqual } from 'typeorm';
 import { CreateApprovalDto, RespondApprovalDto } from './dto/approval.dto';
+import { EntitlementsService } from 'src/entitlements/entitlements.service';
+import { CapabilityKey } from 'src/entitlements/capability-catalog';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 @Injectable()
 export class ApprovalsService {
@@ -38,7 +46,16 @@ export class ApprovalsService {
     private dataSource: DataSource,
     private authorization: AuthorizationService,
     private notifications: NotificationsService,
+    private entitlements: EntitlementsService,
+    private auditWriter: AuditWriterService,
   ) {}
+  private async auditEnabled(actor: AuthUser, org: string) {
+    return Boolean(
+      (await this.entitlements.resolveForActor(actor, org)).find(
+        (item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL,
+      )?.enabled,
+    );
+  }
 
   @Cron(CronExpression.EVERY_HOUR)
   async sendDueReminders() {
@@ -74,8 +91,41 @@ export class ApprovalsService {
           request.organization_id,
         );
       }
-      request.reminder_sent_at = new Date();
-      await this.dataSource.getRepository(ApprovalRequest).save(request);
+      const auditEnabled = Boolean(
+        (
+          await this.entitlements.resolveOrganization(request.organization_id)
+        ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+          ?.enabled,
+      );
+      await this.dataSource.transaction(async (manager) => {
+        request.reminder_sent_at = new Date();
+        await manager.getRepository(ApprovalRequest).save(request);
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId: request.organization_id,
+            projectId: request.project_id,
+            action: AuditAction.APPROVAL_REMINDER_SENT,
+            actor: {
+              type: AuditActorType.SYSTEM,
+              id: 'approval_reminder_scheduler',
+              label: 'Approval reminder scheduler',
+            },
+            subject: {
+              type: AuditSubjectType.APPROVAL_REQUEST,
+              id: request.id,
+              label: `${request.subject_type} approval`,
+            },
+            source: AuditSource.SCHEDULER,
+            correlationId: this.auditWriter.correlationId(),
+            sourceEventKey: `approval-reminder:${request.id}`,
+            after: {
+              status: request.status,
+              subject_type: request.subject_type,
+              subject_id: request.subject_id,
+              reviewer_count: request.reviewers.length - responded.size,
+            },
+          });
+      });
     }
     return requests.length;
   }
@@ -243,6 +293,7 @@ export class ApprovalsService {
       dto.subjectType,
       dto.subjectId,
     );
+    const auditEnabled = await this.auditEnabled(actor, org);
     const id = await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(ApprovalRequest);
       const request = await repo.save(
@@ -266,18 +317,30 @@ export class ApprovalsService {
           reviewer_id,
         })),
       );
-      await manager.getRepository(AuditLog).save({
-        action: 'APPROVAL_REQUEST_CREATED',
-        admin_id: actor.userId,
-        organization_id: org,
-        metadata: {
-          approvalRequestId: request.id,
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId: org,
           projectId,
-          subjectType: dto.subjectType,
-          subjectId: dto.subjectId,
-          reviewerIds,
-        },
-      });
+          action: AuditAction.APPROVAL_REQUEST_CREATED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.userId,
+            label: `User ${actor.userId}`,
+          },
+          subject: {
+            type: AuditSubjectType.APPROVAL_REQUEST,
+            id: request.id,
+            label: `${dto.subjectType} approval`,
+          },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          after: {
+            status: request.status,
+            subject_type: dto.subjectType,
+            subject_id: dto.subjectId,
+            reviewer_count: reviewerIds.length,
+          },
+        });
       return request.id;
     });
     return this.get(actor, org, projectId, id);
@@ -307,6 +370,7 @@ export class ApprovalsService {
         ProjectPermission.VIEW,
       );
       let invalidated = false;
+      const auditEnabled = await this.auditEnabled(actor, org);
       await this.dataSource.transaction(async (manager) => {
         const repo = manager.getRepository(ApprovalRequest);
         const request = await repo.findOne({
@@ -356,6 +420,26 @@ export class ApprovalsService {
               resolved_at: request.resolved_at,
             },
           );
+          if (auditEnabled)
+            await this.auditWriter.append(manager, {
+              organizationId: org,
+              projectId,
+              action: AuditAction.APPROVAL_REQUEST_INVALIDATED,
+              actor: {
+                type: AuditActorType.HUMAN,
+                id: actor.userId,
+                label: `User ${actor.userId}`,
+              },
+              subject: {
+                type: AuditSubjectType.APPROVAL_REQUEST,
+                id: request.id,
+                label: `${request.subject_type} approval`,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { status: ApprovalRequestStatus.PENDING },
+              after: { status: request.status, reason: 'subject_changed' },
+            });
           invalidated = true;
           return;
         }
@@ -400,16 +484,26 @@ export class ApprovalsService {
             resolved_at: request.resolved_at,
           },
         );
-        await manager.getRepository(AuditLog).save({
-          action: 'APPROVAL_RESPONSE_RECORDED',
-          admin_id: actor.userId,
-          organization_id: org,
-          metadata: {
-            approvalRequestId: id,
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId: org,
             projectId,
-            decision: dto.decision,
-          },
-        });
+            action: AuditAction.APPROVAL_RESPONSE_RECORDED,
+            actor: {
+              type: AuditActorType.HUMAN,
+              id: actor.userId,
+              label: `User ${actor.userId}`,
+            },
+            subject: {
+              type: AuditSubjectType.APPROVAL_REQUEST,
+              id: request.id,
+              label: `${request.subject_type} approval`,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: { status: ApprovalRequestStatus.PENDING },
+            after: { status: request.status, decision: dto.decision },
+          });
       });
       if (invalidated)
         throw new BadRequestException(

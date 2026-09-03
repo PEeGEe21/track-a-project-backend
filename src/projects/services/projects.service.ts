@@ -57,7 +57,6 @@ import { CreateIngestKeyDto } from '../dtos/create-ingest-key.dto';
 import { ProjectIngestionSettings } from 'src/typeorm/entities/ProjectIngestionSettings';
 import { ProjectStatusTemplate } from 'src/typeorm/entities/ProjectStatusTemplate';
 import { ProjectRole } from 'src/utils/constants/projectRole';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { ProjectRolePolicy } from 'src/common/authorization/project-role.policy';
 import { CustomFieldsService } from 'src/custom-fields/custom-fields.service';
 import { EntitlementsService } from 'src/entitlements/entitlements.service';
@@ -66,6 +65,13 @@ import {
   AuthorizationService,
   ProjectPermission,
 } from 'src/common/authorization/authorization.service';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
+import {
+  AuditAction,
+  AuditActorType,
+  AuditSource,
+  AuditSubjectType,
+} from 'src/audit/audit-contract';
 
 const TAG_REGEX = /@(\w+)/g;
 
@@ -131,6 +137,7 @@ export class ProjectsService {
     private readonly authorizationService: AuthorizationService,
     private readonly customFieldsService: CustomFieldsService,
     private readonly entitlementsService: EntitlementsService,
+    private readonly auditWriter: AuditWriterService,
 
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
@@ -368,7 +375,6 @@ export class ProjectsService {
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
-
       // 2. Use the query builder
       // const queryBuilder = this.projectRepository.createQueryBuilder('project');
       // Use TenantQueryHelper for organization filtering
@@ -606,23 +612,59 @@ export class ProjectsService {
           message: 'No valid project fields were provided',
         };
       }
-
-      const updatedResult = await this.projectRepository.update(
-        { id },
-        { ...data },
+      const auditEnabled = Boolean(
+        (
+          await this.entitlementsService.resolveForActor(user, organizationId)
+        ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+          ?.enabled,
       );
-
-      if (updatedResult.affected < 1) {
-        return {
-          error: 'error',
-          message: 'Project update failed',
-        };
-      }
-
-      const updatedProject = await this.projectRepository.findOne({
-        where: { id },
-        relations: ['user'],
-      });
+      const updatedProject = await this.entityManager.transaction(
+        async (manager) => {
+          const repository = manager.getRepository(Project);
+          const updatedResult = await repository.update(
+            { id, organization_id: organizationId },
+            { ...data },
+          );
+          if (!updatedResult.affected) {
+            throw new NotFoundException('Project not found');
+          }
+          const updated = await repository.findOne({
+            where: { id, organization_id: organizationId },
+            relations: ['user'],
+          });
+          if (!updated) throw new NotFoundException('Project not found');
+          if (auditEnabled) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: updated.id,
+              action: AuditAction.PROJECT_UPDATED,
+              actor: {
+                type: AuditActorType.HUMAN,
+                id: user.userId,
+                label: `User ${user.userId}`,
+              },
+              subject: {
+                type: AuditSubjectType.PROJECT,
+                id: updated.id,
+                label: updated.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: {
+                name: project.title,
+                status: project.status,
+                owner_id: project.user?.id ?? null,
+              },
+              after: {
+                name: updated.title,
+                status: updated.status,
+                owner_id: updated.user?.id ?? null,
+              },
+            });
+          }
+          return updated;
+        },
+      );
 
       return {
         success: 'success',
@@ -849,11 +891,46 @@ export class ProjectsService {
       if (!userFound) {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
+      const project = await this.projectRepository.findOne({
+        where: { id, organization_id: organizationId },
+        relations: ['user'],
+      });
+      if (!project) throw new NotFoundException('Project not found');
+      const auditEnabled = Boolean(
+        (
+          await this.entitlementsService.resolveForActor(user, organizationId)
+        ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+          ?.enabled,
+      );
 
       // console.log(project);
 
       // return;
       await this.entityManager.transaction(async (manager) => {
+        if (auditEnabled)
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: project.id,
+            action: AuditAction.PROJECT_DELETED,
+            actor: {
+              type: AuditActorType.HUMAN,
+              id: userFound.id,
+              label:
+                userFound.fullName || userFound.email || `User ${userFound.id}`,
+            },
+            subject: {
+              type: AuditSubjectType.PROJECT,
+              id: project.id,
+              label: project.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: {
+              name: project.title,
+              status: project.status,
+              owner_id: project.user?.id ?? null,
+            },
+          });
         // These project-owned graphs reference project statuses with RESTRICT
         // constraints. Remove them first so MySQL does not attempt to delete a
         // status while it is still referenced through a parallel cascade path.
@@ -1469,11 +1546,59 @@ export class ProjectsService {
 
       // console.log(createProjectDetails.peers, 'createProjectDetails.peers');
       // return;
-      // Create and save the project
-      const newProject = this.projectRepository.create(payload);
-      const savedProject = await this.projectRepository.save(newProject);
+      const savedTemplates = await this.projectStatusTemplateRepository.find({
+        order: { tabId: 'ASC', id: 'ASC' },
+      });
+      const defaultStatuses = this.normalizeProjectStatuses(savedTemplates);
+      const auditEnabled = Boolean(
+        (
+          await this.entitlementsService.resolveForActor(user, organizationId)
+        ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+          ?.enabled,
+      );
+      const savedProject = await this.entityManager.transaction(
+        async (manager) => {
+          const newProject = manager.getRepository(Project).create(payload);
+          const saved = await manager.getRepository(Project).save(newProject);
+          const statuses = defaultStatuses.map((status) => ({
+            ...status,
+            project: saved,
+            organization_id: organizationId,
+            isActive: true,
+          }));
+          await manager.getRepository(Status).save(statuses);
+          if (auditEnabled) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: saved.id,
+              action: AuditAction.PROJECT_CREATED,
+              actor: {
+                type: AuditActorType.HUMAN,
+                id: userFound.id,
+                label:
+                  userFound.fullName ||
+                  userFound.email ||
+                  `User ${userFound.id}`,
+              },
+              subject: {
+                type: AuditSubjectType.PROJECT,
+                id: saved.id,
+                label: saved.title,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              after: {
+                name: saved.title,
+                status: saved.status,
+                owner_id: userFound.id,
+              },
+            });
+          }
+          return saved;
+        },
+      );
 
-      // Handle peer invitations if any peers were specified
+      // Invitations send external mail and intentionally occur after commit.
       if (createProjectDetails.peers && createProjectDetails.peers.length > 0) {
         await this.sendProjectPeerInvite(
           userFound,
@@ -1481,22 +1606,7 @@ export class ProjectsService {
           savedProject,
           organizationId,
         );
-        // return;
       }
-
-      const savedTemplates = await this.projectStatusTemplateRepository.find({
-        order: { tabId: 'ASC', id: 'ASC' },
-      });
-      const defaultStatuses = this.normalizeProjectStatuses(savedTemplates);
-
-      const statuses = defaultStatuses.map((s) => ({
-        ...s,
-        project: savedProject,
-        organization_id: organizationId,
-        isActive: true,
-      }));
-
-      await this.statusRepository.save(statuses);
 
       return {
         success: 'success',
@@ -3739,18 +3849,35 @@ export class ProjectsService {
     if (!membership)
       throw new HttpException('Project member not found', HttpStatus.NOT_FOUND);
     const previousRole = membership.role;
-    membership.role = role;
-    await this.projectPeerRepository.save(membership);
-    await this.entityManager.save(AuditLog, {
-      action: 'PROJECT_MEMBER_ROLE_CHANGE',
-      admin_id: actor.id,
-      target_user_id: targetUserId,
-      organization_id: organizationId,
-      metadata: {
-        project_id: projectId,
-        previous_role: previousRole,
-        new_role: role,
-      },
+    const auditEnabled = Boolean(
+      (
+        await this.entitlementsService.resolveForActor(user, organizationId)
+      ).find((item) => item.key === CapabilityKey.ADVANCED_AUDIT_TRAIL)
+        ?.enabled,
+    );
+    await this.entityManager.transaction(async (manager) => {
+      membership.role = role;
+      await manager.getRepository(ProjectPeer).save(membership);
+      if (auditEnabled)
+        await this.auditWriter.append(manager, {
+          organizationId,
+          projectId,
+          action: AuditAction.PROJECT_MEMBER_ROLE_CHANGED,
+          actor: {
+            type: AuditActorType.HUMAN,
+            id: actor.id,
+            label: actor.fullName || `User ${actor.id}`,
+          },
+          subject: {
+            type: AuditSubjectType.USER,
+            id: targetUserId,
+            label: membership.user?.fullName || `User ${targetUserId}`,
+          },
+          source: AuditSource.API,
+          correlationId: this.auditWriter.correlationId(),
+          before: { role: previousRole },
+          after: { role },
+        });
     });
     return {
       success: true,

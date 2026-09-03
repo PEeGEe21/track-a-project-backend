@@ -62,6 +62,9 @@ import { Price } from './typeorm/entities/Price';
 import { Invoice } from './typeorm/entities/Invoice';
 import { Plan } from './typeorm/entities/Plan';
 import { AuditLog } from './typeorm/entities/AuditLog';
+import { AuditExport } from './typeorm/entities/AuditExport';
+import { AuditRetentionPolicy } from './typeorm/entities/AuditRetentionPolicy';
+import { AuditPurgeRun } from './typeorm/entities/AuditPurgeRun';
 import { AdminModule } from './admin/admin.module';
 import { HealthModule } from './health/health.module';
 import { config } from './config';
@@ -142,6 +145,7 @@ import { AutomationRun } from './typeorm/entities/AutomationRun';
 import { AutomationActionAttempt } from './typeorm/entities/AutomationActionAttempt';
 import { AutomationsModule } from './automations/automations.module';
 import { TaskWatcher } from './typeorm/entities/TaskWatcher';
+import { AuditModule } from './audit/audit.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -217,6 +221,9 @@ import { TaskWatcher } from './typeorm/entities/TaskWatcher';
             Invoice,
             Plan,
             AuditLog,
+            AuditExport,
+            AuditRetentionPolicy,
+            AuditPurgeRun,
             MessageStar,
             UserPushSubscription,
             IngestApiKey,
@@ -385,6 +392,7 @@ import { TaskWatcher } from './typeorm/entities/TaskWatcher';
     ApprovalsModule,
     TemplatesModule,
     AutomationsModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

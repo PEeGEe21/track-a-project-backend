@@ -14,6 +14,7 @@ export enum CapabilityKey {
   BASIC_APPROVALS = 'basic_approvals',
   UNIVERSAL_INTAKE = 'universal_intake',
   RULE_BASED_AUTOMATION = 'rule_based_automation',
+  ADVANCED_AUDIT_TRAIL = 'advanced_audit_trail',
 }
 
 export type CapabilityDefinition = {
@@ -121,6 +122,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Rule-Based Automation',
     description:
       'Versioned, observable rules that automate authorized project actions.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.ADVANCED_AUDIT_TRAIL]: {
+    key: CapabilityKey.ADVANCED_AUDIT_TRAIL,
+    label: 'Advanced Audit Trail',
+    description:
+      'Organization event history with safe filtering, export, and retention controls.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

@@ -13,9 +13,9 @@ import { UserPeer } from 'src/typeorm/entities/UserPeer';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitation';
-import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { MailingService } from 'src/utils/mailing/mailing.service';
 import { OrganizationRole } from 'src/utils/constants/org_roles';
+import { AuditWriterService } from 'src/audit/audit-writer.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -57,9 +57,9 @@ describe('AuthService', () => {
           provide: getRepositoryToken(OrganizationInvitation),
           useValue: repoStub,
         },
-        { provide: getRepositoryToken(AuditLog), useValue: repoStub },
         { provide: JwtService, useValue: jwtService },
         { provide: MailingService, useValue: mailingService },
+        { provide: AuditWriterService, useValue: { append: jest.fn() } },
       ],
     }).compile();
 
