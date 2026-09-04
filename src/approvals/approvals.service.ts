@@ -29,7 +29,11 @@ import { NOTIFICATION_TYPES } from 'src/utils/constants/notifications';
 import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 import { randomUUID } from 'crypto';
 import { DataSource, In, IsNull, LessThanOrEqual } from 'typeorm';
-import { CreateApprovalDto, RespondApprovalDto } from './dto/approval.dto';
+import {
+  CreateApprovalDto,
+  DelegateApprovalDto,
+  RespondApprovalDto,
+} from './dto/approval.dto';
 import { EntitlementsService } from 'src/entitlements/entitlements.service';
 import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import { AuditWriterService } from 'src/audit/audit-writer.service';
@@ -126,6 +130,37 @@ export class ApprovalsService {
             },
           });
       });
+    }
+    return requests.length;
+  }
+  @Cron(CronExpression.EVERY_HOUR)
+  async escalateOverdue() {
+    const requests = await this.dataSource.getRepository(ApprovalRequest).find({
+      where: {
+        status: ApprovalRequestStatus.PENDING,
+        due_at: LessThanOrEqual(new Date()),
+        escalated_at: IsNull(),
+      },
+      take: 500,
+    });
+    for (const request of requests) {
+      await this.notifications.enqueueNotification(
+        {
+          recipient: { id: request.requested_by_id } as any,
+          sender: null,
+          title: 'Approval overdue',
+          message: `Approval for ${request.subject_type} requires escalation.`,
+          type: NOTIFICATION_TYPES.DEADLINE_REMINDER,
+          metadata: {
+            approvalRequestId: request.id,
+            projectId: request.project_id,
+            deliveryKey: `approval-escalation:${request.id}`,
+          },
+        },
+        request.organization_id,
+      );
+      request.escalated_at = new Date();
+      await this.dataSource.getRepository(ApprovalRequest).save(request);
     }
     return requests.length;
   }
@@ -275,13 +310,53 @@ export class ApprovalsService {
     projectId: number,
     dto: CreateApprovalDto,
   ) {
+    if (dto.stages?.length)
+      await this.entitlements.assertCapability(
+        actor,
+        org,
+        CapabilityKey.ADVANCED_APPROVALS,
+      );
     await this.authorization.assertProjectPermission(
       actor,
       org,
       projectId,
       ProjectPermission.CONTRIBUTE,
     );
-    const reviewerIds = [...new Set(dto.reviewerIds.map(Number))];
+    const stages = dto.stages?.length
+      ? dto.stages.map((stage, index) => ({
+          ...stage,
+          index,
+          reviewerIds: [...new Set(stage.reviewerIds.map(Number))],
+          optionalReviewerIds: [
+            ...new Set((stage.optionalReviewerIds ?? []).map(Number)),
+          ],
+        }))
+      : [
+          {
+            name: 'Approval',
+            index: 0,
+            reviewerIds: [...new Set((dto.reviewerIds ?? []).map(Number))],
+            optionalReviewerIds: [],
+            policy: 'unanimous' as const,
+          },
+        ];
+    for (const stage of stages) {
+      if (
+        stage.policy === 'threshold' &&
+        (!stage.threshold || stage.threshold > stage.reviewerIds.length)
+      )
+        throw new BadRequestException(
+          'Stage threshold exceeds required reviewers',
+        );
+    }
+    const reviewerIds = [
+      ...new Set(
+        stages.flatMap((stage) => [
+          ...stage.reviewerIds,
+          ...stage.optionalReviewerIds,
+        ]),
+      ),
+    ];
     if (reviewerIds.includes(Number(actor.userId)))
       throw new BadRequestException(
         'Requester cannot review their own approval request',
@@ -309,13 +384,25 @@ export class ApprovalsService {
           message: dto.message?.trim() || null,
           due_at: dto.dueAt ? new Date(dto.dueAt) : null,
           rejection_comment_required: dto.rejectionCommentRequired ?? false,
+          policy_snapshot: { stages },
+          current_stage: 0,
         }),
       );
       await manager.getRepository(ApprovalReviewer).save(
-        reviewerIds.map((reviewer_id) => ({
-          request_id: request.id,
-          reviewer_id,
-        })),
+        stages.flatMap((stage) => [
+          ...stage.reviewerIds.map((reviewer_id) => ({
+            request_id: request.id,
+            reviewer_id,
+            stage_index: stage.index,
+            required: true,
+          })),
+          ...stage.optionalReviewerIds.map((reviewer_id) => ({
+            request_id: request.id,
+            reviewer_id,
+            stage_index: stage.index,
+            required: false,
+          })),
+        ]),
       );
       if (auditEnabled)
         await this.auditWriter.append(manager, {
@@ -383,8 +470,13 @@ export class ApprovalsService {
           throw new BadRequestException(
             'Approval request is no longer pending',
           );
+        const currentStage = request.current_stage ?? 0;
+        request.current_stage = currentStage;
+        const stageReviewers = request.reviewers.filter(
+          (item) => (item.stage_index ?? 0) === currentStage,
+        );
         if (
-          !request.reviewers.some(
+          !stageReviewers.some(
             (item) => Number(item.reviewer_id) === Number(actor.userId),
           )
         )
@@ -446,7 +538,7 @@ export class ApprovalsService {
         // Keep this insert explicit. TypeORM can resolve the relation-owned join
         // columns to null when a response entity contains RelationId properties.
         await manager.query(
-          'INSERT INTO `approval_responses` (`id`, `request_id`, `reviewer_id`, `decision`, `comment`, `subject_snapshot`) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO `approval_responses` (`id`, `request_id`, `reviewer_id`, `decision`, `comment`, `subject_snapshot`, `stage_index`) VALUES (?, ?, ?, ?, ?, ?, ?)',
           [
             randomUUID(),
             request.id,
@@ -454,6 +546,7 @@ export class ApprovalsService {
             dto.decision,
             dto.comment?.trim() || null,
             JSON.stringify(current.snapshot),
+            currentStage,
           ],
         );
         const responses = [
@@ -463,18 +556,45 @@ export class ApprovalsService {
             decision: dto.decision,
           } as ApprovalResponse,
         ];
-        if (dto.decision === ApprovalDecision.REJECTED)
-          request.status = ApprovalRequestStatus.REJECTED;
-        else if (
-          request.reviewers.every((reviewer) =>
-            responses.some(
-              (response) =>
-                Number(response.reviewer_id) === Number(reviewer.reviewer_id) &&
-                response.decision === ApprovalDecision.APPROVED,
-            ),
-          )
+        const policy = (request.policy_snapshot as any)?.stages?.[
+          currentStage
+        ] ?? { policy: 'unanimous' };
+        const required = stageReviewers.filter(
+          (reviewer) => reviewer.required !== false,
+        );
+        const stageResponses = responses.filter(
+          (response) =>
+            Number((response as any).stage_index ?? currentStage) ===
+            currentStage,
+        );
+        if (
+          dto.decision === ApprovalDecision.REJECTED &&
+          stageReviewers.find(
+            (reviewer) => Number(reviewer.reviewer_id) === Number(actor.userId),
+          )?.required !== false
         )
-          request.status = ApprovalRequestStatus.APPROVED;
+          request.status = ApprovalRequestStatus.REJECTED;
+        else {
+          const approvals = stageResponses.filter(
+            (response) =>
+              response.decision === ApprovalDecision.APPROVED &&
+              required.some(
+                (reviewer) =>
+                  Number(reviewer.reviewer_id) === Number(response.reviewer_id),
+              ),
+          ).length;
+          const stagePassed =
+            policy.policy === 'threshold'
+              ? approvals >= Number(policy.threshold)
+              : approvals >= required.length;
+          if (stagePassed) {
+            const stageCount =
+              (request.policy_snapshot as any)?.stages?.length ?? 1;
+            if (request.current_stage + 1 >= stageCount)
+              request.status = ApprovalRequestStatus.APPROVED;
+            else request.current_stage += 1;
+          }
+        }
         if (request.status !== ApprovalRequestStatus.PENDING)
           request.resolved_at = new Date();
         await repo.update(
@@ -482,6 +602,7 @@ export class ApprovalsService {
           {
             status: request.status,
             resolved_at: request.resolved_at,
+            current_stage: request.current_stage,
           },
         );
         if (auditEnabled)
@@ -511,8 +632,39 @@ export class ApprovalsService {
         );
       return this.get(actor, org, projectId, id);
     } catch (e) {
-      console.log(e);
+      throw e;
     }
+  }
+  async delegate(
+    actor: AuthUser,
+    org: string,
+    projectId: number,
+    id: string,
+    dto: DelegateApprovalDto,
+  ) {
+    await this.authorization.assertProjectPermission(
+      actor,
+      org,
+      projectId,
+      ProjectPermission.VIEW,
+    );
+    await this.assertReviewers(org, projectId, [dto.delegateToUserId]);
+    const request = await this.load(org, projectId, id);
+    if (request.status !== ApprovalRequestStatus.PENDING)
+      throw new BadRequestException('Approval request is no longer pending');
+    const assignment = request.reviewers.find(
+      (reviewer) =>
+        reviewer.stage_index === request.current_stage &&
+        Number(reviewer.reviewer_id) === Number(actor.userId),
+    );
+    if (!assignment)
+      throw new ForbiddenException(
+        'Only the active assigned reviewer can delegate',
+      );
+    assignment.delegated_from_id = actor.userId;
+    assignment.reviewer_id = dto.delegateToUserId;
+    await this.dataSource.getRepository(ApprovalReviewer).save(assignment);
+    return this.get(actor, org, projectId, id);
   }
   private async load(org: string, projectId: number, id: string) {
     const row = await this.dataSource.getRepository(ApprovalRequest).findOne({
@@ -618,6 +770,8 @@ export class ApprovalsService {
       message: row.message,
       dueAt: row.due_at,
       rejectionCommentRequired: row.rejection_comment_required,
+      currentStage: row.current_stage,
+      policy: row.policy_snapshot,
       requestedBy: row.requested_by
         ? {
             id: row.requested_by.id,
@@ -652,7 +806,9 @@ export class ApprovalsService {
       canRespond:
         row.status === ApprovalRequestStatus.PENDING &&
         row.reviewers?.some(
-          (item) => Number(item.reviewer_id) === Number(actorId),
+          (item) =>
+            item.stage_index === row.current_stage &&
+            Number(item.reviewer_id) === Number(actorId),
         ) &&
         !row.responses?.some(
           (item) => Number(item.reviewer_id) === Number(actorId),

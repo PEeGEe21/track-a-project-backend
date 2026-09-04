@@ -18,6 +18,7 @@ export enum CapabilityKey {
   RELIABLE_INTEGRATION_DELIVERY = 'reliable_integration_delivery',
   TASK_DEPENDENCIES = 'task_dependencies',
   ADVANCED_RECURRING_WORK = 'advanced_recurring_work',
+  ADVANCED_APPROVALS = 'advanced_approvals',
 }
 
 export type CapabilityDefinition = {
@@ -157,6 +158,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Advanced Recurring Work',
     description:
       'Business calendars, rotation, exceptions, and recovery for recurring work.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.ADVANCED_APPROVALS]: {
+    key: CapabilityKey.ADVANCED_APPROVALS,
+    label: 'Advanced Approvals',
+    description:
+      'Sequential approval stages, thresholds, delegation, reminders, and escalation.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

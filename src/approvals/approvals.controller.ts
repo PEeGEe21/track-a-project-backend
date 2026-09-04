@@ -16,7 +16,11 @@ import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import { RequireCapability } from 'src/entitlements/decorators/require-capability.decorator';
 import { CapabilityGuard } from 'src/entitlements/guards/capability.guard';
 import { ApprovalsService } from './approvals.service';
-import { CreateApprovalDto, RespondApprovalDto } from './dto/approval.dto';
+import {
+  CreateApprovalDto,
+  DelegateApprovalDto,
+  RespondApprovalDto,
+} from './dto/approval.dto';
 @Controller('approvals')
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard, CapabilityGuard)
 @RequireCapability(CapabilityKey.BASIC_APPROVALS)
@@ -66,5 +70,14 @@ export class ApprovalsController {
     @Body() dto: RespondApprovalDto,
   ) {
     return this.approvals.respond(req.user, org, projectId, id, dto);
+  }
+  @Post('projects/:projectId/:id/delegate') delegate(
+    @Req() req: any,
+    @Headers('x-organization-id') org: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DelegateApprovalDto,
+  ) {
+    return this.approvals.delegate(req.user, org, projectId, id, dto);
   }
 }

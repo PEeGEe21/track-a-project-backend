@@ -20,6 +20,9 @@ export class ApprovalReviewer {
   @JoinColumn({ name: 'request_id' })
   request: ApprovalRequest;
   @Column({ type: 'bigint' }) reviewer_id: number;
+  @Column({ type: 'int', default: 0 }) stage_index: number;
+  @Column({ type: 'boolean', default: true }) required: boolean;
+  @Column({ type: 'bigint', nullable: true }) delegated_from_id: number | null;
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'reviewer_id' })
   reviewer: User;

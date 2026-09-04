@@ -67,6 +67,12 @@ export class ApprovalRequest {
   @Column({ type: 'datetime', nullable: true }) resolved_at: Date | null;
   @Column({ type: 'datetime', nullable: true }) reminder_sent_at: Date | null;
   @Column({ type: 'text', nullable: true }) invalidation_reason: string | null;
+  @Column({ type: 'json', nullable: true }) policy_snapshot: Record<
+    string,
+    unknown
+  > | null;
+  @Column({ type: 'int', default: 0 }) current_stage: number;
+  @Column({ type: 'datetime', nullable: true }) escalated_at: Date | null;
   @OneToMany(() => ApprovalReviewer, (reviewer) => reviewer.request)
   reviewers: ApprovalReviewer[];
   @OneToMany(() => ApprovalResponse, (response) => response.request)

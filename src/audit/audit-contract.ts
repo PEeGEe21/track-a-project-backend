@@ -81,6 +81,8 @@ export enum AuditAction {
   APPROVAL_RESPONSE_RECORDED = 'approval_response.recorded',
   APPROVAL_REQUEST_INVALIDATED = 'approval_request.invalidated',
   APPROVAL_REMINDER_SENT = 'approval_reminder.sent',
+  APPROVAL_DELEGATED = 'approval.delegated',
+  APPROVAL_ESCALATED = 'approval.escalated',
   AI_SUGGESTION_APPLIED = 'ai_suggestion.applied',
   AI_SUGGESTION_DISMISSED = 'ai_suggestion.dismissed',
   AUDIT_EXPORT_CREATED = 'audit_export.created',

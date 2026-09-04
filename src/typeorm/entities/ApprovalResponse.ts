@@ -33,6 +33,7 @@ export class ApprovalResponse {
   @RelationId((response: ApprovalResponse) => response.reviewer)
   reviewer_id: number;
   @Column({ type: 'enum', enum: ApprovalDecision }) decision: ApprovalDecision;
+  @Column({ type: 'int', default: 0 }) stage_index: number;
   @Column({ type: 'text', nullable: true }) comment: string | null;
   @Column({ type: 'json' }) subject_snapshot: Record<string, unknown>;
   @CreateDateColumn() created_at: Date;
