@@ -26,6 +26,7 @@ import { SavedTaskView } from 'src/typeorm/entities/SavedTaskView';
 import { RecurringTasksModule } from 'src/recurring-tasks/recurring-tasks.module';
 import { CustomFieldsModule } from 'src/custom-fields/custom-fields.module';
 import { CustomWorkflowsModule } from 'src/custom-workflows/custom-workflows.module';
+import { TaskDependency } from 'src/typeorm/entities/TaskDependency';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CustomWorkflowsModule } from 'src/custom-workflows/custom-workflows.mod
       UserOrganization,
       Resource,
       SavedTaskView,
+      TaskDependency,
     ]),
     forwardRef(() => UsersModule),
     NotificationsModule,

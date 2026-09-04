@@ -39,6 +39,7 @@ export enum AuditSubjectType {
   AUDIT_RETENTION_POLICY = 'audit_retention_policy',
   INTEGRATION_ENDPOINT = 'integration_endpoint',
   INTEGRATION_DELIVERY = 'integration_delivery',
+  TASK_DEPENDENCY = 'task_dependency',
 }
 
 export enum AuditAction {
@@ -53,6 +54,9 @@ export enum AuditAction {
   TASK_DELETED = 'task.deleted',
   TASK_ASSIGNED = 'task.assigned',
   TASK_STATUS_CHANGED = 'task.status_changed',
+  TASK_DEPENDENCY_CREATED = 'task_dependency.created',
+  TASK_DEPENDENCY_REMOVED = 'task_dependency.removed',
+  TASK_DEPENDENCY_DATES_APPLIED = 'task_dependency.dates_applied',
   WORKFLOW_CREATED = 'workflow.created',
   WORKFLOW_UPDATED = 'workflow.updated',
   WORKFLOW_PUBLISHED = 'workflow.published',

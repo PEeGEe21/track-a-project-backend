@@ -95,6 +95,13 @@ export const AUDIT_FIELD_ALLOWLISTS: Record<
     'attempt_count',
     'event_id',
   ]),
+  [AuditSubjectType.TASK_DEPENDENCY]: new Set([
+    'task_id',
+    'depends_on_task_id',
+    'active',
+    'removal_reason',
+    'date_change_count',
+  ]),
 };
 
 @Injectable()

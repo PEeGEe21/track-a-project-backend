@@ -16,6 +16,7 @@ export enum CapabilityKey {
   RULE_BASED_AUTOMATION = 'rule_based_automation',
   ADVANCED_AUDIT_TRAIL = 'advanced_audit_trail',
   RELIABLE_INTEGRATION_DELIVERY = 'reliable_integration_delivery',
+  TASK_DEPENDENCIES = 'task_dependencies',
 }
 
 export type CapabilityDefinition = {
@@ -139,6 +140,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Reliable Integration Delivery',
     description:
       'Signed outbound event delivery with retries, replay, and dead-letter visibility.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.TASK_DEPENDENCIES]: {
+    key: CapabilityKey.TASK_DEPENDENCIES,
+    label: 'Task Dependencies',
+    description:
+      'Cross-project blocking relationships with cycle detection and conflict warnings.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

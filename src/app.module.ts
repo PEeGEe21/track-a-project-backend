@@ -151,6 +151,8 @@ import { AutomationActionAttempt } from './typeorm/entities/AutomationActionAtte
 import { AutomationsModule } from './automations/automations.module';
 import { TaskWatcher } from './typeorm/entities/TaskWatcher';
 import { AuditModule } from './audit/audit.module';
+import { TaskDependency } from './typeorm/entities/TaskDependency';
+import { TaskDependenciesModule } from './task-dependencies/task-dependencies.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -287,6 +289,7 @@ import { AuditModule } from './audit/audit.module';
             AutomationRun,
             AutomationActionAttempt,
             TaskWatcher,
+            TaskDependency,
           ],
           synchronize: false,
           migrationsRun: config.db.runMigrationsOnStartup,
@@ -403,6 +406,7 @@ import { AuditModule } from './audit/audit.module';
     TemplatesModule,
     AutomationsModule,
     AuditModule,
+    TaskDependenciesModule,
   ],
   controllers: [AppController],
   providers: [

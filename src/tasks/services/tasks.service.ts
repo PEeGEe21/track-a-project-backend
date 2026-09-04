@@ -66,6 +66,7 @@ import { PreparedCustomFieldFilter } from 'src/custom-fields/custom-fields.servi
 import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 import { CustomWorkflowsService } from 'src/custom-workflows/custom-workflows.service';
 import { AuditWriterService } from 'src/audit/audit-writer.service';
+import { TaskDependency } from 'src/typeorm/entities/TaskDependency';
 import {
   AuditAction,
   AuditActorType,
@@ -905,7 +906,11 @@ export class TasksService {
       let statusEntity: Status | null = null;
       if (updateTaskDetails.status) {
         statusEntity = await this.statusRepository.findOne({
-          where: { id: Number(updateTaskDetails.status) },
+          where: {
+            id: Number(updateTaskDetails.status),
+            organization_id: organizationId,
+            project: { id: task.project.id },
+          },
         });
         if (!statusEntity) {
           throw new HttpException('Status not found', HttpStatus.BAD_REQUEST);
@@ -2136,6 +2141,50 @@ export class TasksService {
             correlationId: this.auditWriter.correlationId(),
             before: this.taskAuditChanges(task),
           });
+        const archivedDependencies = await manager
+          .getRepository(TaskDependency)
+          .createQueryBuilder('dependency')
+          .where('dependency.organization_id = :organizationId', {
+            organizationId,
+          })
+          .andWhere(
+            '(dependency.task_id = :id OR dependency.depends_on_task_id = :id)',
+            { id },
+          )
+          .andWhere('dependency.active = :active', { active: true })
+          .getMany();
+        await manager
+          .getRepository(TaskDependency)
+          .createQueryBuilder()
+          .update()
+          .set({
+            active: false,
+            removed_by_user_id: user.userId,
+            removal_reason: 'task_deleted',
+          })
+          .where('organization_id = :organizationId', { organizationId })
+          .andWhere('(task_id = :id OR depends_on_task_id = :id)', { id })
+          .andWhere('active = :active', { active: true })
+          .execute();
+        if (auditEnabled) {
+          for (const dependency of archivedDependencies) {
+            await this.auditWriter.append(manager, {
+              organizationId,
+              projectId: task.project.id,
+              action: AuditAction.TASK_DEPENDENCY_REMOVED,
+              actor: this.humanAuditActor(userFound),
+              subject: {
+                type: AuditSubjectType.TASK_DEPENDENCY,
+                id: dependency.id,
+                label: `${dependency.task_title_snapshot} blocked by ${dependency.depends_on_title_snapshot}`,
+              },
+              source: AuditSource.API,
+              correlationId: this.auditWriter.correlationId(),
+              before: { active: true },
+              after: { active: false, removal_reason: 'task_deleted' },
+            });
+          }
+        }
         const result = await manager.getRepository(Task).delete({
           id,
           organization_id: organizationId,
