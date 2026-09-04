@@ -20,11 +20,14 @@ export class TaskRecurrenceOccurrence {
   })
   @JoinColumn({ name: 'recurrence_id' })
   recurrence: TaskRecurrence;
-  @Column() task_id: number;
-  @ManyToOne(() => Task, { onDelete: 'CASCADE' })
+  @Column({ nullable: true }) task_id: number | null;
+  @ManyToOne(() => Task, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'task_id' })
   task: Task;
   @Column({ type: 'datetime' }) scheduled_due_at: Date;
   @Column({ type: 'int', nullable: true }) previous_task_id: number | null;
+  @Column({ length: 20, default: 'generated' }) outcome: string;
+  @Column({ length: 80, nullable: true }) failure_code: string | null;
+  @Column({ type: 'datetime', nullable: true }) resolved_due_at: Date | null;
   @CreateDateColumn() created_at: Date;
 }

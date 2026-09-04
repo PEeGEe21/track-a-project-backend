@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   RecurrenceFrequency,
   RecurrenceGenerationMode,
+  RecurrenceHolidayPolicy,
 } from 'src/typeorm/entities/TaskRecurrence';
 import { RecurringTasksService } from './recurring-tasks.service';
 
@@ -13,28 +14,54 @@ describe('RecurringTasksService', () => {
     find: jest.fn(),
     merge: jest.fn(),
     remove: jest.fn(),
+    update: jest.fn(),
+    createQueryBuilder: jest.fn(() => ({
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    })),
   };
   const occurrences = {
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
   };
+  const exceptions = {
+    findOneBy: jest.fn(),
+    find: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+  };
   const tasks = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
   const statuses = { findOne: jest.fn() };
+  const taskDependencies = {
+    findBy: jest.fn().mockResolvedValue([]),
+    create: jest.fn(),
+    save: jest.fn(),
+  };
+  const templateVersions = { findOne: jest.fn(), findOneBy: jest.fn() };
   const authorization = {
     assertProjectAccess: jest.fn(),
     assertProjectPermission: jest.fn(),
   };
-  const entitlements = { assertCapability: jest.fn() };
+  const entitlements = {
+    assertCapability: jest.fn(),
+    resolveOrganization: jest.fn().mockResolvedValue([]),
+  };
   let service: RecurringTasksService;
 
   beforeEach(() => {
-    jest.resetAllMocks();
+    jest.clearAllMocks();
     service = new RecurringTasksService(
       recurrences as any,
       occurrences as any,
+      exceptions as any,
       tasks as any,
       statuses as any,
+      taskDependencies as any,
+      templateVersions as any,
       authorization as any,
       entitlements as any,
     );
@@ -142,6 +169,20 @@ describe('RecurringTasksService', () => {
       new Date('2026-03-07T14:00:00Z'),
     );
     expect(next.toISOString()).toBe('2026-03-08T13:00:00.000Z');
+  });
+
+  it('moves holiday occurrences to the next business day', () => {
+    const rule = {
+      advanced_enabled: true,
+      holiday_policy: RecurrenceHolidayPolicy.NEXT_BUSINESS_DAY,
+      holiday_dates: ['2026-12-25'],
+      timezone: 'UTC',
+    } as any;
+    expect(
+      (service as any)
+        .resolveBusinessDate(rule, new Date('2026-12-25T09:00:00Z'))
+        .toISOString(),
+    ).toBe('2026-12-28T09:00:00.000Z');
   });
 
   it('creates a recurrence with the task inside the caller transaction', async () => {

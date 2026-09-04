@@ -17,6 +17,7 @@ export enum CapabilityKey {
   ADVANCED_AUDIT_TRAIL = 'advanced_audit_trail',
   RELIABLE_INTEGRATION_DELIVERY = 'reliable_integration_delivery',
   TASK_DEPENDENCIES = 'task_dependencies',
+  ADVANCED_RECURRING_WORK = 'advanced_recurring_work',
 }
 
 export type CapabilityDefinition = {
@@ -148,6 +149,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Task Dependencies',
     description:
       'Cross-project blocking relationships with cycle detection and conflict warnings.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.ADVANCED_RECURRING_WORK]: {
+    key: CapabilityKey.ADVANCED_RECURRING_WORK,
+    label: 'Advanced Recurring Work',
+    description:
+      'Business calendars, rotation, exceptions, and recovery for recurring work.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },

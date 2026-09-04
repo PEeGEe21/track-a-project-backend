@@ -13,7 +13,9 @@ import {
 import {
   RecurrenceFrequency,
   RecurrenceGenerationMode,
+  RecurrenceHolidayPolicy,
 } from 'src/typeorm/entities/TaskRecurrence';
+import { ArrayMaxSize, IsIn, MaxLength, ValidateNested } from 'class-validator';
 
 export class CreateRecurrenceDto {
   @Type(() => Number) @IsInt() @Min(1) template_task_id: number;
@@ -30,6 +32,31 @@ export class CreateRecurrenceDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) generate_before_days = 0;
   @Type(() => Date) @IsDate() next_due_at: Date;
   @IsOptional() @Type(() => Date) @IsDate() end_at?: Date;
+}
+
+export class AdvancedRecurrenceConfigDto {
+  @IsEnum(RecurrenceHolidayPolicy)
+  holiday_policy: RecurrenceHolidayPolicy;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(366)
+  @IsString({ each: true })
+  holiday_dates?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  assignee_rotation_ids?: number[];
+  @IsOptional() @IsString() reusable_template_version_id?: string;
+}
+
+export class RecurrenceExceptionDto {
+  @Type(() => Date) @IsDate() scheduled_due_at: Date;
+  @IsIn(['skip', 'reschedule']) action: 'skip' | 'reschedule';
+  @IsOptional() @Type(() => Date) @IsDate() rescheduled_due_at?: Date;
+  @IsOptional() @IsString() @MaxLength(240) reason?: string;
 }
 
 export class UpdateRecurrenceDto {
@@ -53,4 +80,11 @@ export class UpdateRecurrenceDto {
   @IsOptional() @Type(() => Date) @IsDate() next_due_at?: Date;
   @IsOptional() @Type(() => Date) @IsDate() end_at?: Date;
   @IsOptional() @IsBoolean() active?: boolean;
+}
+
+export class EffectiveRecurrenceChangeDto {
+  @Type(() => Date) @IsDate() effective_at: Date;
+  @ValidateNested()
+  @Type(() => UpdateRecurrenceDto)
+  changes: UpdateRecurrenceDto;
 }

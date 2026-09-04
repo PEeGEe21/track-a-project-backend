@@ -16,7 +16,13 @@ import { OrganizationAccessGuard } from 'src/common/guards/organization_access.g
 import { CapabilityKey } from 'src/entitlements/capability-catalog';
 import { RequireCapability } from 'src/entitlements/decorators/require-capability.decorator';
 import { CapabilityGuard } from 'src/entitlements/guards/capability.guard';
-import { CreateRecurrenceDto, UpdateRecurrenceDto } from './dto/recurrence.dto';
+import {
+  AdvancedRecurrenceConfigDto,
+  CreateRecurrenceDto,
+  EffectiveRecurrenceChangeDto,
+  RecurrenceExceptionDto,
+  UpdateRecurrenceDto,
+} from './dto/recurrence.dto';
 import { RecurringTasksService } from './recurring-tasks.service';
 
 @Controller('task-recurrences')
@@ -62,6 +68,37 @@ export class RecurringTasksController {
     @Headers('x-organization-id') org: string,
   ) {
     return this.service.updateFutureTemplate(id, payload, req.user, org);
+  }
+  @Get(':id/history') history(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req,
+    @Headers('x-organization-id') org: string,
+  ) {
+    return this.service.history(id, req.user, org);
+  }
+  @Patch(':id/advanced') advanced(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AdvancedRecurrenceConfigDto,
+    @Req() req,
+    @Headers('x-organization-id') org: string,
+  ) {
+    return this.service.configureAdvanced(id, dto, req.user, org);
+  }
+  @Post(':id/exceptions') exception(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RecurrenceExceptionDto,
+    @Req() req,
+    @Headers('x-organization-id') org: string,
+  ) {
+    return this.service.addException(id, dto, req.user, org);
+  }
+  @Post(':id/future-change') futureChange(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EffectiveRecurrenceChangeDto,
+    @Req() req,
+    @Headers('x-organization-id') org: string,
+  ) {
+    return this.service.scheduleFutureChange(id, dto, req.user, org);
   }
   @Delete(':id') remove(
     @Param('id', ParseIntPipe) id: number,

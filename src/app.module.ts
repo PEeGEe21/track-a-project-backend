@@ -96,6 +96,7 @@ import { EntitlementsModule } from './entitlements/entitlements.module';
 import { IntegrationDeliveryModule } from './integrations/integration-delivery.module';
 import { TaskRecurrence } from './typeorm/entities/TaskRecurrence';
 import { TaskRecurrenceOccurrence } from './typeorm/entities/TaskRecurrenceOccurrence';
+import { TaskRecurrenceException } from './typeorm/entities/TaskRecurrenceException';
 import { RecurringTasksModule } from './recurring-tasks/recurring-tasks.module';
 import { SavedTaskView } from './typeorm/entities/SavedTaskView';
 import { ProjectUpdate } from './typeorm/entities/ProjectUpdate';
@@ -252,6 +253,7 @@ import { TaskDependenciesModule } from './task-dependencies/task-dependencies.mo
             ProjectStatusTemplate,
             TaskRecurrence,
             TaskRecurrenceOccurrence,
+            TaskRecurrenceException,
             SavedTaskView,
             ProjectUpdate,
             ProjectUpdateReference,

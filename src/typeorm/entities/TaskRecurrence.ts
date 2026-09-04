@@ -25,6 +25,11 @@ export enum RecurrenceGenerationMode {
   ON_COMPLETION = 'on_completion',
   BEFORE_DUE = 'before_due',
 }
+export enum RecurrenceHolidayPolicy {
+  NONE = 'none',
+  SKIP = 'skip',
+  NEXT_BUSINESS_DAY = 'next_business_day',
+}
 
 @Entity('task_recurrences')
 @Index(['organization_id', 'active', 'next_generation_at'])
@@ -59,6 +64,32 @@ export class TaskRecurrence {
   @Column({ type: 'datetime', nullable: true }) end_at: Date | null;
   @Column({ default: true }) active: boolean;
   @Column({ type: 'datetime', nullable: true }) last_generated_at: Date | null;
+  @Column({ default: false }) advanced_enabled: boolean;
+  @Column({
+    type: 'enum',
+    enum: RecurrenceHolidayPolicy,
+    default: RecurrenceHolidayPolicy.NONE,
+  })
+  holiday_policy: RecurrenceHolidayPolicy;
+  @Column({ type: 'json', nullable: true }) holiday_dates: string[] | null;
+  @Column({ type: 'json', nullable: true }) assignee_rotation_ids:
+    | number[]
+    | null;
+  @Column({ type: 'int', default: 0 }) rotation_index: number;
+  @Column({ type: 'varchar', length: 80, nullable: true }) last_error_code:
+    | string
+    | null;
+  @Column({ type: 'int', default: 0 }) consecutive_failures: number;
+  @Column({ type: 'json', nullable: true }) pending_changes: Record<
+    string,
+    unknown
+  > | null;
+  @Column({ type: 'datetime', nullable: true })
+  changes_effective_at: Date | null;
+  @Column({ type: 'datetime', nullable: true })
+  generation_lease_until: Date | null;
+  @Column({ type: 'uuid', nullable: true })
+  reusable_template_version_id: string | null;
   @OneToMany(
     () => TaskRecurrenceOccurrence,
     (occurrence) => occurrence.recurrence,

@@ -14,6 +14,7 @@ import { Status } from 'src/typeorm/entities/Status';
 import {
   RecurrenceFrequency,
   RecurrenceGenerationMode,
+  RecurrenceHolidayPolicy,
   TaskRecurrence,
 } from 'src/typeorm/entities/TaskRecurrence';
 import { TaskRecurrenceOccurrence } from 'src/typeorm/entities/TaskRecurrenceOccurrence';
@@ -22,6 +23,14 @@ import { EntityManager, LessThanOrEqual, Repository } from 'typeorm';
 import { CreateRecurrenceDto, UpdateRecurrenceDto } from './dto/recurrence.dto';
 import { EntitlementsService } from 'src/entitlements/entitlements.service';
 import { CapabilityKey } from 'src/entitlements/capability-catalog';
+import { TaskRecurrenceException } from 'src/typeorm/entities/TaskRecurrenceException';
+import { TaskDependency } from 'src/typeorm/entities/TaskDependency';
+import { ReusableTemplateVersion } from 'src/typeorm/entities/ReusableTemplateVersion';
+import {
+  AdvancedRecurrenceConfigDto,
+  EffectiveRecurrenceChangeDto,
+  RecurrenceExceptionDto,
+} from './dto/recurrence.dto';
 
 @Injectable()
 export class RecurringTasksService {
@@ -30,8 +39,14 @@ export class RecurringTasksService {
     private recurrences: Repository<TaskRecurrence>,
     @InjectRepository(TaskRecurrenceOccurrence)
     private occurrences: Repository<TaskRecurrenceOccurrence>,
+    @InjectRepository(TaskRecurrenceException)
+    private exceptions: Repository<TaskRecurrenceException>,
     @InjectRepository(Task) private tasks: Repository<Task>,
     @InjectRepository(Status) private statuses: Repository<Status>,
+    @InjectRepository(TaskDependency)
+    private taskDependencies: Repository<TaskDependency>,
+    @InjectRepository(ReusableTemplateVersion)
+    private templateVersions: Repository<ReusableTemplateVersion>,
     private authorization: AuthorizationService,
     private entitlements: EntitlementsService,
   ) {}
@@ -162,6 +177,230 @@ export class RecurringTasksService {
       },
       rule.timezone,
     );
+  }
+
+  private localDateKey(date: Date, timezone: string) {
+    const parts = this.zonedParts(date, timezone);
+    return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(
+      parts.day,
+    ).padStart(2, '0')}`;
+  }
+
+  private isNonBusinessDay(rule: TaskRecurrence, date: Date) {
+    const local = this.zonedParts(date, rule.timezone);
+    const weekday = new Date(
+      Date.UTC(local.year, local.month - 1, local.day),
+    ).getUTCDay();
+    return (
+      weekday === 0 ||
+      weekday === 6 ||
+      (rule.holiday_dates ?? []).includes(
+        this.localDateKey(date, rule.timezone),
+      )
+    );
+  }
+
+  private resolveBusinessDate(rule: TaskRecurrence, scheduled: Date) {
+    if (
+      !rule.advanced_enabled ||
+      rule.holiday_policy === RecurrenceHolidayPolicy.NONE
+    )
+      return scheduled;
+    if (
+      rule.holiday_policy === RecurrenceHolidayPolicy.SKIP &&
+      this.isNonBusinessDay(rule, scheduled)
+    )
+      return null;
+    let resolved = new Date(scheduled);
+    while (this.isNonBusinessDay(rule, resolved)) {
+      resolved = this.wallTimeToUtc(
+        {
+          ...this.zonedParts(resolved, rule.timezone),
+          day: this.zonedParts(resolved, rule.timezone).day + 1,
+        },
+        rule.timezone,
+      );
+    }
+    return resolved;
+  }
+
+  async configureAdvanced(
+    id: number,
+    dto: AdvancedRecurrenceConfigDto,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    await this.entitlements.assertCapability(
+      actor,
+      organizationId,
+      CapabilityKey.ADVANCED_RECURRING_WORK,
+    );
+    const rule = await this.owned(id, actor, organizationId);
+    const allowedAssignees = new Set(
+      (rule.template_task.assignees ?? []).map((user) => user.id),
+    );
+    if (
+      (dto.assignee_rotation_ids ?? []).some(
+        (userId) => !allowedAssignees.has(userId),
+      )
+    )
+      throw new BadRequestException(
+        'Rotation users must already be assigned to the template task',
+      );
+    rule.advanced_enabled = true;
+    rule.holiday_policy = dto.holiday_policy;
+    rule.holiday_dates = [...new Set(dto.holiday_dates ?? [])].sort();
+    rule.assignee_rotation_ids = [...new Set(dto.assignee_rotation_ids ?? [])];
+    if (dto.reusable_template_version_id) {
+      const version = await this.templateVersions.findOne({
+        where: { id: dto.reusable_template_version_id },
+        relations: ['template'],
+      });
+      if (!version || version.template.organization_id !== organizationId)
+        throw new NotFoundException('Reusable template version not found');
+      rule.reusable_template_version_id = version.id;
+    }
+    rule.rotation_index = 0;
+    return { success: true, data: await this.recurrences.save(rule) };
+  }
+
+  async addException(
+    id: number,
+    dto: RecurrenceExceptionDto,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    await this.entitlements.assertCapability(
+      actor,
+      organizationId,
+      CapabilityKey.ADVANCED_RECURRING_WORK,
+    );
+    await this.owned(id, actor, organizationId);
+    if (dto.action === 'reschedule' && !dto.rescheduled_due_at)
+      throw new BadRequestException('A rescheduled due date is required');
+    const existing = await this.exceptions.findOneBy({
+      recurrence_id: id,
+      scheduled_due_at: dto.scheduled_due_at,
+    });
+    const exception = existing ?? this.exceptions.create({ recurrence_id: id });
+    Object.assign(exception, {
+      ...dto,
+      rescheduled_due_at:
+        dto.action === 'reschedule' ? dto.rescheduled_due_at : null,
+      created_by_id: actor.userId,
+    });
+    return { success: true, data: await this.exceptions.save(exception) };
+  }
+
+  async scheduleFutureChange(
+    id: number,
+    dto: EffectiveRecurrenceChangeDto,
+    actor: AuthUser,
+    organizationId: string,
+  ) {
+    await this.entitlements.assertCapability(
+      actor,
+      organizationId,
+      CapabilityKey.ADVANCED_RECURRING_WORK,
+    );
+    const rule = await this.owned(id, actor, organizationId);
+    if (dto.effective_at <= new Date())
+      throw new BadRequestException('Effective date must be in the future');
+    const allowed = [
+      'frequency',
+      'interval',
+      'weekdays',
+      'timezone',
+      'generation_mode',
+      'generate_before_days',
+      'end_at',
+    ];
+    rule.pending_changes = Object.fromEntries(
+      Object.entries(dto.changes).filter(([key]) => allowed.includes(key)),
+    );
+    rule.changes_effective_at = dto.effective_at;
+    await this.recurrences.save(rule);
+    return {
+      success: true,
+      data: {
+        effective_at: rule.changes_effective_at,
+        changes: rule.pending_changes,
+        affectedGeneratedTasks: 0,
+      },
+    };
+  }
+
+  private async applyPendingChanges(rule: TaskRecurrence) {
+    if (
+      !rule.pending_changes ||
+      !rule.changes_effective_at ||
+      rule.next_due_at < rule.changes_effective_at
+    )
+      return;
+    this.recurrences.merge(rule, rule.pending_changes);
+    rule.pending_changes = null;
+    rule.changes_effective_at = null;
+    await this.recurrences.save(rule);
+  }
+
+  private async inheritDependencies(rule: TaskRecurrence, task: Task) {
+    const capabilities = await this.entitlements.resolveOrganization(
+      rule.organization_id,
+    );
+    if (
+      !capabilities.find((item) => item.key === CapabilityKey.TASK_DEPENDENCIES)
+        ?.enabled
+    )
+      return;
+    const sourceEdges = await this.taskDependencies.findBy({
+      organization_id: rule.organization_id,
+      task_id: rule.template_task_id,
+      active: true,
+    });
+    if (!sourceEdges.length) return;
+    await this.taskDependencies.save(
+      sourceEdges.map((edge) =>
+        this.taskDependencies.create({
+          organization_id: rule.organization_id,
+          task_id: task.id,
+          depends_on_task_id: edge.depends_on_task_id,
+          task_title_snapshot: task.title,
+          depends_on_title_snapshot: edge.depends_on_title_snapshot,
+          created_by_user_id: rule.created_by_id,
+          removed_by_user_id: null,
+          removal_reason: null,
+          active: true,
+        }),
+      ),
+    );
+  }
+
+  async history(id: number, actor: AuthUser, organizationId: string) {
+    const rule = await this.owned(id, actor, organizationId);
+    const [occurrences, exceptions] = await Promise.all([
+      this.occurrences.find({
+        where: { recurrence_id: id },
+        order: { scheduled_due_at: 'DESC' },
+        take: 100,
+      }),
+      this.exceptions.find({
+        where: { recurrence_id: id },
+        order: { scheduled_due_at: 'DESC' },
+        take: 100,
+      }),
+    ]);
+    return {
+      success: true,
+      data: {
+        recurrenceId: rule.id,
+        occurrences,
+        exceptions,
+        recovery: {
+          consecutiveFailures: rule.consecutive_failures,
+          lastErrorCode: rule.last_error_code,
+        },
+      },
+    };
   }
 
   async create(
@@ -297,7 +536,7 @@ export class RecurringTasksService {
   private async owned(id: number, actor: AuthUser, organizationId: string) {
     const rule = await this.recurrences.findOne({
       where: { id, organization_id: organizationId },
-      relations: ['project', 'template_task'],
+      relations: ['project', 'template_task', 'template_task.assignees'],
     });
     if (!rule) throw new NotFoundException('Recurrence not found');
     await this.authorization.assertProjectPermission(
@@ -373,10 +612,48 @@ export class RecurringTasksService {
   }
 
   async generate(rule: TaskRecurrence) {
+    const now = new Date();
+    const leaseUntil = new Date(now.getTime() + 120_000);
+    const claim = await this.recurrences
+      .createQueryBuilder()
+      .update(TaskRecurrence)
+      .set({ generation_lease_until: leaseUntil })
+      .where('id = :id', { id: rule.id })
+      .andWhere(
+        '(generation_lease_until IS NULL OR generation_lease_until <= :now)',
+        { now },
+      )
+      .execute();
+    if (!claim.affected) {
+      const claimedOccurrence = await this.occurrences.findOne({
+        where: {
+          recurrence_id: rule.id,
+          scheduled_due_at: rule.next_due_at,
+        },
+      });
+      return claimedOccurrence?.task ?? null;
+    }
+    await this.applyPendingChanges(rule);
     const existing = await this.occurrences.findOne({
       where: { recurrence_id: rule.id, scheduled_due_at: rule.next_due_at },
     });
-    if (existing) return existing.task;
+    if (existing) {
+      await this.recurrences.update(
+        { id: rule.id },
+        { generation_lease_until: null },
+      );
+      return existing.task;
+    }
+    const scheduledDue = new Date(rule.next_due_at);
+    const exception = await this.exceptions.findOneBy({
+      recurrence_id: rule.id,
+      scheduled_due_at: scheduledDue,
+    });
+    let resolvedDue =
+      exception?.action === 'reschedule'
+        ? exception.rescheduled_due_at
+        : this.resolveBusinessDate(rule, scheduledDue);
+    if (exception?.action === 'skip') resolvedDue = null;
     const template =
       rule.template_task ??
       (await this.tasks.findOne({
@@ -388,39 +665,98 @@ export class RecurringTasksService {
       where: { recurrence_id: rule.id },
       order: { scheduled_due_at: 'DESC' },
     });
+    if (!resolvedDue) {
+      await this.occurrences.save(
+        this.occurrences.create({
+          recurrence: rule,
+          recurrence_id: rule.id,
+          task: null,
+          task_id: null,
+          scheduled_due_at: scheduledDue,
+          previous_task_id: previous?.task_id ?? null,
+          outcome: 'skipped',
+          failure_code: null,
+          resolved_due_at: null,
+        }),
+      );
+      rule.next_due_at = this.nextDue(rule, scheduledDue);
+      rule.next_generation_at =
+        rule.generation_mode === RecurrenceGenerationMode.BEFORE_DUE
+          ? this.generationAt(rule.next_due_at, rule.generate_before_days)
+          : null;
+      await this.recurrences.save(rule);
+      await this.recurrences.update(
+        { id: rule.id },
+        { generation_lease_until: null },
+      );
+      return null;
+    }
+    const rotation = rule.advanced_enabled
+      ? rule.assignee_rotation_ids ?? []
+      : [];
+    const rotatedAssignees = rotation.length
+      ? (template.assignees ?? []).filter(
+          (user) => user.id === rotation[rule.rotation_index % rotation.length],
+        )
+      : template.assignees;
+    const pinnedVersion = rule.reusable_template_version_id
+      ? await this.templateVersions.findOneBy({
+          id: rule.reusable_template_version_id,
+        })
+      : null;
+    const pinnedTask = (pinnedVersion?.snapshot?.task ??
+      pinnedVersion?.snapshot ??
+      {}) as Record<string, unknown>;
     const task = await this.tasks.save(
       this.tasks.create({
-        title: template.title,
-        description: template.description,
-        description_html: template.description_html,
-        priority: template.priority,
-        severity: template.severity,
-        due_date: rule.next_due_at,
+        title: String(pinnedTask.title ?? template.title),
+        description: String(
+          pinnedTask.description ?? template.description ?? '',
+        ),
+        description_html: String(
+          pinnedTask.description_html ?? template.description_html ?? '',
+        ),
+        priority: Number(pinnedTask.priority ?? template.priority),
+        severity:
+          String(pinnedTask.severity ?? template.severity ?? '') || null,
+        due_date: resolvedDue,
         project: template.project,
         status: template.status,
-        assignees: template.assignees,
+        assignees: rotatedAssignees,
         organization: template.organization,
         organization_id: rule.organization_id,
       }),
     );
+    await this.inheritDependencies(rule, task);
     await this.occurrences.save(
       this.occurrences.create({
         recurrence: rule,
         recurrence_id: rule.id,
         task,
         task_id: task.id,
-        scheduled_due_at: rule.next_due_at,
+        scheduled_due_at: scheduledDue,
         previous_task_id: previous?.task_id ?? null,
+        outcome: 'generated',
+        failure_code: null,
+        resolved_due_at: resolvedDue,
       }),
     );
     rule.last_generated_at = new Date();
-    rule.next_due_at = this.nextDue(rule, rule.next_due_at);
+    rule.next_due_at = this.nextDue(rule, scheduledDue);
+    if (rotation.length)
+      rule.rotation_index = (rule.rotation_index + 1) % rotation.length;
+    rule.consecutive_failures = 0;
+    rule.last_error_code = null;
     rule.next_generation_at =
       rule.generation_mode === RecurrenceGenerationMode.BEFORE_DUE
         ? this.generationAt(rule.next_due_at, rule.generate_before_days)
         : null;
     if (rule.end_at && rule.next_due_at > rule.end_at) rule.active = false;
     await this.recurrences.save(rule);
+    await this.recurrences.update(
+      { id: rule.id },
+      { generation_lease_until: null },
+    );
     return task;
   }
 
@@ -444,6 +780,9 @@ export class RecurringTasksService {
       try {
         await this.generate(rule);
       } catch {
+        rule.consecutive_failures = (rule.consecutive_failures ?? 0) + 1;
+        rule.last_error_code = 'generation_failed';
+        await this.recurrences.save(rule);
         // Leave the rule due so a later scheduler pass can retry it.
       }
     }
