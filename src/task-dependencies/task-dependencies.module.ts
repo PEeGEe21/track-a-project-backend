@@ -8,16 +8,18 @@ import { TaskDependenciesController } from './task-dependencies.controller';
 import { TaskDependenciesService } from './task-dependencies.service';
 import { User } from 'src/typeorm/entities/User';
 import { ProjectActivitiesModule } from 'src/project-activities/project-activities.module';
+import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
+import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Task, TaskDependency, User]),
+    TypeOrmModule.forFeature([Task, TaskDependency, User, UserOrganization]),
     AuthorizationModule,
     EntitlementsModule,
     ProjectActivitiesModule,
   ],
   controllers: [TaskDependenciesController],
-  providers: [TaskDependenciesService],
+  providers: [TaskDependenciesService, OrganizationAccessGuard],
   exports: [TaskDependenciesService],
 })
 export class TaskDependenciesModule {}

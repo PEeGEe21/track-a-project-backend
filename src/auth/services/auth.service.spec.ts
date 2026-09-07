@@ -16,6 +16,7 @@ import { OrganizationInvitation } from 'src/typeorm/entities/OrganizationInvitat
 import { MailingService } from 'src/utils/mailing/mailing.service';
 import { OrganizationRole } from 'src/utils/constants/org_roles';
 import { AuditWriterService } from 'src/audit/audit-writer.service';
+import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -31,7 +32,23 @@ describe('AuthService', () => {
     findOne: jest.fn(),
   };
   const jwtService = {
+    decode: jest.fn(),
+    signAsync: jest.fn(),
     verifyAsync: jest.fn(),
+  };
+  const refreshSessions = {
+    create: jest.fn((value) => value),
+    findOne: jest.fn(),
+    save: jest.fn(async (value) => value),
+    update: jest.fn(),
+  };
+  const refreshSessionRepository = {
+    ...refreshSessions,
+    manager: {
+      transaction: jest.fn(async (work) =>
+        work({ getRepository: () => refreshSessions }),
+      ),
+    },
   };
   const mailingService = {};
   const repoStub = {};
@@ -56,6 +73,10 @@ describe('AuthService', () => {
         {
           provide: getRepositoryToken(OrganizationInvitation),
           useValue: repoStub,
+        },
+        {
+          provide: getRepositoryToken(RefreshSession),
+          useValue: refreshSessionRepository,
         },
         { provide: JwtService, useValue: jwtService },
         { provide: MailingService, useValue: mailingService },
@@ -90,7 +111,10 @@ describe('AuthService', () => {
       is_active: true,
       organization,
     });
-    jest.spyOn(service as any, 'generateToken').mockResolvedValue(tokens);
+    jest.spyOn(service as any, 'issueTokenPair').mockResolvedValue({
+      ...tokens,
+      refreshJti: 'new-jti',
+    });
 
     await expect(service.refreshToken('refresh-token')).resolves.toEqual({
       success: 'success',
@@ -106,10 +130,80 @@ describe('AuthService', () => {
       },
       relations: ['organization'],
     });
-    expect((service as any).generateToken).toHaveBeenCalledWith(
-      user,
-      organization,
-      OrganizationRole.ORG_ADMIN,
+    expect((service as any).issueTokenPair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: 14,
+        currentOrganizationId: 'org_1',
+        organizationRole: OrganizationRole.ORG_ADMIN,
+      }),
+    );
+  });
+
+  it('atomically rotates a persisted refresh token once', async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: 14,
+      email: 'user@example.com',
+      role: 'member',
+      jti: 'old-jti',
+      familyId: 'family-1',
+      tokenUse: 'refresh',
+    });
+    usersService.getUserOrganizationsById.mockResolvedValue([]);
+    refreshSessions.findOne.mockResolvedValue({
+      jti: 'old-jti',
+      family_id: 'family-1',
+      user_id: 14,
+      expires_at: expiresAt,
+      revoked_at: null,
+      replaced_by_jti: null,
+    });
+    jest.spyOn(service as any, 'issueTokenPair').mockResolvedValue({
+      accessToken: 'next-access',
+      refreshToken: 'next-refresh',
+      refreshJti: 'next-jti',
+    });
+
+    await expect(service.refreshToken('old-refresh')).resolves.toEqual({
+      success: 'success',
+      accessToken: 'next-access',
+      refreshToken: 'next-refresh',
+    });
+    expect(refreshSessions.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revoked_at: expect.any(Date),
+        replaced_by_jti: 'next-jti',
+      }),
+    );
+  });
+
+  it('revokes an active family when a rotated token is reused', async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: 14,
+      email: 'user@example.com',
+      role: 'member',
+      jti: 'used-jti',
+      familyId: 'family-1',
+      tokenUse: 'refresh',
+    });
+    usersService.getUserOrganizationsById.mockResolvedValue([]);
+    refreshSessions.findOne.mockResolvedValue({
+      jti: 'used-jti',
+      family_id: 'family-1',
+      user_id: 14,
+      expires_at: new Date(Date.now() + 60_000),
+      revoked_at: new Date(),
+    });
+
+    await expect(service.refreshToken('reused-refresh')).rejects.toThrow(
+      'Invalid refresh token',
+    );
+    expect(refreshSessions.update).toHaveBeenCalledWith(
+      expect.objectContaining({ family_id: 'family-1' }),
+      expect.objectContaining({
+        revoked_at: expect.any(Date),
+        reuse_detected_at: expect.any(Date),
+      }),
     );
   });
 });

@@ -18,6 +18,8 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
+    "openapi:export": "ts-node -r tsconfig-paths/register scripts/export-openapi.ts",
+    "openapi:check": "npm run openapi:export -- --check",
     "test": "jest",
     "test:smoke": "jest --runInBand src/auth/controllers/auth.controller.spec.ts src/users/controllers/users.controller.spec.ts src/organizations/controllers/organizations.controller.spec.ts src/health/health.controller.spec.ts src/common/guards/super-admin.guard.spec.ts",
     "test:watch": "jest --watch",

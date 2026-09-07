@@ -70,6 +70,23 @@ describe('TasksService', () => {
     expect(service).toBeDefined();
   });
 
+  it('rejects task custom-field values without a field id', () => {
+    expect(() =>
+      (service as any).dedupeCustomFieldInputs([
+        { fieldId: undefined, value: 'invalid' },
+      ]),
+    ).toThrow('Every custom field value must include a valid fieldId');
+  });
+
+  it('normalizes and deduplicates task custom-field ids', () => {
+    expect(
+      (service as any).dedupeCustomFieldInputs([
+        { fieldId: ' field-1 ', value: 'old' },
+        { fieldId: 'field-1', value: 'new' },
+      ]),
+    ).toEqual([{ fieldId: 'field-1', value: 'new' }]);
+  });
+
   it('commits a general task update and its audit event through one manager', async () => {
     const actor = { userId: 2 };
     const user = { id: 2, fullName: 'Task editor', email: 'editor@test' };

@@ -26,8 +26,8 @@ export class OrganizationInvitation {
   @Column()
   email: string;
 
-  @Column({ unique: true })
-  token: string;
+  // @Column({ unique: true })
+  // token: string;
 
   @Column({
     type: 'enum',
@@ -50,11 +50,29 @@ export class OrganizationInvitation {
   organization: Organization;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'invited_by' })
+  @JoinColumn({ name: 'invited_by_id' })
   invited_by: User;
 
   @Column({ type: 'longtext', nullable: true })
   invite_link: string;
+
+  @Column({
+    type: 'varchar',
+    name: 'token_hash',
+    length: 64,
+    unique: true,
+  })
+  token_hash: string | null;
+
+  @Column({
+    type: 'varchar',
+    name: 'invite_code_hash',
+    length: 64,
+  })
+  invite_code_hash: string | null;
+
+  @Column({ type: 'timestamp', nullable: true, name: 'code_expires_at' })
+  code_expires_at: Date;
 
   @CreateDateColumn()
   created_at: Date;
@@ -62,17 +80,17 @@ export class OrganizationInvitation {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @BeforeInsert()
-  generateToken() {
-    if (!this.token) {
-      this.token = uuidv4();
-    }
+  // @BeforeInsert()
+  // generateToken() {
+  //   if (!this.token) {
+  //     this.token = uuidv4();
+  //   }
 
-    // Set expiration to 7 days from now if not set
-    if (!this.expires_at) {
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
-      this.expires_at = expiryDate;
-    }
-  }
+  //   // Set expiration to 7 days from now if not set
+  //   if (!this.expires_at) {
+  //     const expiryDate = new Date();
+  //     expiryDate.setDate(expiryDate.getDate() + 7);
+  //     this.expires_at = expiryDate;
+  //   }
+  // }
 }

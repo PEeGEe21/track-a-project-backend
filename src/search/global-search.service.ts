@@ -41,10 +41,14 @@ export class GlobalSearchService {
   async search(actor: AuthUser, organizationId: string, rawQuery?: string) {
     const query = rawQuery?.trim() ?? '';
     if (query.length < 2) {
-      throw new BadRequestException('Search query must contain at least 2 characters');
+      throw new BadRequestException(
+        'Search query must contain at least 2 characters',
+      );
     }
     if (query.length > 100) {
-      throw new BadRequestException('Search query cannot exceed 100 characters');
+      throw new BadRequestException(
+        'Search query cannot exceed 100 characters',
+      );
     }
 
     const accessibleProjects = await this.accessibleProjects(
@@ -55,117 +59,128 @@ export class GlobalSearchService {
     const term = `%${query}%`;
     const projectWhere = projectIds.length ? { id: In(projectIds) } : null;
 
-    const [projects, tasks, documents, notes, files, documentFiles, messageResponse] =
-      await Promise.all([
-        projectWhere
-          ? this.projects.find({
-              where: [
-                { ...projectWhere, organization_id: organizationId, title: Like(term) },
-                {
-                  ...projectWhere,
-                  organization_id: organizationId,
-                  description: Like(term),
-                },
-              ],
-              order: { updated_at: 'DESC' },
-              take: 8,
-            })
-          : [],
-        projectIds.length
-          ? this.tasks.find({
-              where: [
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  title: Like(term),
-                },
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  description: Like(term),
-                },
-              ],
-              relations: ['project'],
-              order: { updated_at: 'DESC' },
-              take: 8,
-            })
-          : [],
-        projectIds.length
-          ? this.documents.find({
-              where: [
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  title: Like(term),
-                },
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  plainText: Like(term),
-                },
-              ],
-              relations: ['project'],
-              order: { updatedAt: 'DESC' },
-              take: 8,
-            })
-          : [],
-        this.notes.find({
-          where: [
-            {
-              user: { id: actor.userId },
-              organization_id: organizationId,
-              note: Like(term),
-            },
-            {
-              user: { id: actor.userId },
-              organization_id: organizationId,
-              audio_transcript: Like(term),
-            },
-          ],
-          relations: ['project'],
-          order: { updated_at: 'DESC' },
-          take: 8,
-        }),
-        projectIds.length
-          ? this.resources.find({
-              where: [
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  title: Like(term),
-                },
-                {
-                  project: { id: In(projectIds) },
-                  organization_id: organizationId,
-                  description: Like(term),
-                },
-              ],
-              relations: ['project'],
-              order: { updatedAt: 'DESC' },
-              take: 8,
-            })
-          : [],
-        projectIds.length
-          ? this.documentFiles.find({
-              where: [
-                {
-                  document: { project: { id: In(projectIds) } },
-                  organization_id: organizationId,
-                  originalName: Like(term),
-                },
-                {
-                  document: { project: { id: In(projectIds) } },
-                  organization_id: organizationId,
-                  filename: Like(term),
-                },
-              ],
-              relations: ['document', 'document.project'],
-              order: { uploadedAt: 'DESC' },
-              take: 8,
-            })
-          : [],
-        this.messages.search(actor, organizationId, query),
-      ]);
+    const [
+      projects,
+      tasks,
+      documents,
+      notes,
+      files,
+      documentFiles,
+      messageResponse,
+    ] = await Promise.all([
+      projectWhere
+        ? this.projects.find({
+            where: [
+              {
+                ...projectWhere,
+                organization_id: organizationId,
+                title: Like(term),
+              },
+              {
+                ...projectWhere,
+                organization_id: organizationId,
+                description: Like(term),
+              },
+            ],
+            order: { updated_at: 'DESC' },
+            take: 8,
+          })
+        : [],
+      projectIds.length
+        ? this.tasks.find({
+            where: [
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                title: Like(term),
+              },
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                description: Like(term),
+              },
+            ],
+            relations: ['project'],
+            order: { updated_at: 'DESC' },
+            take: 8,
+          })
+        : [],
+      projectIds.length
+        ? this.documents.find({
+            where: [
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                title: Like(term),
+              },
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                plainText: Like(term),
+              },
+            ],
+            relations: ['project'],
+            order: { updatedAt: 'DESC' },
+            take: 8,
+          })
+        : [],
+      this.notes.find({
+        where: [
+          {
+            user: { id: actor.userId },
+            organization_id: organizationId,
+            note: Like(term),
+          },
+          {
+            user: { id: actor.userId },
+            organization_id: organizationId,
+            audio_transcript: Like(term),
+          },
+        ],
+        relations: ['project'],
+        order: { updated_at: 'DESC' },
+        take: 8,
+      }),
+      projectIds.length
+        ? this.resources.find({
+            where: [
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                title: Like(term),
+              },
+              {
+                project: { id: In(projectIds) },
+                organization_id: organizationId,
+                description: Like(term),
+              },
+            ],
+            relations: ['project'],
+            order: { updatedAt: 'DESC' },
+            take: 8,
+          })
+        : [],
+      projectIds.length
+        ? this.documentFiles.find({
+            where: [
+              {
+                document: { project: { id: In(projectIds) } },
+                organization_id: organizationId,
+                originalName: Like(term),
+              },
+              {
+                document: { project: { id: In(projectIds) } },
+                organization_id: organizationId,
+                filename: Like(term),
+              },
+            ],
+            relations: ['document', 'document.project'],
+            order: { uploadedAt: 'DESC' },
+            take: 8,
+          })
+        : [],
+      this.messages.search(actor, organizationId, query),
+    ]);
 
     const results: GlobalSearchResult[] = [
       ...projects.map((project) => ({
@@ -210,7 +225,10 @@ export class GlobalSearchService {
         id: String(file.id),
         type: 'file' as const,
         title: file.title,
-        snippet: this.snippet(file.description || file.preview_description, query),
+        snippet: this.snippet(
+          file.description || file.preview_description,
+          query,
+        ),
         href: `/projects/${file.project.id}?tab=resources`,
         project: { id: file.project.id, title: file.project.title },
         updatedAt: file.updatedAt,
@@ -290,6 +308,8 @@ export class GlobalSearchService {
     const match = plain.toLowerCase().indexOf(query.toLowerCase());
     const start = match > 50 ? match - 50 : 0;
     const excerpt = plain.slice(start, start + limit);
-    return `${start ? '…' : ''}${excerpt}${start + limit < plain.length ? '…' : ''}`;
+    return `${start ? '…' : ''}${excerpt}${
+      start + limit < plain.length ? '…' : ''
+    }`;
   }
 }

@@ -40,6 +40,7 @@ import { AuditLog } from 'src/typeorm/entities/AuditLog';
 import { Plan } from 'src/typeorm/entities/Plan';
 import { Price } from 'src/typeorm/entities/Price';
 import { Subscription } from 'src/typeorm/entities/Subscription';
+import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { Subscription } from 'src/typeorm/entities/Subscription';
       Plan,
       Price,
       Subscription,
+      RefreshSession,
     ]),
   ],
   controllers: [AuthController],

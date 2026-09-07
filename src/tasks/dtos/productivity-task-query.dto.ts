@@ -13,6 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CustomFieldValue } from 'src/custom-fields/custom-field-type';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum ProductivityTaskView {
   MY_TASKS = 'my_tasks',
@@ -48,12 +49,15 @@ export enum CustomFieldFilterOperator {
 }
 
 export class CustomFieldFilterDto {
+  @ApiProperty()
   @IsString()
   fieldId: string;
 
+  @ApiProperty({ enum: CustomFieldFilterOperator })
   @IsEnum(CustomFieldFilterOperator)
   operator: CustomFieldFilterOperator;
 
+  @ApiPropertyOptional()
   @Allow()
   value?: CustomFieldValue;
 }
@@ -76,16 +80,22 @@ const optionalInteger = () =>
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export class ProductivityTaskQueryDto {
+  @ApiPropertyOptional({
+    enum: ProductivityTaskView,
+    default: ProductivityTaskView.MY_TASKS,
+  })
   @IsOptional()
   @IsEnum(ProductivityTaskView)
   view: ProductivityTaskView = ProductivityTaskView.MY_TASKS;
 
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Type(() => Number)
   page = 1;
 
+  @ApiPropertyOptional({ default: 25, minimum: 1, maximum: 100 })
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -93,54 +103,68 @@ export class ProductivityTaskQueryDto {
   @Type(() => Number)
   limit = 25;
 
+  @ApiPropertyOptional({
+    enum: ProductivityTaskSort,
+    default: ProductivityTaskSort.DUE_DATE,
+  })
   @IsOptional()
   @IsEnum(ProductivityTaskSort)
   sort: ProductivityTaskSort = ProductivityTaskSort.DUE_DATE;
 
+  @ApiPropertyOptional({ enum: SortDirection, default: SortDirection.ASC })
   @IsOptional()
   @IsEnum(SortDirection)
   direction: SortDirection = SortDirection.ASC;
 
+  @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @Matches(DATE_ONLY_PATTERN)
   date?: string;
 
+  @ApiPropertyOptional({ minimum: 1 })
   @IsOptional()
   @optionalInteger()
   @IsInt()
   @Min(1)
   project_id?: number;
 
+  @ApiPropertyOptional({ minimum: 1 })
   @IsOptional()
   @optionalInteger()
   @IsInt()
   @Min(1)
   status_id?: number;
 
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @optionalInteger()
   @IsInt()
   @Min(0)
   priority?: number;
 
+  @ApiPropertyOptional({ minimum: 1 })
   @IsOptional()
   @optionalInteger()
   @IsInt()
   @Min(1)
   assignee_id?: number;
 
+  @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @Matches(DATE_ONLY_PATTERN)
   due_from?: string;
 
+  @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @Matches(DATE_ONLY_PATTERN)
   due_to?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ type: [CustomFieldFilterDto], maxItems: 20 })
   @IsOptional()
   @Transform(parseCustomFieldFilters)
   @IsArray()

@@ -4,8 +4,10 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { AuthUser } from 'src/types/users';
 import { FindOrganizationsQueryDto } from '../dto/FindOrganizationsQuery.dto';
 import { PaginatedResponse } from 'src/types/pagination';
@@ -29,6 +31,7 @@ import { InviteLinks } from 'src/common/services/invite-links';
 import { UpdateOrganizationMemberDto } from '../dto/update-organization-member.dto';
 import { OrganizationSettings } from 'src/typeorm/entities/OrganizationSettings';
 import { DeadlineRemindersService } from 'src/notifications/services/deadline-reminders.service';
+import { hashInviteCode, hashInviteToken } from 'src/utils/invitation-crypto';
 
 @Injectable()
 export class OrganizationsService {
@@ -48,7 +51,10 @@ export class OrganizationsService {
     private deadlineRemindersService: DeadlineRemindersService,
   ) {}
 
-  private async assertOrganizationAdmin(userId: number, organizationId: string) {
+  private async assertOrganizationAdmin(
+    userId: number,
+    organizationId: string,
+  ) {
     const membership = await this.userOrganizationRepository.findOne({
       where: {
         user_id: userId,
@@ -413,10 +419,12 @@ export class OrganizationsService {
         );
       }
 
+      const email = dto.email.toLowerCase().trim();
+
       // Check if email already has a pending invitation
       const existingInvitation = await this.invitationRepository.findOne({
         where: {
-          email: dto.email.toLowerCase(),
+          email,
           organization_id: dto.organization_id,
           accepted: false,
         },
@@ -451,20 +459,45 @@ export class OrganizationsService {
       }
 
       // Create invitation
+      // const invitation = this.invitationRepository.create({
+      //   email: dto.email.toLowerCase(),
+      //   organization_id: dto.organization_id,
+      //   invited_role: dto.invited_role,
+      //   invited_by_id: dto.invited_by,
+      //   invited_by: foundUser,
+      // });
+
+      const inviteToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = hashInviteToken(inviteToken);
+
+      const { code: inviteCode, hash: inviteCodeHash } =
+        await this.generateUniqueInviteCode();
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const codeExpiresAt = new Date(); // code expiry — much shorter
+      codeExpiresAt.setMinutes(codeExpiresAt.getMinutes() + 30);
+
+      const inviteLink = InviteLinks.orgJoin(inviteToken);
+
       const invitation = this.invitationRepository.create({
-        email: dto.email.toLowerCase(),
+        email,
         organization_id: dto.organization_id,
         invited_role: dto.invited_role,
         invited_by_id: dto.invited_by,
         invited_by: foundUser,
+        token_hash: tokenHash,
+        invite_code_hash: inviteCodeHash,
+        expires_at: expiresAt,
+        code_expires_at: codeExpiresAt,
+        invite_link: inviteLink,
       });
 
       await this.invitationRepository.save(invitation);
 
-      const inviteLink = InviteLinks.orgJoin(invitation.token);
-      invitation.invite_link = inviteLink;
+      // TODO: ADD MAILING OF INVITATION
 
-      await this.invitationRepository.save(invitation);
 
       return {
         invitation: {
@@ -473,16 +506,44 @@ export class OrganizationsService {
           invited_role: invitation.invited_role,
           expires_at: invitation.expires_at,
           invite_link: inviteLink,
+          invite_code: inviteCode, // returned once, at creation time only
         },
         message: 'Invitation created successfully',
         success: true,
       };
     } catch (error) {
-      throw new HttpException(
-        `Failed to save ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+
+      throw new InternalServerErrorException(
+        `Failed to create invitation: ${message}`,
       );
     }
+  }
+
+  private async generateUniqueInviteCode() {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = crypto.randomInt(100000, 1000000).toString();
+      const hash = hashInviteCode(code);
+
+      const existing = await this.invitationRepository.findOne({
+        where: {
+          invite_code_hash: hash,
+          accepted: false,
+        },
+      });
+
+      if (!existing) {
+        return { code, hash };
+      }
+    }
+
+    throw new InternalServerErrorException(
+      'Unable to generate invitation code',
+    );
   }
 
   async update(id: string, updateOrgDetails: any, file?: Express.Multer.File) {
@@ -605,7 +666,10 @@ export class OrganizationsService {
     }
   }
 
-  async triggerDeadlineReminderTest(authUser: AuthUser, organizationId: string) {
+  async triggerDeadlineReminderTest(
+    authUser: AuthUser,
+    organizationId: string,
+  ) {
     const foundUser = await this.userService.getUserAccountById(
       authUser.userId,
     );
@@ -718,19 +782,34 @@ export class OrganizationsService {
       throw new BadRequestException('Invitation has already been accepted');
     }
 
-    // Extend expiration
+    // Regenerate token — the old one's hash can't be reversed into a link.
+    const inviteToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashInviteToken(inviteToken);
+    const inviteLink = InviteLinks.orgJoin(inviteToken);
+
+    // Regenerate the code too, since it gets its own short expiry —
+    // reusing the old code would just extend a stale, already-exposed secret.
+    const { code: inviteCode, hash: inviteCodeHash } =
+      await this.generateUniqueInviteCode();
+
     const newExpiryDate = new Date();
     newExpiryDate.setDate(newExpiryDate.getDate() + 7);
+
+    const newCodeExpiryDate = new Date();
+    newCodeExpiryDate.setMinutes(newCodeExpiryDate.getMinutes() + 30);
+
+    invitation.token_hash = tokenHash;
+    invitation.invite_code_hash = inviteCodeHash;
     invitation.expires_at = newExpiryDate;
-
-    const inviteLink = InviteLinks.orgSignup(invitation.token);
-
+    invitation.code_expires_at = newCodeExpiryDate;
     invitation.invite_link = inviteLink;
+
     await this.invitationRepository.save(invitation);
 
     return {
       message: 'Invitation resent successfully',
       invite_link: inviteLink,
+      invite_code: inviteCode, // returned once, at resend time only — same as creation
       success: true,
     };
   }

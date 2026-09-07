@@ -21,32 +21,55 @@ import {
   DelegateApprovalDto,
   RespondApprovalDto,
 } from './dto/approval.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiContractOperation,
+  ApiObjectResponseDto,
+  ApiOrganizationHeader,
+  ApiStandardErrors,
+} from 'src/common/openapi/api-contract.dto';
+import {
+  ApprovalListResponseDto,
+  ApprovalResponseDto,
+} from './dto/approval-contract.dto';
 @Controller('approvals')
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard, CapabilityGuard)
 @RequireCapability(CapabilityKey.BASIC_APPROVALS)
+@ApiTags('Approvals')
+@ApiBearerAuth()
+@ApiOrganizationHeader()
+@ApiStandardErrors({ forbidden: true })
 export class ApprovalsController {
   constructor(private approvals: ApprovalsService) {}
-  @Get('inbox') inbox(
-    @Req() req: any,
-    @Headers('x-organization-id') org: string,
-  ) {
+  @Get('inbox')
+  @ApiContractOperation(
+    'List approvals assigned to the current user',
+    ApprovalListResponseDto,
+  )
+  inbox(@Req() req: any, @Headers('x-organization-id') org: string) {
     return this.approvals.inbox(req.user, org);
   }
-  @Get('projects/:projectId') list(
+  @Get('projects/:projectId')
+  @ApiContractOperation('List approvals for a project', ApprovalListResponseDto)
+  list(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
     return this.approvals.list(req.user, org, projectId);
   }
-  @Get('projects/:projectId/options') options(
+  @Get('projects/:projectId/options')
+  @ApiContractOperation('Get approval creation options', ApiObjectResponseDto)
+  options(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
     return this.approvals.options(req.user, org, projectId);
   }
-  @Post('projects/:projectId') create(
+  @Post('projects/:projectId')
+  @ApiContractOperation('Create an approval request', ApprovalResponseDto, 201)
+  create(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
@@ -54,7 +77,9 @@ export class ApprovalsController {
   ) {
     return this.approvals.create(req.user, org, projectId, dto);
   }
-  @Get('projects/:projectId/:id') get(
+  @Get('projects/:projectId/:id')
+  @ApiContractOperation('Get an approval request', ApprovalResponseDto)
+  get(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
@@ -62,7 +87,13 @@ export class ApprovalsController {
   ) {
     return this.approvals.get(req.user, org, projectId, id);
   }
-  @Post('projects/:projectId/:id/respond') respond(
+  @Post('projects/:projectId/:id/respond')
+  @ApiContractOperation(
+    'Respond to an approval request',
+    ApprovalResponseDto,
+    201,
+  )
+  respond(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,
@@ -71,7 +102,9 @@ export class ApprovalsController {
   ) {
     return this.approvals.respond(req.user, org, projectId, id, dto);
   }
-  @Post('projects/:projectId/:id/delegate') delegate(
+  @Post('projects/:projectId/:id/delegate')
+  @ApiContractOperation('Delegate an approval review', ApprovalResponseDto, 201)
+  delegate(
     @Req() req: any,
     @Headers('x-organization-id') org: string,
     @Param('projectId', ParseIntPipe) projectId: number,

@@ -29,13 +29,31 @@ import {
   CreateSavedTaskViewDto,
   UpdateSavedTaskViewDto,
 } from '../dtos/saved-task-view.dto';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import {
+  ApiContractOperation,
+  ApiOrganizationHeader,
+  ApiStandardErrors,
+} from 'src/common/openapi/api-contract.dto';
+import {
+  TaskListResponseDto,
+  TaskOperationResponseDto,
+  TaskResponseDto,
+  ToggleTaskPriorityDto,
+} from '../dtos/task-contract.dto';
+import { UpdateTaskStatusDto } from '../dtos/update-task-status.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('tasks')
+@ApiTags('Tasks')
+@ApiBearerAuth()
+@ApiOrganizationHeader()
+@ApiStandardErrors({ forbidden: true })
 export class TasksController {
   constructor(private taskService: TasksService) {}
 
   @Get('productivity')
+  @ApiContractOperation('List productivity tasks', TaskListResponseDto)
   @UseGuards(OrganizationAccessGuard, CapabilityGuard)
   @RequireCapability(CapabilityKey.PERSONAL_PRODUCTIVITY_HUB)
   getProductivityTasks(
@@ -51,6 +69,7 @@ export class TasksController {
   }
 
   @Get('productivity/views/saved')
+  @ApiContractOperation('List saved task views', TaskOperationResponseDto)
   @UseGuards(OrganizationAccessGuard, CapabilityGuard)
   @RequireCapability(CapabilityKey.PERSONAL_PRODUCTIVITY_HUB)
   getSavedProductivityViews(
@@ -61,6 +80,11 @@ export class TasksController {
   }
 
   @Post('productivity/views/saved')
+  @ApiContractOperation(
+    'Create a saved task view',
+    TaskOperationResponseDto,
+    201,
+  )
   @UseGuards(OrganizationAccessGuard, CapabilityGuard)
   @RequireCapability(CapabilityKey.PERSONAL_PRODUCTIVITY_HUB)
   createSavedProductivityView(
@@ -76,6 +100,7 @@ export class TasksController {
   }
 
   @Put('productivity/views/saved/:viewId')
+  @ApiContractOperation('Update a saved task view', TaskOperationResponseDto)
   @UseGuards(OrganizationAccessGuard, CapabilityGuard)
   @RequireCapability(CapabilityKey.PERSONAL_PRODUCTIVITY_HUB)
   updateSavedProductivityView(
@@ -93,6 +118,7 @@ export class TasksController {
   }
 
   @Delete('productivity/views/saved/:viewId')
+  @ApiContractOperation('Delete a saved task view', TaskOperationResponseDto)
   @UseGuards(OrganizationAccessGuard, CapabilityGuard)
   @RequireCapability(CapabilityKey.PERSONAL_PRODUCTIVITY_HUB)
   deleteSavedProductivityView(
@@ -108,6 +134,10 @@ export class TasksController {
   }
 
   @Get('/')
+  @ApiContractOperation(
+    'List tasks in the active organization',
+    TaskListResponseDto,
+  )
   @UseGuards(OrganizationAccessGuard)
   getTasks(
     @Req() req: any,
@@ -117,6 +147,7 @@ export class TasksController {
   }
 
   @Get(':id')
+  @ApiContractOperation('Get a task', TaskResponseDto)
   @UseGuards(OrganizationAccessGuard)
   getTask(
     @Param('id', ParseIntPipe) id: number,
@@ -127,6 +158,7 @@ export class TasksController {
   }
 
   @Put(':id')
+  @ApiContractOperation('Update a task', TaskResponseDto)
   @UseGuards(OrganizationAccessGuard)
   updateTaskById(
     @Param('id', ParseIntPipe) id: number,
@@ -143,6 +175,8 @@ export class TasksController {
   }
 
   @Put(':id/with-attachments')
+  @ApiContractOperation('Update a task with attachments', TaskResponseDto)
+  @ApiConsumes('multipart/form-data')
   @UseGuards(OrganizationAccessGuard)
   @UseInterceptors(FilesInterceptor('attachments'))
   updateTaskWithAttachments(
@@ -162,10 +196,11 @@ export class TasksController {
   }
 
   @Patch(':id/update-priority')
+  @ApiContractOperation('Toggle task priority', TaskResponseDto)
   @UseGuards(OrganizationAccessGuard)
   updateTaskPriority(
     @Param('id', ParseIntPipe) id: number,
-    @Body() priorityStatus: any,
+    @Body() priorityStatus: ToggleTaskPriorityDto,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {
@@ -178,10 +213,11 @@ export class TasksController {
   }
 
   @Patch(':id/status')
+  @ApiContractOperation('Move and reorder a task', TaskResponseDto)
   @UseGuards(OrganizationAccessGuard)
   updateTaskStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() payload: any,
+    @Body() payload: UpdateTaskStatusDto,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {
@@ -194,6 +230,7 @@ export class TasksController {
   }
 
   @Delete(':id')
+  @ApiContractOperation('Delete a task', TaskOperationResponseDto)
   @UseGuards(OrganizationAccessGuard)
   deleteTask(
     @Param('id', ParseIntPipe) id: number,
@@ -204,6 +241,7 @@ export class TasksController {
   }
 
   @Get(':id/tasks')
+  @ApiContractOperation('List tasks for a project', TaskListResponseDto)
   @UseGuards(OrganizationAccessGuard)
   getProjectTasks(
     @Param('id', ParseIntPipe) id: number,
@@ -214,10 +252,11 @@ export class TasksController {
   }
 
   @Post(':projectId')
+  @ApiContractOperation('Create a task in a project', TaskResponseDto, 201)
   @UseGuards(OrganizationAccessGuard)
   createProjectTask(
     @Param('projectId', ParseIntPipe) id: number,
-    @Body() payload: any,
+    @Body() payload: CreateTaskDto,
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
   ) {

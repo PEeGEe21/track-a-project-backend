@@ -20,9 +20,25 @@ import { ValidationPipe } from '@nestjs/common';
 import { PushSubscriptionsService } from '../services/push-subscriptions.service';
 import { RegisterPushSubscriptionDto } from '../dto/register-push-subscription.dto';
 import { RemovePushSubscriptionDto } from '../dto/remove-push-subscription.dto';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiContractOperation,
+  ApiObjectResponseDto,
+  ApiOrganizationHeader,
+  ApiStandardErrors,
+  MessageResponseDto,
+} from 'src/common/openapi/api-contract.dto';
+import {
+  NotificationListResponseDto,
+  NotificationResponseDto,
+} from '../dto/notification-contract.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
+@ApiTags('Notifications')
+@ApiBearerAuth()
+@ApiOrganizationHeader(false)
+@ApiStandardErrors({ forbidden: true })
 export class NotificationsController {
   constructor(
     private readonly notificationsService: NotificationsService,
@@ -30,6 +46,10 @@ export class NotificationsController {
   ) {}
 
   @Get('/')
+  @ApiContractOperation(
+    'List notifications for the current user',
+    NotificationListResponseDto,
+  )
   findAllUserNotifications(
     @Query('page') page: number,
     @Query('limit') limit: number,
@@ -51,6 +71,10 @@ export class NotificationsController {
   }
 
   @Get('/notify-bar')
+  @ApiContractOperation(
+    'Get notification-bar items',
+    NotificationListResponseDto,
+  )
   findAll(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
@@ -59,6 +83,7 @@ export class NotificationsController {
   }
 
   @Post()
+  @ApiContractOperation('Create a notification', NotificationResponseDto, 201)
   create(
     @Body() createNotificationDto: CreateNotificationDto,
     @Req() req: any,
@@ -72,11 +97,13 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
+  @ApiContractOperation('Mark a notification as read', NotificationResponseDto)
   markAsRead(@Param('id') id, @Req() req: any) {
     return this.notificationsService.markAsRead(req.user, +id);
   }
 
   @Patch('read-all')
+  @ApiContractOperation('Mark all notifications as read', ApiObjectResponseDto)
   markAllAsRead(
     @Req() req: any,
     @Headers('x-organization-id') organizationId: string,
@@ -85,6 +112,7 @@ export class NotificationsController {
   }
 
   @Delete(':id')
+  @ApiContractOperation('Delete a notification', ApiObjectResponseDto)
   remove(
     @Param('id') id: string,
     @Req() req: any,
@@ -94,6 +122,10 @@ export class NotificationsController {
   }
 
   @Get('/push/config')
+  @ApiContractOperation(
+    'Get web-push client configuration',
+    ApiObjectResponseDto,
+  )
   getPushConfig() {
     return {
       success: true,
@@ -102,6 +134,11 @@ export class NotificationsController {
   }
 
   @Post('/push/subscriptions')
+  @ApiContractOperation(
+    'Register a push subscription',
+    ApiObjectResponseDto,
+    201,
+  )
   registerPushSubscription(
     @Body(new ValidationPipe({ whitelist: true, transform: true }))
     dto: RegisterPushSubscriptionDto,
@@ -117,6 +154,7 @@ export class NotificationsController {
   }
 
   @Delete('/push/subscriptions')
+  @ApiContractOperation('Remove a push subscription', MessageResponseDto)
   removePushSubscription(
     @Body(new ValidationPipe({ whitelist: true, transform: true }))
     dto: RemovePushSubscriptionDto,
@@ -131,6 +169,11 @@ export class NotificationsController {
   }
 
   @Post('/push/test')
+  @ApiContractOperation(
+    'Send a test push notification',
+    ApiObjectResponseDto,
+    201,
+  )
   sendTestPush(
     @Req() req: any,
     @Headers('x-organization-id') organizationId?: string,

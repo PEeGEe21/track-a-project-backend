@@ -14,7 +14,16 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiExtraModels,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { EmailLoginDto } from '../dtos/email-login.dto';
 import { LoginResponseDto } from '../dtos/login-response.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -30,9 +39,29 @@ import { config } from 'src/config';
 import { RequestEmailOtpDto } from '../dtos/request-email-otp.dto';
 import { VerifyForgotPasswordOtpDto } from '../dtos/verify-forgot-password-otp.dto';
 import { ResetPasswordEmailDto } from '../dtos/reset-password-email.dto';
+import {
+  AuthenticatedSessionResponseDto,
+  InvitationValidationResponseDto,
+  OrganizationSelectionResponseDto,
+  RefreshTokenRequestDto,
+  RefreshTokenResponseDto,
+  SignupSessionResponseDto,
+  SwitchOrganizationRequestDto,
+  SwitchOrganizationResponseDto,
+} from '../dtos/auth-contract.dto';
+import {
+  ApiErrorDto,
+  ApiStandardErrors,
+  MessageResponseDto,
+} from 'src/common/openapi/api-contract.dto';
 
 @Controller('/auth')
 @ApiTags('Authentication')
+@ApiExtraModels(
+  ApiErrorDto,
+  AuthenticatedSessionResponseDto,
+  OrganizationSelectionResponseDto,
+)
 export class AuthController {
   constructor(private authService: AuthService) {}
 
@@ -48,6 +77,9 @@ export class AuthController {
    * Sign up with new organization (becomes ORG_ADMIN)
    */
   @Post('signup/create-organization')
+  @ApiOperation({ summary: 'Create an account and a new organization' })
+  @ApiCreatedResponse({ type: SignupSessionResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -65,6 +97,9 @@ export class AuthController {
    * Sign up via invitation (joins existing organization)
    */
   @Post('signup/join-organization')
+  @ApiOperation({ summary: 'Create an account through an invitation' })
+  @ApiCreatedResponse({ type: SignupSessionResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -78,11 +113,15 @@ export class AuthController {
   // auth.controller.ts
   @Post('/switch-organization')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Switch the active organization' })
+  @ApiCreatedResponse({ type: SwitchOrganizationResponseDto })
+  @ApiStandardErrors({ forbidden: true })
   async switchOrganization(
     @Req() req: any,
-    @Body('organizationId') organizationId: string,
+    @Body(ValidationPipe) dto: SwitchOrganizationRequestDto,
   ) {
-    return this.authService.switchOrganization(req.user, organizationId);
+    return this.authService.switchOrganization(req.user, dto.organizationId);
   }
 
   /**
@@ -91,6 +130,16 @@ export class AuthController {
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign in and select or discover an organization' })
+  @ApiOkResponse({
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(AuthenticatedSessionResponseDto) },
+        { $ref: getSchemaPath(OrganizationSelectionResponseDto) },
+      ],
+    },
+  })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -106,16 +155,26 @@ export class AuthController {
    * Validate invitation token before signup
    */
   @Get('validate-invitation')
+  @ApiOperation({ summary: 'Validate an invitation before account creation' })
+  @ApiQuery({ name: 'token', type: String, required: false })
+  @ApiQuery({ name: 'code', type: String, required: false })
+  @ApiOkResponse({ type: InvitationValidationResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.inviteMax,
       ttl: config.rateLimit.inviteWindowMs,
     },
   })
-  async validateInvitation(@Query('token') token: string) {
-    return this.authService.validateInvitation(token);
+  async validateInvitation(
+    @Query('token') token?: string,
+    @Query('code') code?: string,
+  ) {
+    return this.authService.validateInvitation({
+      invite_token: token,
+      invite_code: code,
+    });
   }
-
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   @Post('users/:id/impersonate')
   async impersonateUser(
@@ -126,6 +185,9 @@ export class AuthController {
   }
 
   @Post('/login-email')
+  @ApiOperation({ summary: 'Legacy email sign in' })
+  @ApiCreatedResponse({ type: LoginResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -139,6 +201,9 @@ export class AuthController {
   }
 
   @Post('/login-admin')
+  @ApiOperation({ summary: 'Sign in to the administration portal' })
+  @ApiCreatedResponse({ type: LoginResponseDto })
+  @ApiStandardErrors({ forbidden: true })
   @Throttle({
     default: {
       limit: Math.max(3, Math.floor(config.rateLimit.authMax / 2)),
@@ -152,6 +217,9 @@ export class AuthController {
   }
 
   @Post('/signup')
+  @ApiOperation({ summary: 'Legacy account creation' })
+  @ApiCreatedResponse({ type: SignUpResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -165,6 +233,13 @@ export class AuthController {
   }
 
   @Get('/access-token')
+  @ApiOperation({
+    summary: 'Refresh tokens through the legacy query endpoint',
+    deprecated: true,
+  })
+  @ApiQuery({ name: 'refreshToken', type: String })
+  @ApiOkResponse({ type: RefreshTokenResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.defaultMax,
@@ -175,12 +250,42 @@ export class AuthController {
     return this.authService.refreshToken(refreshToken);
   }
 
+  @Post('/refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh access and refresh tokens',
+    description:
+      'Atomically consumes the supplied refresh token and returns a rotated pair. Reusing a consumed token revokes its session family.',
+  })
+  @ApiOkResponse({ type: RefreshTokenResponseDto })
+  @ApiStandardErrors()
+  @Throttle({
+    default: {
+      limit: config.rateLimit.defaultMax,
+      ttl: config.rateLimit.defaultWindowMs,
+    },
+  })
+  async refreshMobile(@Body(ValidationPipe) dto: RefreshTokenRequestDto) {
+    return this.authService.refreshToken(dto.refreshToken);
+  }
+
   @Post('/logout')
-  async logout(@Body('refreshToken') refreshToken: string): Promise<any> {
-    return this.authService.logOut(refreshToken);
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Invalidate the current session',
+    description:
+      'Revokes the refresh-token family for the current device session.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiStandardErrors()
+  async logout(@Body(ValidationPipe) dto: RefreshTokenRequestDto) {
+    return this.authService.logOut(dto.refreshToken);
   }
 
   @Post('/forgot-password')
+  @ApiOperation({ summary: 'Request a password-reset verification code' })
+  @ApiCreatedResponse({ type: MessageResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -192,6 +297,9 @@ export class AuthController {
   }
 
   @Post('/verify-forgot-password-otp')
+  @ApiOperation({ summary: 'Verify a password-reset code' })
+  @ApiCreatedResponse({ type: MessageResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,
@@ -205,6 +313,9 @@ export class AuthController {
   }
 
   @Patch('/reset-password')
+  @ApiOperation({ summary: 'Set a new password after verification' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiStandardErrors()
   @Throttle({
     default: {
       limit: config.rateLimit.authMax,

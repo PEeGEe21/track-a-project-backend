@@ -30,11 +30,13 @@ const envVarsSchema = joi
       .string()
       .allow(...['error', 'warning', 'info', 'debug', 'silly', ''])
       .default('silly'),
+    INVITE_CODE_SECRET: joi.string().required(),
     JWT_ACCESS_TOKEN_SECRET: joi.string().required(),
     JWT_ACCESS_EXPIRES_IN: joi.string().required(),
     JWT_REFRESH_TOKEN_SECRET: joi.string().required(),
     JWT_REFRESH_EXPIRES_IN: joi.string().required(),
     FRONTEND_URL: joi.string().uri().required(),
+    FRONTEND_DEV_URL: joi.string().uri().required(),
     ADMIN_FRONTEND_URL: joi.string().uri().optional(),
     CORS_ALLOWED_ORIGINS: joi.string().optional(),
     PEER_LINK_MAIN: joi.string().uri().optional(),
@@ -151,10 +153,7 @@ const envVarsSchema = joi
     TAILPOINT_INGESTION_ENDPOINT: joi.string().uri().optional(),
     TAILPOINT_INGESTION_SOURCE: joi.string().optional(),
     SENDGRID_INBOUND_ACCESS_TOKEN: joi.string().min(32).optional(),
-    INBOUND_EMAIL_DOMAIN: joi
-      .string()
-      .hostname()
-      .optional(),
+    INBOUND_EMAIL_DOMAIN: joi.string().hostname().optional(),
     WEBHOOK_SECRET_ENCRYPTION_KEY: joi.string().min(32).optional(),
     TRANSCRIPTION_ENABLED: joi
       .boolean()
@@ -296,10 +295,12 @@ export const config = {
   port: envVars.PORT,
   logLevel: envVars.LOG_LEVEL,
   secret: envVars.JWT_ACCESS_TOKEN_SECRET,
+  inviteCodeSecret: envVars.INVITE_CODE_SECRET,
   expiresIn: envVars.JWT_ACCESS_EXPIRES_IN,
   refreshSecret: envVars.JWT_REFRESH_TOKEN_SECRET,
   refreshExpiresIn: envVars.JWT_REFRESH_EXPIRES_IN,
   feBaseUrl: envVars.FRONTEND_URL,
+  feDevBaseUrl: envVars.FRONTEND_DEV_URL,
   adminFrontendUrl: envVars.ADMIN_FRONTEND_URL,
   corsAllowedOrigins: Array.from(
     new Set(

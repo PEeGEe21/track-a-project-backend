@@ -868,6 +868,9 @@ export class TasksService {
         );
       }
       if (hasCustomFieldUpdate) {
+        customFieldInputs = this.dedupeCustomFieldInputs(customFieldInputs);
+      }
+      if (hasCustomFieldUpdate) {
         await this.entitlementsService.assertCapability(
           user,
           organizationId,
@@ -1140,6 +1143,9 @@ export class TasksService {
         'Invalid customFields payload',
         HttpStatus.BAD_REQUEST,
       );
+    }
+    if (hasCustomFieldUpdate) {
+      customFieldInputs = this.dedupeCustomFieldInputs(customFieldInputs);
     }
     if (hasCustomFieldUpdate) {
       await this.entitlementsService.assertCapability(
@@ -1581,6 +1587,30 @@ export class TasksService {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  private dedupeCustomFieldInputs<T extends { fieldId?: unknown }>(
+    inputs: T[],
+  ): T[] {
+    const invalidInput = inputs.find(
+      (input) =>
+        typeof input?.fieldId !== 'string' || input.fieldId.trim().length === 0,
+    );
+    if (invalidInput) {
+      throw new HttpException(
+        'Every custom field value must include a valid fieldId',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return Array.from(
+      new Map(
+        inputs.map((input) => {
+          const fieldId = String(input.fieldId).trim();
+          return [fieldId, { ...input, fieldId }] as const;
+        }),
+      ).values(),
+    ) as T[];
   }
 
   private parseAssigneeList(raw: unknown): string[] {
@@ -2364,6 +2394,9 @@ export class TasksService {
           'Invalid customFields payload',
           HttpStatus.BAD_REQUEST,
         );
+      }
+      if (Array.isArray(customFieldInputs)) {
+        customFieldInputs = this.dedupeCustomFieldInputs(customFieldInputs);
       }
       const customFieldsAvailable = await this.customFieldsEnabled(
         user,

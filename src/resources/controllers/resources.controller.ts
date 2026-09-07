@@ -28,9 +28,32 @@ import { Response } from 'express';
 import { OrganizationAccessGuard } from 'src/common/guards/organization_access.guard';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SubscriptionGuard } from 'src/common/guards/subscription.guard';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProduces,
+  ApiTags,
+} from '@nestjs/swagger';
+import {
+  ApiContractOperation,
+  ApiObjectResponseDto,
+  ApiOrganizationHeader,
+  ApiStandardErrors,
+} from 'src/common/openapi/api-contract.dto';
+import {
+  PreviewUrlRequestDto,
+  ResourceListResponseDto,
+  ResourceResponseDto,
+} from '../dto/resource-contract.dto';
 
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard, SubscriptionGuard)
 @Controller('resources')
+@ApiTags('Resources')
+@ApiBearerAuth()
+@ApiOrganizationHeader()
+@ApiStandardErrors({ forbidden: true })
 export class ResourcesController {
   constructor(
     private readonly resourcesService: ResourcesService,
@@ -38,6 +61,7 @@ export class ResourcesController {
   ) {}
 
   @Post()
+  @ApiContractOperation('Create a linked resource', ResourceResponseDto, 201)
   create(
     @Headers('x-organization-id') organizationId: string,
     @Body() createResourceDto: CreateResourceDto,
@@ -51,6 +75,8 @@ export class ResourcesController {
   }
 
   @Post('upload')
+  @ApiContractOperation('Upload a resource file', ResourceResponseDto, 201)
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadFile(
     @Headers('x-organization-id') organizationId: string,
@@ -58,7 +84,12 @@ export class ResourcesController {
     @Req() req: any,
     @UploadedFile() file?: MulterFile,
   ) {
-    return this.resourcesService.uploadFile(file, uploadFileDto, req.user, organizationId);
+    return this.resourcesService.uploadFile(
+      file,
+      uploadFileDto,
+      req.user,
+      organizationId,
+    );
   }
 
   // @Get()
@@ -70,6 +101,7 @@ export class ResourcesController {
   // }
 
   @Get()
+  @ApiContractOperation('List resources', ResourceListResponseDto)
   findAllResources(
     @Headers('x-organization-id') organizationId: string,
     @Req() req: any,
@@ -95,6 +127,9 @@ export class ResourcesController {
   }
 
   @Get(':id/download')
+  @ApiOperation({ summary: 'Download a resource file' })
+  @ApiProduces('application/octet-stream')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
   async downloadFile(
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
@@ -104,26 +139,31 @@ export class ResourcesController {
   }
 
   @Get(':id/preview')
+  @ApiContractOperation('Get a resource preview URL', ApiObjectResponseDto)
   async getFileUrl(@Param('id') id: string, @Request() req) {
     return await this.resourcesService.getFileUrl(+id, req.user);
   }
 
   @Get('project/:projectId')
+  @ApiContractOperation('List resources for a project', ResourceListResponseDto)
   findByProject(@Param('projectId', ParseIntPipe) projectId: number) {
     return this.resourcesService.findByProject(projectId);
   }
 
   @Get('task/:taskId')
+  @ApiContractOperation('List resources for a task', ResourceListResponseDto)
   findByTask(@Param('taskId', ParseIntPipe) taskId: number) {
     return this.resourcesService.findByTask(taskId);
   }
 
   @Get(':id')
+  @ApiContractOperation('Get a resource', ResourceResponseDto)
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.resourcesService.findOne(id);
   }
 
   @Patch(':id')
+  @ApiContractOperation('Update a resource', ResourceResponseDto)
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateResourceDto: UpdateResourceDto,
@@ -133,12 +173,19 @@ export class ResourcesController {
   }
 
   @Delete(':id')
+  @ApiContractOperation('Delete a resource', ApiObjectResponseDto)
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.resourcesService.remove(id, req.user);
   }
 
   @Post('preview')
-  generatePreview(@Body('url') url: string) {
+  @ApiContractOperation(
+    'Generate metadata for an external URL',
+    ApiObjectResponseDto,
+    201,
+  )
+  generatePreview(@Body() dto: PreviewUrlRequestDto) {
+    const { url } = dto;
     if (!url) {
       throw new Error('URL is required');
     }

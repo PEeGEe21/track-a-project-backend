@@ -11,7 +11,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { isEmail } from 'class-validator';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { any } from 'joi';
 import * as moment from 'moment';
 import { use } from 'passport';
@@ -24,7 +24,7 @@ import { config } from '../../config/index';
 //   UserAccountDocument,
 // } from '../../users/models/user-account.schema';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Post } from '../../typeorm/entities/Post';
 import { Profile } from '../../typeorm/entities/Profile';
 import {
@@ -77,6 +77,8 @@ import { PriceInterval } from 'src/utils/constants/priceIntervalEnums';
 import { SubscriptionStatus } from 'src/utils/constants/subscriptionStatusEnums';
 import { QueryRunner } from 'typeorm';
 import { MailingService } from 'src/utils/mailing/mailing.service';
+import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
+import { hashInviteCode, hashInviteToken } from 'src/utils/invitation-crypto';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -115,6 +117,8 @@ export class AuthService {
     private userOrganizationRepository: Repository<UserOrganization>,
     @InjectRepository(OrganizationInvitation)
     private orgInvitationRepository: Repository<OrganizationInvitation>,
+    @InjectRepository(RefreshSession)
+    private refreshSessionRepository: Repository<RefreshSession>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -1108,19 +1112,10 @@ export class AuthService {
         })),
       };
 
-      const accessToken = await this.jwt.signAsync(payload, {
-        secret: process.env.JWT_ACCESS_TOKEN_SECRET,
-        expiresIn: process.env.JWT_ACCESS_EXPIRES_IN,
-      });
-
-      const refreshToken = await this.jwt.signAsync(payload, {
-        secret: process.env.JWT_REFRESH_TOKEN_SECRET,
-        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
-      });
-
+      const tokens = await this.issueTokenPair(payload);
       return {
-        accessToken,
-        refreshToken,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       };
     } catch (error) {
       AppLogger.error('AuthService', 'Error generating auth tokens');
@@ -1140,27 +1135,17 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_TOKEN_SECRET,
       });
 
-      if (payload.currentOrganizationId) {
-        const user = await this.getUserAccountById(payload.sub);
-        const membership = await this.userOrganizationRepository.findOne({
-          where: {
-            user_id: payload.sub,
-            organization_id: payload.currentOrganizationId,
-            is_active: true,
-          },
-          relations: ['organization'],
-        });
+      if (payload.tokenUse && payload.tokenUse !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
-        if (!membership || !membership.organization?.is_active) {
-          throw new UnauthorizedException('Invalid refresh token');
-        }
+      const tokenContext = await this.resolveRefreshContext(payload);
 
-        const tokens = await this.generateToken(
-          user,
-          membership.organization,
-          membership.role,
-        );
-
+      // Tokens issued before refresh-session persistence do not contain a JTI.
+      // They remain valid only until their original JWT expiration and rotate
+      // into a persisted, one-time-use session on first refresh.
+      if (!payload.jti || !payload.familyId) {
+        const tokens = await this.issueTokenPair(tokenContext.payload);
         return {
           success: 'success',
           accessToken: tokens.accessToken,
@@ -1168,19 +1153,90 @@ export class AuthService {
         };
       }
 
-      const tokens = await this.getTokens(
-        payload.sub,
-        payload.email,
-        payload.role,
+      const rotated = await this.refreshSessionRepository.manager.transaction(
+        async (manager) => {
+          const sessions = manager.getRepository(RefreshSession);
+          const session = await sessions.findOne({
+            where: { jti: payload.jti },
+            lock: { mode: 'pessimistic_write' },
+          });
+
+          if (
+            !session ||
+            session.user_id !== payload.sub ||
+            session.family_id !== payload.familyId ||
+            session.expires_at.getTime() <= Date.now()
+          ) {
+            return null;
+          }
+
+          if (session.revoked_at) {
+            const detectedAt = new Date();
+            await sessions.update(
+              { family_id: session.family_id, revoked_at: IsNull() },
+              { revoked_at: detectedAt, reuse_detected_at: detectedAt },
+            );
+            return null;
+          }
+
+          const next = await this.issueTokenPair(
+            tokenContext.payload,
+            manager,
+            session.family_id,
+          );
+          session.revoked_at = new Date();
+          session.replaced_by_jti = next.refreshJti;
+          await sessions.save(session);
+          return next;
+        },
       );
+
+      if (!rotated) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       return {
         success: 'success',
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
+        accessToken: rotated.accessToken,
+        refreshToken: rotated.refreshToken,
       };
     } catch (error) {
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  private async resolveRefreshContext(payload: any) {
+    if (payload.currentOrganizationId) {
+      const user = await this.getUserAccountById(payload.sub);
+      const membership = await this.userOrganizationRepository.findOne({
+        where: {
+          user_id: payload.sub,
+          organization_id: payload.currentOrganizationId,
+          is_active: true,
+        },
+        relations: ['organization'],
+      });
+
+      if (!membership || !membership.organization?.is_active) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      return {
+        payload: await this.buildTokenPayload(
+          user,
+          membership.organization,
+          membership.role,
+        ),
+      };
+    }
+
+    return {
+      payload: await this.buildUnscopedTokenPayload(
+        payload.sub,
+        payload.email,
+        payload.role,
+      ),
+    };
   }
 
   // log out
@@ -1193,6 +1249,13 @@ export class AuthService {
       const user = await this.getUserAccountById(payload.sub);
       if (!user)
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+      if (payload.jti && payload.familyId) {
+        await this.refreshSessionRepository.update(
+          { family_id: payload.familyId, revoked_at: IsNull() },
+          { revoked_at: new Date() },
+        );
+      }
 
       await this.setUserLoggedIn(user.id, false);
 
@@ -1247,6 +1310,13 @@ export class AuthService {
       membership.organization,
       membership.role,
     );
+
+    if (user.sessionFamilyId) {
+      await this.refreshSessionRepository.update(
+        { family_id: user.sessionFamilyId, revoked_at: IsNull() },
+        { revoked_at: new Date() },
+      );
+    }
 
     return {
       success: true,
@@ -1373,27 +1443,27 @@ export class AuthService {
    * SCENARIO B: Sign up via invitation (joins existing organization)
    */
   async signUpWithInvitation(dto: JoinOrganizationSignUpDto) {
-    // Validate invitation token
-    const invitation = await this.orgInvitationRepository.findOne({
-      where: { token: dto.invite_token, accepted: false },
-      relations: ['organization'],
+    if (!dto.invite_token && !dto.invite_code) {
+      throw new BadRequestException('An invitation token or code is required');
+    }
+
+    const invitation = await this.resolveInvitation({
+      invite_token: dto.invite_token,
+      invite_code: dto.invite_code,
     });
 
     if (!invitation) {
-      throw new BadRequestException('Invalid or expired invitation token');
+      throw new BadRequestException('Invalid or expired invitation');
     }
 
-    // Check if invitation expired
     if (invitation.expires_at && new Date() > invitation.expires_at) {
       throw new BadRequestException('Invitation has expired');
     }
 
-    // Verify email matches invitation
     if (invitation.email.toLowerCase() !== dto.email.toLowerCase()) {
       throw new BadRequestException('Email does not match invitation');
     }
 
-    // Check if email already exists
     const existingUser = await this.userRepository.findOne({
       where: { email: dto.email },
     });
@@ -1402,7 +1472,6 @@ export class AuthService {
       throw new ConflictException('Email already registered');
     }
 
-    // Check organization capacity
     const currentMemberCount = await this.userOrganizationRepository.count({
       where: { organization_id: invitation.organization_id },
     });
@@ -1413,17 +1482,14 @@ export class AuthService {
       );
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // Start transaction
     const queryRunner =
       this.userRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // Create user
       const user = queryRunner.manager.create(User, {
         email: dto.email,
         password: hashedPassword,
@@ -1435,21 +1501,18 @@ export class AuthService {
       });
       await queryRunner.manager.save(user);
 
-      // Create user-organization relationship
       const userOrganization = queryRunner.manager.create(UserOrganization, {
         user_id: user.id,
         organization_id: invitation.organization_id,
-        role: invitation.invited_role, // Role from invitation
+        role: invitation.invited_role,
       });
       await queryRunner.manager.save(userOrganization);
 
-      // Mark invitation as accepted
       invitation.accepted = true;
       await queryRunner.manager.save(invitation);
 
       await queryRunner.commitTransaction();
 
-      // Generate JWT token
       const token = await this.generateToken(
         user,
         invitation.organization,
@@ -1589,14 +1652,25 @@ export class AuthService {
   /**
    * Validate invitation token (for frontend to check before signup)
    */
-  async validateInvitation(token: string) {
-    const invitation = await this.orgInvitationRepository.findOne({
-      where: { token, accepted: false },
-      relations: ['organization'],
+
+  async validateInvitation({
+    invite_token,
+    invite_code,
+  }: {
+    invite_token?: string;
+    invite_code?: string;
+  }) {
+    if (!invite_token && !invite_code) {
+      throw new BadRequestException('An invitation token or code is required');
+    }
+
+    const invitation = await this.resolveInvitation({
+      invite_token,
+      invite_code,
     });
 
     if (!invitation) {
-      throw new NotFoundException('Invalid invitation token');
+      throw new NotFoundException('Invalid invitation');
     }
 
     if (invitation.expires_at && new Date() > invitation.expires_at) {
@@ -1612,6 +1686,45 @@ export class AuthService {
       },
       invited_role: invitation.invited_role,
     };
+  }
+
+  async resolveInvitation({
+    invite_token,
+    invite_code,
+  }: {
+    invite_token?: string;
+    invite_code?: string;
+  }) {
+    if (invite_token) {
+      return this.orgInvitationRepository.findOne({
+        where: { token_hash: hashInviteToken(invite_token), accepted: false },
+        relations: ['organization'],
+      });
+    }
+
+    if (invite_code) {
+      const invitation = await this.orgInvitationRepository.findOne({
+        where: {
+          invite_code_hash: hashInviteCode(invite_code),
+          accepted: false,
+        },
+        relations: ['organization'],
+      });
+
+      // A code match past its own (short) expiry doesn't count as valid,
+      // even if the invitation's overall (link) expiry hasn't passed yet.
+      if (
+        invitation &&
+        invitation.code_expires_at &&
+        new Date() > invitation.code_expires_at
+      ) {
+        return null;
+      }
+
+      return invitation;
+    }
+
+    return null;
   }
 
   /**
@@ -1644,37 +1757,108 @@ export class AuthService {
     organization: Organization,
     organizationRole: OrganizationRole,
   ) {
-    const userOrganizations =
-      (await this.usersService.getUserOrganizationsById(user.id)) ?? [];
+    const tokens = await this.issueTokenPair(
+      await this.buildTokenPayload(user, organization, organizationRole),
+    );
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    };
+  }
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      portal: user.role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
-      currentOrganizationId: organization.id,
-      organizationRole: organizationRole, // Role within current org
+  private async buildUnscopedTokenPayload(
+    userId: number,
+    email: string,
+    role: string,
+  ) {
+    const userOrganizations =
+      (await this.usersService.getUserOrganizationsById(userId)) ?? [];
+
+    return {
+      sub: userId,
+      email,
+      role,
+      portal: role === UserRole.SUPER_ADMIN ? 'admin' : 'user',
+      currentOrganizationId: null,
+      organizationRole: null,
       userOrganizations: userOrganizations.map((uo) => ({
         organization_id: uo.organization_id,
         subscription_tier: uo.organization?.subscription_tier ?? null,
         role: uo.role ?? null,
       })),
     };
+  }
 
-    const accessToken = await this.jwt.signAsync(payload, {
-      secret: process.env.JWT_ACCESS_TOKEN_SECRET,
-      expiresIn: process.env.JWT_ACCESS_EXPIRES_IN,
-    });
-
-    const refreshToken = await this.jwt.signAsync(payload, {
-      secret: process.env.JWT_REFRESH_TOKEN_SECRET,
-      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
-    });
+  private async buildTokenPayload(
+    user: User,
+    organization: Organization,
+    organizationRole: OrganizationRole,
+  ) {
+    const payload = await this.buildUnscopedTokenPayload(
+      user.id,
+      user.email,
+      user.role,
+    );
 
     return {
-      accessToken,
-      refreshToken,
+      ...payload,
+      currentOrganizationId: organization.id,
+      organizationRole,
     };
+  }
+
+  private async issueTokenPair(
+    payload: Record<string, unknown> & {
+      sub: number;
+      currentOrganizationId?: string | null;
+    },
+    manager?: EntityManager,
+    existingFamilyId?: string,
+  ) {
+    const refreshJti = randomUUID();
+    const familyId = existingFamilyId ?? randomUUID();
+    const accessToken = await this.jwt.signAsync(
+      { ...payload, sessionFamilyId: familyId },
+      {
+        secret: process.env.JWT_ACCESS_TOKEN_SECRET,
+        expiresIn: process.env.JWT_ACCESS_EXPIRES_IN,
+      },
+    );
+    const refreshToken = await this.jwt.signAsync(
+      {
+        ...payload,
+        tokenUse: 'refresh',
+        jti: refreshJti,
+        familyId,
+      },
+      {
+        secret: process.env.JWT_REFRESH_TOKEN_SECRET,
+        expiresIn: process.env.JWT_REFRESH_EXPIRES_IN,
+      },
+    );
+    const decoded = this.jwt.decode(refreshToken) as { exp?: number } | null;
+
+    if (!decoded?.exp) {
+      throw new Error('Refresh token is missing an expiration');
+    }
+
+    const repository = manager
+      ? manager.getRepository(RefreshSession)
+      : this.refreshSessionRepository;
+    await repository.save(
+      repository.create({
+        jti: refreshJti,
+        family_id: familyId,
+        user_id: payload.sub,
+        organization_id: payload.currentOrganizationId ?? null,
+        expires_at: new Date(decoded.exp * 1000),
+        revoked_at: null,
+        replaced_by_jti: null,
+        reuse_detected_at: null,
+      }),
+    );
+
+    return { accessToken, refreshToken, refreshJti };
   }
 
   /**

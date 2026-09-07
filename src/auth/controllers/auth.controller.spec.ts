@@ -10,6 +10,9 @@ describe('AuthController', () => {
     impersonateUser: jest.fn(),
     validateInvitation: jest.fn(),
     signUp: jest.fn(),
+    refreshToken: jest.fn(),
+    logOut: jest.fn(),
+    switchOrganization: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -38,12 +41,38 @@ describe('AuthController', () => {
   });
 
   it('uses the authenticated admin user for impersonation', async () => {
-    authService.impersonateUser.mockResolvedValue({ accessToken: 'impersonated' });
+    authService.impersonateUser.mockResolvedValue({
+      accessToken: 'impersonated',
+    });
 
     await expect(
       controller.impersonateUser(42, { user: { userId: 7 } }),
     ).resolves.toEqual({ accessToken: 'impersonated' });
     expect(authService.impersonateUser).toHaveBeenCalledWith(42, 7);
+  });
+
+  it('accepts refresh tokens in a mobile-safe request body', async () => {
+    authService.refreshToken.mockResolvedValue({ accessToken: 'next' });
+
+    await expect(
+      controller.refreshMobile({ refreshToken: 'refresh-token' }),
+    ).resolves.toEqual({ accessToken: 'next' });
+    expect(authService.refreshToken).toHaveBeenCalledWith('refresh-token');
+  });
+
+  it('passes the active organization from the request body', async () => {
+    authService.switchOrganization.mockResolvedValue({ success: true });
+
+    await expect(
+      controller.switchOrganization(
+        { user: { userId: 7 } },
+        { organizationId: '9f5a9c1c-7c91-4f6d-a6b2-e7ce08751a23' },
+      ),
+    ).resolves.toEqual({ success: true });
+    expect(authService.switchOrganization).toHaveBeenCalledWith(
+      { userId: 7 },
+      '9f5a9c1c-7c91-4f6d-a6b2-e7ce08751a23',
+    );
   });
 
   it('returns a simple secured webhook acknowledgement', async () => {
