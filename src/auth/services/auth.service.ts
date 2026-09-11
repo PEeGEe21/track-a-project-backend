@@ -1473,7 +1473,10 @@ export class AuthService {
     try {
       const organization = queryRunner.manager.create(Organization, {
         name: dto.name.trim(),
-        description: dto.description?.trim() || null,
+        // Existing deployments define this column as NOT NULL even though the
+        // entity metadata permits null. Preserve the established empty-string
+        // representation until that schema mismatch is migrated separately.
+        description: dto.description?.trim() || '',
         slug,
         subscription_tier: SubscriptionTier.FREE,
         max_users: 5,
