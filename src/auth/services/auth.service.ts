@@ -11,7 +11,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { isEmail } from 'class-validator';
-import { randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { any } from 'joi';
 import * as moment from 'moment';
 import { use } from 'passport';
@@ -79,6 +79,10 @@ import { QueryRunner } from 'typeorm';
 import { MailingService } from 'src/utils/mailing/mailing.service';
 import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
 import { hashInviteCode, hashInviteToken } from 'src/utils/invitation-crypto';
+import { CreateWorkspaceDto } from 'src/organizations/dto/create-workspace.dto';
+import { AuthUser } from 'src/types/users';
+import { SignupEmailVerification } from 'src/typeorm/entities/SignupEmailVerification';
+import { JoinWorkspaceDto } from 'src/organizations/dto/join-workspace.dto';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -119,6 +123,8 @@ export class AuthService {
     private orgInvitationRepository: Repository<OrganizationInvitation>,
     @InjectRepository(RefreshSession)
     private refreshSessionRepository: Repository<RefreshSession>,
+    @InjectRepository(SignupEmailVerification)
+    private signupEmailVerificationRepository: Repository<SignupEmailVerification>,
     // @InjectRepository(Profile) private profileRepository: Repository<Profile>,
     // @InjectRepository(Post) private postRepository: Repository<Post>,
     private jwt: JwtService,
@@ -182,6 +188,128 @@ export class AuthService {
 
     const expiresAt = new Date(verifiedAt.getTime() + config.otpTtl * 1000);
     return expiresAt.getTime() < Date.now();
+  }
+
+  private hashSignupSecret(value: string) {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  async requestSignupEmailVerification(email: string) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const message =
+      'If this email can be used, a verification code has been sent.';
+    const existingUser = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (existingUser) return { success: true, message };
+
+    const now = new Date();
+    let verification = await this.signupEmailVerificationRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (
+      verification &&
+      now.getTime() - verification.last_sent_at.getTime() < 60_000
+    ) {
+      return { success: true, message };
+    }
+    if (
+      verification &&
+      verification.created_at &&
+      now.getTime() - verification.created_at.getTime() < 60 * 60_000 &&
+      verification.resend_count >= 5
+    ) {
+      return { success: true, message };
+    }
+
+    const otp = String(this.generateOtp()).padStart(6, '0');
+    verification ??= this.signupEmailVerificationRepository.create({
+      email: normalizedEmail,
+    });
+    verification.code_hash = this.hashSignupSecret(otp);
+    verification.code_expires_at = new Date(
+      now.getTime() + config.otpTtl * 1000,
+    );
+    verification.attempt_count = 0;
+    verification.resend_count = (verification.resend_count ?? 0) + 1;
+    verification.last_sent_at = now;
+    verification.proof_hash = null;
+    verification.proof_expires_at = null;
+    verification.verified_at = null;
+    verification.consumed_at = null;
+    await this.signupEmailVerificationRepository.save(verification);
+
+    try {
+      await this.mailingService.sendSignupVerificationOtp(normalizedEmail, otp);
+    } catch {
+      AppLogger.error('AuthService', 'Signup verification email was not sent');
+    }
+    return {
+      success: true,
+      message,
+      ...(process.env.NODE_ENV === 'production' ? {} : { debugOtp: otp }),
+    };
+  }
+
+  async verifySignupEmail(email: string, code: string) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const verification = await this.signupEmailVerificationRepository.findOne({
+      where: { email: normalizedEmail },
+    });
+    const now = new Date();
+    if (
+      !verification ||
+      verification.consumed_at ||
+      verification.code_expires_at.getTime() <= now.getTime() ||
+      verification.attempt_count >= 5
+    ) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    verification.attempt_count += 1;
+    if (verification.code_hash !== this.hashSignupSecret(code.trim())) {
+      await this.signupEmailVerificationRepository.save(verification);
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    const verificationToken = randomBytes(32).toString('hex');
+    verification.proof_hash = this.hashSignupSecret(verificationToken);
+    verification.proof_expires_at = new Date(
+      now.getTime() + config.otpTtl * 1000,
+    );
+    verification.verified_at = now;
+    await this.signupEmailVerificationRepository.save(verification);
+    return {
+      success: true,
+      message: 'Email verified successfully',
+      verificationToken,
+    };
+  }
+
+  private async consumeSignupVerification(
+    manager: EntityManager,
+    email: string,
+    verificationToken: string,
+  ) {
+    const verification = await manager.findOne(SignupEmailVerification, {
+      where: { email },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (
+      !verification ||
+      !verification.verified_at ||
+      verification.consumed_at ||
+      !verification.proof_hash ||
+      !verification.proof_expires_at ||
+      verification.proof_expires_at.getTime() <= Date.now() ||
+      verification.proof_hash !== this.hashSignupSecret(verificationToken)
+    ) {
+      throw new BadRequestException(
+        'Email verification is required or has expired',
+      );
+    }
+    verification.consumed_at = new Date();
+    await manager.save(verification);
   }
 
   async requestPasswordReset(email: string) {
@@ -1330,10 +1458,280 @@ export class AuthService {
     };
   }
 
+  async createWorkspaceForAccount(authUser: AuthUser, dto: CreateWorkspaceDto) {
+    const user = await this.userRepository.findOneBy({ id: authUser.userId });
+    if (!user || !user.is_active) {
+      throw new ForbiddenException('Account cannot create a workspace');
+    }
+
+    const slug = await this.generateUniqueSlug(dto.name);
+    const queryRunner =
+      this.userRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const organization = queryRunner.manager.create(Organization, {
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        slug,
+        subscription_tier: SubscriptionTier.FREE,
+        max_users: 5,
+        max_projects: 10,
+        is_active: true,
+      });
+      await queryRunner.manager.save(organization);
+
+      await this.provisionInitialFreeSubscription(queryRunner, organization.id);
+
+      const membership = queryRunner.manager.create(UserOrganization, {
+        user_id: user.id,
+        organization_id: organization.id,
+        role: OrganizationRole.ORG_ADMIN,
+        is_active: true,
+      });
+      await queryRunner.manager.save(membership);
+
+      const globalMenus = await queryRunner.manager.find(GlobalMenu, {
+        where: { is_active: true },
+      });
+      if (globalMenus.length > 0) {
+        await queryRunner.manager.save(
+          globalMenus.map((menu) =>
+            queryRunner.manager.create(OrganizationMenu, {
+              organization_id: organization.id,
+              global_menu_id: menu.id,
+              is_enabled: true,
+              custom_label: null,
+              order_index: menu.order_index,
+            }),
+          ),
+        );
+      }
+
+      const correlationId = this.auditWriter.correlationId();
+      await this.auditWriter.append(queryRunner.manager, {
+        organizationId: organization.id,
+        action: AuditAction.ORGANIZATION_CREATED,
+        actor: {
+          type: AuditActorType.HUMAN,
+          id: user.id,
+          label: user.fullName || user.email,
+          responsibleUserId: user.id,
+        },
+        subject: {
+          type: AuditSubjectType.ORGANIZATION,
+          id: organization.id,
+          label: organization.name,
+        },
+        source: AuditSource.API,
+        correlationId,
+        after: { name: organization.name, slug: organization.slug },
+      });
+      await this.auditWriter.append(queryRunner.manager, {
+        organizationId: organization.id,
+        action: AuditAction.ORGANIZATION_MEMBER_ADDED,
+        actor: {
+          type: AuditActorType.HUMAN,
+          id: user.id,
+          label: user.fullName || user.email,
+          responsibleUserId: user.id,
+        },
+        subject: {
+          type: AuditSubjectType.USER,
+          id: user.id,
+          label: user.fullName || user.email,
+        },
+        source: AuditSource.API,
+        correlationId,
+        after: { role: membership.role, organizationId: organization.id },
+      });
+
+      await queryRunner.commitTransaction();
+
+      const token = await this.generateToken(
+        user,
+        organization,
+        OrganizationRole.ORG_ADMIN,
+      );
+      if (authUser.sessionFamilyId) {
+        await this.refreshSessionRepository.update(
+          { family_id: authUser.sessionFamilyId, revoked_at: IsNull() },
+          { revoked_at: new Date() },
+        );
+      }
+
+      const allOrganizations =
+        (await this.usersService.getUserOrganizationsById(user.id)) ?? [];
+      return {
+        success: true,
+        user: this.sanitizeUser(user),
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          subscription_tier: organization.subscription_tier,
+          role: membership.role,
+          onboarding_complete: organization.onboarding_complete,
+          description: organization.description,
+          logo: organization.logo,
+        },
+        organizationRole: membership.role,
+        allOrganizations: allOrganizations.map((uo) => ({
+          id: uo.organization.id,
+          name: uo.organization.name,
+          slug: uo.organization.slug,
+          subscription_tier: uo.organization.subscription_tier,
+          role: uo.role,
+          onboarding_complete: uo.organization.onboarding_complete,
+          description: uo.organization.description,
+          logo: uo.organization.logo,
+        })),
+        token,
+        message: 'Workspace created successfully',
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async joinWorkspaceForAccount(authUser: AuthUser, dto: JoinWorkspaceDto) {
+    if (!dto.invite_token && !dto.invite_code) {
+      throw new BadRequestException('An invitation token or code is required');
+    }
+    const user = await this.userRepository.findOneBy({ id: authUser.userId });
+    if (!user || !user.is_active) {
+      throw new ForbiddenException('Account cannot join a workspace');
+    }
+    const resolved = await this.resolveInvitation({
+      invite_token: dto.invite_token,
+      invite_code: dto.invite_code,
+    });
+    if (
+      !resolved ||
+      (resolved.expires_at && resolved.expires_at.getTime() <= Date.now())
+    ) {
+      throw new BadRequestException('Invalid or expired invitation');
+    }
+    if (resolved.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new ForbiddenException('Invitation belongs to another account');
+    }
+
+    const queryRunner =
+      this.userRepository.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const invitation = await queryRunner.manager.findOne(
+        OrganizationInvitation,
+        {
+          where: { id: resolved.id, accepted: false },
+          relations: ['organization'],
+          lock: { mode: 'pessimistic_write' },
+        },
+      );
+      if (!invitation) {
+        throw new BadRequestException('Invalid or expired invitation');
+      }
+      const existingMembership = await queryRunner.manager.findOne(
+        UserOrganization,
+        {
+          where: {
+            user_id: user.id,
+            organization_id: invitation.organization_id,
+          },
+        },
+      );
+      if (existingMembership) {
+        throw new ConflictException('Account is already a workspace member');
+      }
+      const currentMemberCount = await queryRunner.manager.count(
+        UserOrganization,
+        { where: { organization_id: invitation.organization_id } },
+      );
+      if (currentMemberCount >= invitation.organization.max_users) {
+        throw new BadRequestException(
+          'Organization has reached maximum user capacity',
+        );
+      }
+
+      const membership = queryRunner.manager.create(UserOrganization, {
+        user_id: user.id,
+        organization_id: invitation.organization_id,
+        role: invitation.invited_role,
+        is_active: true,
+      });
+      await queryRunner.manager.save(membership);
+      invitation.accepted = true;
+      await queryRunner.manager.save(invitation);
+      await this.auditWriter.append(queryRunner.manager, {
+        organizationId: invitation.organization_id,
+        action: AuditAction.ORGANIZATION_MEMBER_ADDED,
+        actor: {
+          type: AuditActorType.HUMAN,
+          id: user.id,
+          label: user.fullName || user.email,
+          responsibleUserId: user.id,
+        },
+        subject: {
+          type: AuditSubjectType.USER,
+          id: user.id,
+          label: user.fullName || user.email,
+        },
+        source: AuditSource.API,
+        correlationId: this.auditWriter.correlationId(),
+        after: {
+          role: membership.role,
+          organizationId: invitation.organization_id,
+          source: 'invitation',
+        },
+      });
+      await queryRunner.commitTransaction();
+
+      const token = await this.generateToken(
+        user,
+        invitation.organization,
+        membership.role,
+      );
+      if (authUser.sessionFamilyId) {
+        await this.refreshSessionRepository.update(
+          { family_id: authUser.sessionFamilyId, revoked_at: IsNull() },
+          { revoked_at: new Date() },
+        );
+      }
+      return {
+        success: true,
+        user: this.sanitizeUser(user),
+        organization: {
+          id: invitation.organization.id,
+          name: invitation.organization.name,
+          slug: invitation.organization.slug,
+          subscription_tier: invitation.organization.subscription_tier,
+          role: membership.role,
+          onboarding_complete: invitation.organization.onboarding_complete,
+          description: invitation.organization.description,
+          logo: invitation.organization.logo,
+        },
+        organizationRole: membership.role,
+        token,
+        message: 'Workspace joined successfully',
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   /**
    * SCENARIO A: Sign up with new organization (becomes ORG_ADMIN)
    */
   async signUpWithOrganization(dto: CreateOrganizationSignUpDto) {
+    dto.email = dto.email.toLowerCase().trim();
     // Check if email already exists
     const existingUser = await this.userRepository.findOne({
       where: { email: dto.email },
@@ -1356,6 +1754,12 @@ export class AuthService {
     await queryRunner.startTransaction();
 
     try {
+      await this.consumeSignupVerification(
+        queryRunner.manager,
+        dto.email,
+        dto.verification_token,
+      );
+
       // Create user
       const user = queryRunner.manager.create(User, {
         email: dto.email,
@@ -1573,7 +1977,20 @@ export class AuthService {
     );
 
     if (userOrganizations.length === 0) {
-      throw new UnauthorizedException('No active organization found');
+      user.logged_in = true;
+      await this.userRepository.save(user);
+      const token = await this.issueTokenPair(
+        await this.buildUnscopedTokenPayload(user.id, user.email, user.role),
+      );
+      return {
+        nextStep: 'create_or_join_organization' as const,
+        user: this.sanitizeUser(user),
+        organizations: [],
+        token: {
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+        },
+      };
     }
 
     // Determine which organization to use
@@ -1585,9 +2002,19 @@ export class AuthService {
     } else {
       // Multiple organizations
       if (!dto.organization_id) {
-        // Return list of organizations for user to choose
+        user.logged_in = true;
+        await this.userRepository.save(user);
+        const token = await this.issueTokenPair(
+          await this.buildUnscopedTokenPayload(user.id, user.email, user.role),
+        );
         return {
           requiresOrganizationSelection: true,
+          nextStep: 'select_organization' as const,
+          user: this.sanitizeUser(user),
+          token: {
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+          },
           organizations: userOrganizations.map((uo) => ({
             id: uo.organization.id,
             name: uo.organization.name,

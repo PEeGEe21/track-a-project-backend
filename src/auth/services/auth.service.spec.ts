@@ -17,6 +17,8 @@ import { MailingService } from 'src/utils/mailing/mailing.service';
 import { OrganizationRole } from 'src/utils/constants/org_roles';
 import { AuditWriterService } from 'src/audit/audit-writer.service';
 import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
+import * as bcrypt from 'bcryptjs';
+import { SignupEmailVerification } from 'src/typeorm/entities/SignupEmailVerification';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -26,7 +28,9 @@ describe('AuthService', () => {
   };
   const projectsService = {};
   const userRepository = {
+    findOne: jest.fn(),
     findOneBy: jest.fn(),
+    save: jest.fn(async (value) => value),
   };
   const userOrganizationRepository = {
     findOne: jest.fn(),
@@ -51,6 +55,11 @@ describe('AuthService', () => {
     },
   };
   const mailingService = {};
+  const signupEmailVerificationRepository = {
+    create: jest.fn((value) => value),
+    findOne: jest.fn(),
+    save: jest.fn(async (value) => value),
+  };
   const repoStub = {};
 
   beforeEach(async () => {
@@ -78,6 +87,10 @@ describe('AuthService', () => {
           provide: getRepositoryToken(RefreshSession),
           useValue: refreshSessionRepository,
         },
+        {
+          provide: getRepositoryToken(SignupEmailVerification),
+          useValue: signupEmailVerificationRepository,
+        },
         { provide: JwtService, useValue: jwtService },
         { provide: MailingService, useValue: mailingService },
         { provide: AuditWriterService, useValue: { append: jest.fn() } },
@@ -90,6 +103,91 @@ describe('AuthService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('returns an account-scoped session when the user has no memberships', async () => {
+    const user = {
+      id: 14,
+      email: 'user@example.com',
+      password: await bcrypt.hash('correct-password', 4),
+      role: 'member',
+      is_active: true,
+      logged_in: false,
+      user_organizations: [],
+    };
+    userRepository.findOne.mockResolvedValue(user);
+    usersService.getUserOrganizationsById.mockResolvedValue([]);
+    jest.spyOn(service as any, 'issueTokenPair').mockResolvedValue({
+      accessToken: 'account-access',
+      refreshToken: 'account-refresh',
+      refreshJti: 'refresh-jti',
+    });
+
+    await expect(
+      service.login({
+        email: 'user@example.com',
+        password: 'correct-password',
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        nextStep: 'create_or_join_organization',
+        organizations: [],
+        token: {
+          accessToken: 'account-access',
+          refreshToken: 'account-refresh',
+        },
+      }),
+    );
+    expect(userRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ logged_in: true }),
+    );
+    expect((service as any).issueTokenPair).toHaveBeenCalledWith(
+      expect.objectContaining({ currentOrganizationId: null }),
+    );
+  });
+
+  it('issues a one-time signup proof after a valid email code', async () => {
+    const verification = {
+      email: 'new@example.com',
+      code_hash: (service as any).hashSignupSecret('123456'),
+      code_expires_at: new Date(Date.now() + 60_000),
+      attempt_count: 0,
+      consumed_at: null,
+      proof_hash: null,
+      proof_expires_at: null,
+      verified_at: null,
+    };
+    signupEmailVerificationRepository.findOne.mockResolvedValue(verification);
+
+    await expect(
+      service.verifySignupEmail('NEW@example.com', '123456'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        verificationToken: expect.any(String),
+      }),
+    );
+    expect(verification.attempt_count).toBe(1);
+    expect(verification.verified_at).toEqual(expect.any(Date));
+    expect(verification.proof_hash).toHaveLength(64);
+  });
+
+  it('counts invalid signup verification attempts without exposing details', async () => {
+    const verification = {
+      code_hash: (service as any).hashSignupSecret('123456'),
+      code_expires_at: new Date(Date.now() + 60_000),
+      attempt_count: 0,
+      consumed_at: null,
+    };
+    signupEmailVerificationRepository.findOne.mockResolvedValue(verification);
+
+    await expect(
+      service.verifySignupEmail('new@example.com', '999999'),
+    ).rejects.toThrow('Invalid or expired verification code');
+    expect(verification.attempt_count).toBe(1);
+    expect(signupEmailVerificationRepository.save).toHaveBeenCalledWith(
+      verification,
+    );
   });
 
   it('preserves active organization scope when refreshing scoped tokens', async () => {

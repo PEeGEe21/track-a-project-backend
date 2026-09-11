@@ -13,6 +13,8 @@ describe('AuthController', () => {
     refreshToken: jest.fn(),
     logOut: jest.fn(),
     switchOrganization: jest.fn(),
+    requestSignupEmailVerification: jest.fn(),
+    verifySignupEmail: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -38,6 +40,32 @@ describe('AuthController', () => {
       accessToken: 'token',
     });
     expect(authService.login).toHaveBeenCalledWith(dto);
+  });
+
+  it('delegates signup email verification without changing the email', async () => {
+    authService.requestSignupEmailVerification.mockResolvedValue({
+      success: true,
+    });
+    authService.verifySignupEmail.mockResolvedValue({
+      success: true,
+      verificationToken: 'proof',
+    });
+
+    await controller.requestSignupEmailVerification({
+      email: 'new@example.com',
+    });
+    await controller.verifySignupEmail({
+      email: 'new@example.com',
+      code: '123456',
+    });
+
+    expect(authService.requestSignupEmailVerification).toHaveBeenCalledWith(
+      'new@example.com',
+    );
+    expect(authService.verifySignupEmail).toHaveBeenCalledWith(
+      'new@example.com',
+      '123456',
+    );
   });
 
   it('uses the authenticated admin user for impersonation', async () => {

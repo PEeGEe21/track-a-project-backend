@@ -62,6 +62,29 @@ export class OrganizationSelectionResponseDto {
 
   @ApiProperty({ type: [OrganizationSummaryDto] })
   organizations: OrganizationSummaryDto[];
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  user?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: TokenPairDto })
+  token?: TokenPairDto;
+
+  @ApiPropertyOptional({ example: 'select_organization' })
+  nextStep?: 'select_organization';
+}
+
+export class WorkspaceRequiredResponseDto {
+  @ApiProperty({ example: 'create_or_join_organization' })
+  nextStep: 'create_or_join_organization';
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  user: Record<string, unknown>;
+
+  @ApiProperty({ type: [OrganizationSummaryDto] })
+  organizations: OrganizationSummaryDto[];
+
+  @ApiProperty({ type: TokenPairDto })
+  token: TokenPairDto;
 }
 
 export class AuthenticatedSessionResponseDto {
@@ -107,6 +130,29 @@ export class SwitchOrganizationResponseDto {
 
   @ApiProperty({ type: OrganizationSummaryDto })
   organization: OrganizationSummaryDto;
+}
+
+export class CreateWorkspaceResponseDto extends AuthenticatedSessionResponseDto {
+  @ApiProperty({ example: true })
+  success: boolean;
+}
+
+export class SignupVerificationResponseDto {
+  @ApiProperty({ example: true })
+  success: boolean;
+
+  @ApiProperty()
+  message: string;
+
+  @ApiPropertyOptional({
+    description: 'Only returned after a valid code is verified',
+  })
+  verificationToken?: string;
+
+  @ApiPropertyOptional({
+    description: 'Development-only code for local testing',
+  })
+  debugOtp?: string;
 }
 
 export class InvitationValidationResponseDto {

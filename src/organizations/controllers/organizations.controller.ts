@@ -52,13 +52,39 @@ import {
   OrganizationTeamMutationResponseDto,
   OrganizationTeamResponseDto,
 } from '../dto/organization-contract.dto';
+import { CreateWorkspaceResponseDto } from 'src/auth/dtos/auth-contract.dto';
+import { AuthService } from 'src/auth/services/auth.service';
+import { CreateWorkspaceDto } from '../dto/create-workspace.dto';
+import { JoinWorkspaceDto } from '../dto/join-workspace.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
 @ApiTags('Organizations')
 @ApiBearerAuth()
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly authService: AuthService,
+  ) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create another workspace for this account' })
+  @ApiCreatedResponse({ type: CreateWorkspaceResponseDto })
+  @ApiStandardErrors({ forbidden: true })
+  createWorkspace(
+    @Req() req: any,
+    @Body(ValidationPipe) dto: CreateWorkspaceDto,
+  ) {
+    return this.authService.createWorkspaceForAccount(req.user, dto);
+  }
+
+  @Post('join')
+  @ApiOperation({ summary: 'Join an invited workspace with this account' })
+  @ApiCreatedResponse({ type: CreateWorkspaceResponseDto })
+  @ApiStandardErrors({ forbidden: true })
+  joinWorkspace(@Req() req: any, @Body(ValidationPipe) dto: JoinWorkspaceDto) {
+    return this.authService.joinWorkspaceForAccount(req.user, dto);
+  }
 
   // ============================================
   // Super Admin Routes

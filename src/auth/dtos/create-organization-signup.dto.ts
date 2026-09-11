@@ -4,4 +4,5 @@ export class CreateOrganizationSignUpDto {
   first_name: string;
   last_name: string;
   organization_name: string;
+  verification_token: string;
 }

@@ -19,7 +19,7 @@ This plan covers the NestJS backend in `track-a-project-backend`.
 | BE-P0-03 | Remove sensitive request and user logging | Request bodies, files, and user/password flow data are being logged in live code | `src/users/controllers`, `src/users/services`, other services with `console.log` | Done |
 | BE-P0-04 | Audit auth and impersonation routes for proper guard coverage | Admin and impersonation paths should be explicitly protected and reviewed | `src/auth/controllers`, auth guards, admin guards | Done |
 | BE-P0-05 | Define and validate required environment variables for production startup | Prevents broken deploys and unsafe fallback behavior | `src/config`, `.env.example`, startup docs | Done |
-| BE-P0-06 | Decouple account authentication from workspace membership; add authenticated workspace creation and signup email verification | Existing users must be able to authenticate with zero memberships and create additional workspaces without duplicate accounts | `src/auth`, `src/organizations`; see `../tailpoint-docs/product/ACCOUNT_AND_WORKSPACE_LIFECYCLE.md` | Not started |
+| BE-P0-06 | Decouple account authentication from workspace membership; add authenticated workspace creation and signup email verification | Users can now authenticate with zero memberships, create or join workspaces as an existing account, and verify new-account email ownership through a one-time proof; migration deployment and end-to-end validation remain | `src/auth`, `src/organizations`; see `../tailpoint-docs/product/ACCOUNT_AND_WORKSPACE_LIFECYCLE.md` | In progress |
 
 ## P1 - High
 

@@ -25,4 +25,11 @@ export class CreateOrganizationDto {
   @IsString()
   @IsNotEmpty()
   organization_name: string;
+
+  @ApiProperty({
+    description: 'One-time proof returned after email verification',
+  })
+  @IsString()
+  @IsNotEmpty()
+  verification_token: string;
 }

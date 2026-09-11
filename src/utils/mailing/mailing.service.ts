@@ -292,6 +292,33 @@ export class MailingService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async sendSignupVerificationOtp(email: string, otp: string): Promise<string> {
+    const html = `
+      <div style="background:#F8FAFC; padding:32px 16px; font-family:Arial, sans-serif; color:#102A43;">
+        <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:20px; overflow:hidden;">
+          <div style="padding:24px 28px; background:linear-gradient(135deg,#083344 0%,#0F766E 55%,#2563EB 140%); color:#FFFFFF;">
+            <p style="margin:0; font-size:12px; letter-spacing:0.18em; text-transform:uppercase; opacity:0.8;">Tailpoint</p>
+            <h2 style="margin:12px 0 0; font-size:28px; line-height:1.2;">Verify your email</h2>
+          </div>
+          <div style="padding:28px;">
+            <p style="margin:0; font-size:16px; line-height:1.7;">Use this code to finish creating your Tailpoint account and first workspace.</p>
+            <div style="margin:28px 0; padding:18px 20px; background:#ECFDF5; border:1px solid #A7F3D0; border-radius:16px; text-align:center;">
+              <span style="font-size:34px; font-weight:700; letter-spacing:10px; color:#0F172A;">${otp}</span>
+            </div>
+            <p style="margin:0; font-size:14px; line-height:1.7; color:#486581;">This code expires shortly and can only be used once. If you did not request it, you can ignore this email.</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: email,
+      subject: 'Verify your Tailpoint email',
+      text: `Your Tailpoint verification code is ${otp}`,
+      html,
+    });
+  }
+
   async sendNotificationEmail({
     email,
     firstName,

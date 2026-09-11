@@ -118,6 +118,7 @@ import { UserProjectSidebarPin } from './typeorm/entities/UserProjectSidebarPin'
 import { SidebarProjectsModule } from './sidebar-projects/sidebar-projects.module';
 import { AiRequestAudit } from './typeorm/entities/AiRequestAudit';
 import { IntakeAiSuggestion } from './typeorm/entities/IntakeAiSuggestion';
+import { SignupEmailVerification } from './typeorm/entities/SignupEmailVerification';
 import { AiModule } from './ai/ai.module';
 import { DataLifecycleEvent } from './typeorm/entities/DataLifecycleEvent';
 import { DataLifecycleModule } from './data-lifecycle/data-lifecycle.module';
@@ -248,6 +249,7 @@ import { TaskDependenciesModule } from './task-dependencies/task-dependencies.mo
             IntakeEmailAddress,
             IntakeEmailAttachment,
             IntakeAiSuggestion,
+            SignupEmailVerification,
             TaskDeadlineReminder,
             OrganizationSettings,
             ProjectStatusTemplate,

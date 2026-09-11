@@ -41,6 +41,7 @@ import { Plan } from 'src/typeorm/entities/Plan';
 import { Price } from 'src/typeorm/entities/Price';
 import { Subscription } from 'src/typeorm/entities/Subscription';
 import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
+import { SignupEmailVerification } from 'src/typeorm/entities/SignupEmailVerification';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { RefreshSession } from 'src/typeorm/entities/RefreshSession';
       Price,
       Subscription,
       RefreshSession,
+      SignupEmailVerification,
     ]),
   ],
   controllers: [AuthController],

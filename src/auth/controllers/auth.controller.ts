@@ -48,7 +48,10 @@ import {
   SignupSessionResponseDto,
   SwitchOrganizationRequestDto,
   SwitchOrganizationResponseDto,
+  SignupVerificationResponseDto,
+  WorkspaceRequiredResponseDto,
 } from '../dtos/auth-contract.dto';
+import { VerifySignupEmailDto } from '../dtos/verify-signup-email.dto';
 import {
   ApiErrorDto,
   ApiStandardErrors,
@@ -61,9 +64,42 @@ import {
   ApiErrorDto,
   AuthenticatedSessionResponseDto,
   OrganizationSelectionResponseDto,
+  WorkspaceRequiredResponseDto,
 )
 export class AuthController {
   constructor(private authService: AuthService) {}
+
+  @Post('signup/request-email-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request or resend a signup email code' })
+  @ApiOkResponse({ type: SignupVerificationResponseDto })
+  @ApiStandardErrors()
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  requestSignupEmailVerification(
+    @Body(ValidationPipe) dto: RequestEmailOtpDto,
+  ) {
+    return this.authService.requestSignupEmailVerification(dto.email);
+  }
+
+  @Post('signup/verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify a signup email code' })
+  @ApiOkResponse({ type: SignupVerificationResponseDto })
+  @ApiStandardErrors()
+  @Throttle({
+    default: {
+      limit: config.rateLimit.authMax,
+      ttl: config.rateLimit.authWindowMs,
+    },
+  })
+  verifySignupEmail(@Body(ValidationPipe) dto: VerifySignupEmailDto) {
+    return this.authService.verifySignupEmail(dto.email, dto.code);
+  }
 
   // @Post('/login-phone')
   // async loginWithPhoneNumber(
@@ -136,6 +172,7 @@ export class AuthController {
       oneOf: [
         { $ref: getSchemaPath(AuthenticatedSessionResponseDto) },
         { $ref: getSchemaPath(OrganizationSelectionResponseDto) },
+        { $ref: getSchemaPath(WorkspaceRequiredResponseDto) },
       ],
     },
   })
