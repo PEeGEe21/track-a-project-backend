@@ -4081,6 +4081,110 @@
         }
       }
     },
+    "/api/auth/signup/request-email-verification": {
+      "post": {
+        "operationId": "Auth_requestSignupEmailVerification",
+        "summary": "Request or resend a signup email code",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestEmailOtpDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupVerificationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
+    "/api/auth/signup/verify-email": {
+      "post": {
+        "operationId": "Auth_verifySignupEmail",
+        "summary": "Verify a signup email code",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifySignupEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupVerificationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authentication"
+        ]
+      }
+    },
     "/api/auth/signup/create-organization": {
       "post": {
         "operationId": "Auth_signUpWithOrganization",
@@ -4279,6 +4383,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/OrganizationSelectionResponseDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorkspaceRequiredResponseDto"
                     }
                   ]
                 }
@@ -12122,6 +12229,71 @@
       }
     },
     "/api/organizations": {
+      "post": {
+        "operationId": "Organizations_createWorkspace",
+        "summary": "Create another workspace for this account",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWorkspaceResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Organizations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
       "get": {
         "operationId": "Organizations_findAll",
         "summary": "List organizations for platform administration",
@@ -12187,6 +12359,73 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OrganizationListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Organizations"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/organizations/join": {
+      "post": {
+        "operationId": "Organizations_joinWorkspace",
+        "summary": "Join an invited workspace with this account",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinWorkspaceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWorkspaceResponseDto"
                 }
               }
             }
@@ -18829,11 +19068,104 @@
             "items": {
               "$ref": "#/components/schemas/OrganizationSummaryDto"
             }
+          },
+          "user": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenPairDto"
+          },
+          "nextStep": {
+            "type": "string",
+            "example": "select_organization"
           }
         },
         "required": [
           "requiresOrganizationSelection",
           "organizations"
+        ]
+      },
+      "WorkspaceRequiredResponseDto": {
+        "type": "object",
+        "properties": {
+          "nextStep": {
+            "type": "string",
+            "example": "create_or_join_organization"
+          },
+          "user": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationSummaryDto"
+            }
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenPairDto"
+          }
+        },
+        "required": [
+          "nextStep",
+          "user",
+          "organizations",
+          "token"
+        ]
+      },
+      "RequestEmailOtpDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "SignupVerificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "verificationToken": {
+            "type": "string",
+            "description": "Only returned after a valid code is verified"
+          },
+          "debugOtp": {
+            "type": "string",
+            "description": "Development-only code for local testing"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ]
+      },
+      "VerifySignupEmailDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 6
+          }
+        },
+        "required": [
+          "email",
+          "code"
         ]
       },
       "CreateOrganizationDto": {
@@ -18856,6 +19188,10 @@
           },
           "organization_name": {
             "type": "string"
+          },
+          "verification_token": {
+            "type": "string",
+            "description": "One-time proof returned after email verification"
           }
         },
         "required": [
@@ -18863,7 +19199,8 @@
           "password",
           "first_name",
           "last_name",
-          "organization_name"
+          "organization_name",
+          "verification_token"
         ]
       },
       "SignupSessionResponseDto": {
@@ -19054,18 +19391,6 @@
         },
         "required": [
           "refreshToken"
-        ]
-      },
-      "RequestEmailOtpDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email"
-          }
-        },
-        "required": [
-          "email"
         ]
       },
       "VerifyForgotPasswordOtpDto": {
@@ -19894,6 +20219,71 @@
       "UpdateOrgMenuDto": {
         "type": "object",
         "properties": {}
+      },
+      "CreateWorkspaceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateWorkspaceResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationSummaryDto"
+          },
+          "organizationRole": {
+            "type": "string"
+          },
+          "allOrganizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationSummaryDto"
+            }
+          },
+          "token": {
+            "$ref": "#/components/schemas/TokenPairDto"
+          },
+          "message": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "user",
+          "organization",
+          "token",
+          "success"
+        ]
+      },
+      "JoinWorkspaceDto": {
+        "type": "object",
+        "properties": {
+          "invite_token": {
+            "type": "string"
+          },
+          "invite_code": {
+            "type": "string"
+          }
+        }
       },
       "OrganizationContractDto": {
         "type": "object",
