@@ -146,6 +146,21 @@ describe('AuthService', () => {
     );
   });
 
+  it('refuses to delete a workspace outside the active token scope', async () => {
+    await expect(
+      service.deleteWorkspaceForAccount(
+        {
+          userId: 14,
+          email: 'user@example.com',
+          role: 'member',
+          currentOrganizationId: 'org_active',
+        },
+        'org_other',
+        { confirmationName: 'Other workspace' },
+      ),
+    ).rejects.toThrow('Only the active workspace can be deleted');
+  });
+
   it('issues a one-time signup proof after a valid email code', async () => {
     const verification = {
       email: 'new@example.com',

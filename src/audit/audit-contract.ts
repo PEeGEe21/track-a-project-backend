@@ -44,6 +44,7 @@ export enum AuditSubjectType {
 
 export enum AuditAction {
   ORGANIZATION_CREATED = 'organization.created',
+  ORGANIZATION_DELETED = 'organization.deleted',
   ORGANIZATION_MEMBER_ADDED = 'organization.member_added',
   PROJECT_CREATED = 'project.created',
   PROJECT_UPDATED = 'project.updated',

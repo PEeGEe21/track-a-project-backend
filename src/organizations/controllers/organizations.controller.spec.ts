@@ -10,6 +10,7 @@ describe('OrganizationsController', () => {
   const authService = {
     createWorkspaceForAccount: jest.fn(),
     joinWorkspaceForAccount: jest.fn(),
+    deleteWorkspaceForAccount: jest.fn(),
   };
 
   beforeEach(() => {
@@ -44,6 +45,24 @@ describe('OrganizationsController', () => {
     });
     expect(authService.joinWorkspaceForAccount).toHaveBeenCalledWith(
       req.user,
+      dto,
+    );
+  });
+
+  it('deletes a workspace through the authenticated account lifecycle', async () => {
+    authService.deleteWorkspaceForAccount.mockResolvedValue({ success: true });
+    const user = {
+      userId: 21,
+      currentOrganizationId: '9f5a9c1c-7c91-4f6d-a6b2-e7ce08751a23',
+    };
+    const dto = { confirmationName: 'Test workspace' };
+
+    await expect(
+      controller.remove(user.currentOrganizationId, dto, { user }),
+    ).resolves.toEqual({ success: true });
+    expect(authService.deleteWorkspaceForAccount).toHaveBeenCalledWith(
+      user,
+      user.currentOrganizationId,
       dto,
     );
   });

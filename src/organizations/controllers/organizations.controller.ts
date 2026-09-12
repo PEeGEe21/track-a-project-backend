@@ -56,6 +56,7 @@ import { CreateWorkspaceResponseDto } from 'src/auth/dtos/auth-contract.dto';
 import { AuthService } from 'src/auth/services/auth.service';
 import { CreateWorkspaceDto } from '../dto/create-workspace.dto';
 import { JoinWorkspaceDto } from '../dto/join-workspace.dto';
+import { DeleteWorkspaceDto } from '../dto/delete-workspace.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('organizations')
@@ -192,12 +193,19 @@ export class OrganizationsController {
     return this.organizationsService.triggerDeadlineReminderTest(req.user, id);
   }
 
+  @UseGuards(JwtAuthGuard, OrganizationAccessGuard, RolesGuard)
+  @Roles('org_admin')
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete an organization', deprecated: true })
-  @ApiOkResponse({ schema: { type: 'string' } })
+  @ApiOperation({ summary: 'Delete the active workspace as its administrator' })
+  @ApiOrganizationHeader()
+  @ApiOkResponse({ schema: { type: 'object', additionalProperties: true } })
   @ApiStandardErrors({ forbidden: true })
-  remove(@Param('id') id: string) {
-    return this.organizationsService.remove(+id);
+  remove(
+    @Param('id') id: string,
+    @Body(ValidationPipe) dto: DeleteWorkspaceDto,
+    @Req() req: any,
+  ) {
+    return this.authService.deleteWorkspaceForAccount(req.user, id, dto);
   }
 
   @Post('invitations')

@@ -12538,8 +12538,7 @@
       },
       "delete": {
         "operationId": "Organizations_remove",
-        "summary": "Delete an organization",
-        "deprecated": true,
+        "summary": "Delete the active workspace as its administrator",
         "parameters": [
           {
             "name": "id",
@@ -12548,15 +12547,36 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "x-organization-id",
+            "in": "header",
+            "description": "Active organization UUID.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteWorkspaceDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "string"
+                  "type": "object",
+                  "additionalProperties": true
                 }
               }
             }
@@ -20559,6 +20579,18 @@
           "success",
           "message",
           "organization"
+        ]
+      },
+      "DeleteWorkspaceDto": {
+        "type": "object",
+        "properties": {
+          "confirmationName": {
+            "type": "string",
+            "description": "Exact workspace name used as confirmation"
+          }
+        },
+        "required": [
+          "confirmationName"
         ]
       },
       "InviteUserDto": {

@@ -83,6 +83,7 @@ import { CreateWorkspaceDto } from 'src/organizations/dto/create-workspace.dto';
 import { AuthUser } from 'src/types/users';
 import { SignupEmailVerification } from 'src/typeorm/entities/SignupEmailVerification';
 import { JoinWorkspaceDto } from 'src/organizations/dto/join-workspace.dto';
+import { DeleteWorkspaceDto } from 'src/organizations/dto/delete-workspace.dto';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -1728,6 +1729,134 @@ export class AuthService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async deleteWorkspaceForAccount(
+    authUser: AuthUser,
+    organizationId: string,
+    dto: DeleteWorkspaceDto,
+  ) {
+    if (authUser.currentOrganizationId !== organizationId) {
+      throw new ForbiddenException('Only the active workspace can be deleted');
+    }
+    const user = await this.userRepository.findOneBy({ id: authUser.userId });
+    if (!user || !user.is_active) {
+      throw new ForbiddenException('Account cannot delete this workspace');
+    }
+
+    await this.organizationRepository.manager.transaction(async (manager) => {
+      const organization = await manager.findOne(Organization, {
+        where: { id: organizationId, is_active: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!organization) throw new NotFoundException('Workspace not found');
+      const membership = await manager.findOne(UserOrganization, {
+        where: {
+          organization_id: organizationId,
+          user_id: user.id,
+          is_active: true,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!membership || membership.role !== OrganizationRole.ORG_ADMIN) {
+        throw new ForbiddenException(
+          'Only a workspace administrator can delete this workspace',
+        );
+      }
+      if (dto.confirmationName.trim() !== organization.name) {
+        throw new BadRequestException('Workspace name does not match');
+      }
+
+      await this.auditWriter.append(manager, {
+        organizationId,
+        action: AuditAction.ORGANIZATION_DELETED,
+        actor: {
+          type: AuditActorType.HUMAN,
+          id: user.id,
+          label: user.fullName || user.email,
+          responsibleUserId: user.id,
+        },
+        subject: {
+          type: AuditSubjectType.ORGANIZATION,
+          id: organization.id,
+          label: organization.name,
+        },
+        source: AuditSource.API,
+        correlationId: this.auditWriter.correlationId(),
+        before: { isActive: true, name: organization.name },
+        after: { isActive: false, deletedByUserId: user.id },
+      });
+      await manager.update(Organization, organizationId, { is_active: false });
+      await manager.update(
+        UserOrganization,
+        { organization_id: organizationId },
+        { is_active: false },
+      );
+    });
+
+    const remainingMemberships =
+      (await this.usersService.getUserOrganizationsById(user.id)) ?? [];
+    const activeMemberships = remainingMemberships.filter(
+      (membership) =>
+        membership.is_active && membership.organization?.is_active,
+    );
+    const nextMembership = activeMemberships[0];
+    const issued = nextMembership
+      ? await this.generateToken(
+          user,
+          nextMembership.organization,
+          nextMembership.role,
+        )
+      : await this.issueTokenPair(
+          await this.buildUnscopedTokenPayload(user.id, user.email, user.role),
+        );
+    if (authUser.sessionFamilyId) {
+      await this.refreshSessionRepository.update(
+        { family_id: authUser.sessionFamilyId, revoked_at: IsNull() },
+        { revoked_at: new Date() },
+      );
+    }
+    const token = {
+      accessToken: issued.accessToken,
+      refreshToken: issued.refreshToken,
+    };
+
+    return nextMembership
+      ? {
+          success: true,
+          message: 'Workspace deleted',
+          nextStep: 'organization_selected',
+          token,
+          organization: {
+            id: nextMembership.organization.id,
+            name: nextMembership.organization.name,
+            slug: nextMembership.organization.slug,
+            subscription_tier: nextMembership.organization.subscription_tier,
+            role: nextMembership.role,
+            onboarding_complete:
+              nextMembership.organization.onboarding_complete,
+            description: nextMembership.organization.description,
+            logo: nextMembership.organization.logo,
+          },
+          allOrganizations: activeMemberships.map((item) => ({
+            id: item.organization.id,
+            name: item.organization.name,
+            slug: item.organization.slug,
+            subscription_tier: item.organization.subscription_tier,
+            role: item.role,
+            onboarding_complete: item.organization.onboarding_complete,
+            description: item.organization.description,
+            logo: item.organization.logo,
+          })),
+        }
+      : {
+          success: true,
+          message: 'Workspace deleted',
+          nextStep: 'create_or_join_organization',
+          token,
+          organization: null,
+          allOrganizations: [],
+        };
   }
 
   /**
