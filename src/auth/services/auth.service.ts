@@ -202,7 +202,11 @@ export class AuthService {
     const existingUser = await this.userRepository.findOne({
       where: { email: normalizedEmail },
     });
-    if (existingUser) return { success: true, message };
+    if (existingUser) {
+      throw new ConflictException(
+        'An account already exists for this email. Sign in instead.',
+      );
+    }
 
     const now = new Date();
     let verification = await this.signupEmailVerificationRepository.findOne({

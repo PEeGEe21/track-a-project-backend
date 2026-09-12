@@ -54,7 +54,9 @@ describe('AuthService', () => {
       ),
     },
   };
-  const mailingService = {};
+  const mailingService = {
+    sendSignupVerificationOtp: jest.fn(),
+  };
   const signupEmailVerificationRepository = {
     create: jest.fn((value) => value),
     findOne: jest.fn(),
@@ -185,6 +187,20 @@ describe('AuthService', () => {
     expect(verification.attempt_count).toBe(1);
     expect(verification.verified_at).toEqual(expect.any(Date));
     expect(verification.proof_hash).toHaveLength(64);
+  });
+
+  it('directs an existing account to sign in instead of pretending to send a code', async () => {
+    userRepository.findOne.mockResolvedValue({
+      id: 14,
+      email: 'existing@example.com',
+    });
+
+    await expect(
+      service.requestSignupEmailVerification(' Existing@example.com '),
+    ).rejects.toThrow(
+      'An account already exists for this email. Sign in instead.',
+    );
+    expect(mailingService.sendSignupVerificationOtp).not.toHaveBeenCalled();
   });
 
   it('counts invalid signup verification attempts without exposing details', async () => {
