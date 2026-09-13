@@ -96,7 +96,11 @@ export class UsersService {
 
   async getUserOrganizationsById(userId: number) {
     const organizations = this.userOrganizationRepository.find({
-      where: { user_id: userId },
+      where: {
+        user_id: userId,
+        is_active: true,
+        organization: { is_active: true },
+      },
       relations: ['organization'],
     });
 
