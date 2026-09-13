@@ -1553,37 +1553,37 @@ export class UsersService {
         topCollaborators,
       ] = await Promise.all([
         // 1. Get user's owned projects (recent 8)
-        this.getOwnedProjects(foundUser.id),
+        this.getOwnedProjects(foundUser.id, organizationId),
 
         // 2. Get projects where user is a peer
-        this.getPeerProjects(foundUser.id),
+        this.getPeerProjects(foundUser.id, organizationId),
 
         // 3. Project status distribution
-        this.getProjectStatusDistribution(foundUser.id),
+        this.getProjectStatusDistribution(foundUser.id, organizationId),
 
         // 4. Tasks by project (for stacked bar chart)
-        this.getTasksByProject(foundUser.id),
+        this.getTasksByProject(foundUser.id, organizationId),
 
         // 5. Recent activities across all projects
-        this.getRecentActivities(foundUser.id),
+        this.getRecentActivities(foundUser.id, organizationId),
 
         // 6. User peers
-        this.getUserPeers(foundUser.id),
+        this.getUserPeers(foundUser.id, organizationId),
 
         // 7. Active projects count
-        this.getActiveProjectsCount(foundUser.id),
+        this.getActiveProjectsCount(foundUser.id, organizationId),
 
         // 8. Completion statistics
-        this.getCompletionStats(foundUser.id),
+        this.getCompletionStats(foundUser.id, organizationId),
 
         // 9. Task completion trend (last 7 days)
-        this.getTaskCompletionTrend(foundUser.id),
+        this.getTaskCompletionTrend(foundUser.id, organizationId),
 
         // 10. Activity heatmap (last 30 days)
-        this.getActivityHeatmap(foundUser.id),
+        this.getActivityHeatmap(foundUser.id, organizationId),
 
         // 11. Top collaborators
-        this.getTopCollaborators(foundUser.id),
+        this.getTopCollaborators(foundUser.id, organizationId),
       ]);
 
       // Combine owned and peer projects for full project list
@@ -1591,9 +1591,18 @@ export class UsersService {
 
       // Calculate key metrics
       const totalProjects = allProjects.length;
-      const overdueTasks = await this.getOverdueTasks(foundUser.id);
-      const upcomingDeadlines = await this.getUpcomingDeadlines(foundUser.id);
-      const activePeers = await this.getActivePeers(foundUser.id);
+      const overdueTasks = await this.getOverdueTasks(
+        foundUser.id,
+        organizationId,
+      );
+      const upcomingDeadlines = await this.getUpcomingDeadlines(
+        foundUser.id,
+        organizationId,
+      );
+      const activePeers = await this.getActivePeers(
+        foundUser.id,
+        organizationId,
+      );
 
       return {
         success: true,
@@ -1608,8 +1617,14 @@ export class UsersService {
             overdueTasks,
             activePeers,
             trendsVsLastPeriod: {
-              projects: await this.calculateProjectTrend(foundUser.id),
-              tasks: await this.calculateTaskTrend(foundUser.id),
+              projects: await this.calculateProjectTrend(
+                foundUser.id,
+                organizationId,
+              ),
+              tasks: await this.calculateTaskTrend(
+                foundUser.id,
+                organizationId,
+              ),
             },
           },
 
@@ -1651,9 +1666,12 @@ export class UsersService {
   /**
    * Get user's owned projects with sanitized data
    */
-  private async getOwnedProjects(userId: number): Promise<any[]> {
+  private async getOwnedProjects(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
     const projects = await this.projectRepository.find({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, organization_id: organizationId },
       relations: [
         'user',
         'categories',
@@ -1673,9 +1691,12 @@ export class UsersService {
   /**
    * Get projects where user is a peer
    */
-  private async getPeerProjects(userId: number): Promise<any[]> {
+  private async getPeerProjects(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
     const projectPeers = await this.projectPeerRepository.find({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, organization_id: organizationId },
       relations: [
         'project',
         'project.user',
@@ -1694,9 +1715,12 @@ export class UsersService {
   /**
    * Get project status distribution for pie chart
    */
-  private async getProjectStatusDistribution(userId: number): Promise<any> {
+  private async getProjectStatusDistribution(
+    userId: number,
+    organizationId: string,
+  ): Promise<any> {
     // Get all project IDs (owned + peer)
-    const projectIds = await this.getAllUserProjectIds(userId);
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
 
     if (!projectIds.length) {
       return [];
@@ -1725,8 +1749,11 @@ export class UsersService {
   /**
    * Get tasks grouped by project and status (for stacked bar chart)
    */
-  private async getTasksByProject(userId: number): Promise<any> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getTasksByProject(
+    userId: number,
+    organizationId: string,
+  ): Promise<any> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
 
     if (!projectIds.length) {
       return [];
@@ -1883,8 +1910,11 @@ export class UsersService {
   /**
    * Get recent activities across all user projects
    */
-  private async getRecentActivities(userId: number): Promise<any[]> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getRecentActivities(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
 
     if (!projectIds.length) {
       return [];
@@ -1921,8 +1951,11 @@ export class UsersService {
   /**
    * Get active projects count
    */
-  private async getActiveProjectsCount(userId: number): Promise<number> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getActiveProjectsCount(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
 
     if (!projectIds.length) {
       return 0;
@@ -1939,8 +1972,11 @@ export class UsersService {
   /**
    * Get completion statistics
    */
-  private async getCompletionStats(userId: number): Promise<any> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getCompletionStats(
+    userId: number,
+    organizationId: string,
+  ): Promise<any> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
 
     if (!projectIds.length) {
       return {
@@ -1976,8 +2012,11 @@ export class UsersService {
   /**
    * Get overdue tasks count
    */
-  private async getOverdueTasks(userId: number): Promise<number> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getOverdueTasks(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const now = new Date();
 
     if (!projectIds.length) {
@@ -1998,8 +2037,11 @@ export class UsersService {
   /**
    * Get upcoming deadlines count (tasks due in next 7 days)
    */
-  private async getUpcomingDeadlines(userId: number): Promise<number> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getUpcomingDeadlines(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const now = new Date();
     const sevenDaysLater = addDays(now, 7);
 
@@ -2022,8 +2064,11 @@ export class UsersService {
   /**
    * Get active members count across all projects
    */
-  private async getActivePeers(userId: number): Promise<number> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getActivePeers(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const sevenDaysAgo = addDays(new Date(), -7);
 
     if (!projectIds.length) {
@@ -2043,7 +2088,10 @@ export class UsersService {
   /**
    * Calculate project trend (last 30 days vs previous 30 days)
    */
-  private async calculateProjectTrend(userId: number): Promise<number> {
+  private async calculateProjectTrend(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
     const now = new Date();
     const thirtyDaysAgo = addDays(now, -30);
     const sixtyDaysAgo = addDays(now, -60);
@@ -2051,6 +2099,7 @@ export class UsersService {
     const currentPeriod = await this.projectRepository.count({
       where: {
         user: { id: userId },
+        organization_id: organizationId,
         created_at: Between(thirtyDaysAgo, now),
       },
     });
@@ -2058,6 +2107,7 @@ export class UsersService {
     const previousPeriod = await this.projectRepository.count({
       where: {
         user: { id: userId },
+        organization_id: organizationId,
         created_at: Between(sixtyDaysAgo, thirtyDaysAgo),
       },
     });
@@ -2068,8 +2118,11 @@ export class UsersService {
   /**
    * Calculate task trend
    */
-  private async calculateTaskTrend(userId: number): Promise<number> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async calculateTaskTrend(
+    userId: number,
+    organizationId: string,
+  ): Promise<number> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const now = new Date();
     const thirtyDaysAgo = addDays(now, -30);
     const sixtyDaysAgo = addDays(now, -60);
@@ -2098,9 +2151,12 @@ export class UsersService {
   /**
    * Get user peers with sanitized data
    */
-  private async getUserPeers(userId: number): Promise<any[]> {
+  private async getUserPeers(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
     const userPeers = await this.userPeerRepository.find({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, organization_id: organizationId },
       relations: ['user', 'peer'],
       take: 8,
     });
@@ -2115,16 +2171,19 @@ export class UsersService {
   /**
    * Helper: Get all project IDs where user is owner or peer
    */
-  private async getAllUserProjectIds(userId: number): Promise<number[]> {
+  private async getAllUserProjectIds(
+    userId: number,
+    organizationId: string,
+  ): Promise<number[]> {
     // Owned projects
     const ownedProjects = await this.projectRepository.find({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, organization_id: organizationId },
       select: ['id'],
     });
 
     // Peer projects
     const peerProjects = await this.projectPeerRepository.find({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, organization_id: organizationId },
       relations: ['project'],
       select: ['id'],
     });
@@ -2179,8 +2238,11 @@ export class UsersService {
    * Get task completion trend for the last 7 days
    * Returns completed vs created tasks per day
    */
-  private async getTaskCompletionTrend(userId: number): Promise<any[]> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getTaskCompletionTrend(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const now = new Date();
     const sevenDaysAgo = addDays(now, -7);
 
@@ -2253,8 +2315,11 @@ export class UsersService {
    * Get activity heatmap for the last 30 days
    * Returns activity counts per day
    */
-  private async getActivityHeatmap(userId: number): Promise<any[]> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getActivityHeatmap(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const now = new Date();
     const thirtyDaysAgo = addDays(now, -30);
 
@@ -2326,8 +2391,11 @@ export class UsersService {
    * Get top collaborators based on project activities
    * Returns users with most activities across all projects
    */
-  private async getTopCollaborators(userId: number): Promise<any[]> {
-    const projectIds = await this.getAllUserProjectIds(userId);
+  private async getTopCollaborators(
+    userId: number,
+    organizationId: string,
+  ): Promise<any[]> {
+    const projectIds = await this.getAllUserProjectIds(userId, organizationId);
     const thirtyDaysAgo = addDays(new Date(), -30);
 
     if (!projectIds.length) {
