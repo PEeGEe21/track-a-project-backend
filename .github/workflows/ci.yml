@@ -16,11 +16,13 @@ jobs:
     env:
       # Non-production values used only while importing configuration in CI tests.
       NODE_ENV: development
+      INVITE_CODE_SECRET: ci-only-invite-code-secret-not-for-production
       JWT_ACCESS_TOKEN_SECRET: ci-only-access-token-secret-not-for-production
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_TOKEN_SECRET: ci-only-refresh-token-secret-not-for-production
       JWT_REFRESH_EXPIRES_IN: 7d
       FRONTEND_URL: https://app.ci.tailpoint.invalid
+      FRONTEND_DEV_URL: https://dev.ci.tailpoint.invalid
       ADMIN_FRONTEND_URL: https://admin.ci.tailpoint.invalid
       DATABASE_HOST: 127.0.0.1
       DATABASE_PORT: '3306'

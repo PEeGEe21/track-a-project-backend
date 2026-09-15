@@ -11827,6 +11827,34 @@
         }
       }
     },
+    "/api/messages/{id}/attachment": {
+      "get": {
+        "operationId": "Messages_getAttachment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/messages/{id}/reactions": {
       "post": {
         "operationId": "Messages_addReaction",
