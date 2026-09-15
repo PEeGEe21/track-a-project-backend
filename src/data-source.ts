@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { join } from 'node:path';
 import { DataSource } from 'typeorm';
 import { Post } from './typeorm/entities/Post';
 import { Profile } from './typeorm/entities/Profile';
@@ -114,9 +115,8 @@ export const AppDataSource = new DataSource({
   ssl: { rejectUnauthorized: false },
   synchronize: false, // or true for local dev
   migrations: [
-    process.env.NODE_ENV === 'production'
-      ? 'dist/migrations/*.js'
-      : 'src/migrations/*.ts',
+    join(__dirname, 'migrations', '*.js'),
+    join(__dirname, 'migrations', '*.ts'),
   ],
   entities: [
     User,
