@@ -284,18 +284,17 @@ export class ApprovalsService {
     const rows = await this.dataSource
       .getRepository(ApprovalRequest)
       .createQueryBuilder('request')
-      .innerJoin(
-        'request.reviewers',
-        'assigned',
-        'assigned.reviewer_id = :userId',
-        { userId: actor.userId },
-      )
+      .leftJoin('request.reviewers', 'assigned')
       .leftJoinAndSelect('request.reviewers', 'reviewers')
       .leftJoinAndSelect('reviewers.reviewer', 'reviewer')
       .leftJoinAndSelect('request.responses', 'responses')
       .leftJoinAndSelect('responses.reviewer', 'responseReviewer')
       .leftJoinAndSelect('request.requested_by', 'requester')
       .where('request.organization_id = :org', { org })
+      .andWhere(
+        '(assigned.reviewer_id = :userId OR request.requested_by_id = :userId)',
+        { userId: actor.userId },
+      )
       .orderBy('request.created_at', 'DESC')
       .take(100)
       .getMany();

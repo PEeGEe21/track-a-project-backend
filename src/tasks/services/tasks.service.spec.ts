@@ -24,7 +24,10 @@ describe('TasksService', () => {
     remove: jest.fn(),
   };
   const recurringTasksService = { generateAfterCompletion: jest.fn() };
-  const customFieldsService = { serializeTaskValues: jest.fn() };
+  const customFieldsService = {
+    serializeTaskValues: jest.fn(),
+    serializeTasks: jest.fn(),
+  };
   const entitlementsService = {
     resolveForActor: jest.fn().mockResolvedValue([]),
     assertCapability: jest.fn(),
@@ -85,6 +88,31 @@ describe('TasksService', () => {
         { fieldId: 'field-1', value: 'new' },
       ]),
     ).toEqual([{ fieldId: 'field-1', value: 'new' }]);
+  });
+
+  it('does not let a legacy projectless task break custom-field serialization', async () => {
+    entitlementsService.resolveForActor.mockResolvedValue([
+      { key: 'custom_fields', enabled: true },
+    ]);
+    customFieldsService.serializeTasks.mockResolvedValue(
+      new Map([[1, [{ fieldId: 'field-1', value: 'ready' }]]]),
+    );
+    const validTask = { id: 1, project: { id: 10 } };
+    const orphanedTask = { id: 2, project: null };
+
+    const result = await (service as any).attachCustomFieldsToTasks(
+      [validTask, orphanedTask],
+      { userId: 4 },
+      'org-1',
+    );
+
+    expect(customFieldsService.serializeTasks).toHaveBeenCalledWith('org-1', [
+      { id: 1, projectId: 10 },
+    ]);
+    expect(result).toEqual([
+      { ...validTask, customFields: [{ fieldId: 'field-1', value: 'ready' }] },
+      { ...orphanedTask, customFields: [] },
+    ]);
   });
 
   it('commits a general task update and its audit event through one manager', async () => {

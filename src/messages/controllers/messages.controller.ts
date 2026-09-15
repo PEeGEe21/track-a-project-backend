@@ -11,7 +11,9 @@ import {
   ValidationPipe,
   UseInterceptors,
   UploadedFile,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { MessagesService } from '../services/messages.service';
 import { CreateMessageDto } from '../dto/create-message.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -150,6 +152,30 @@ export class MessagesController {
       organizationId,
       dto.fileName,
     );
+  }
+
+  @Get(':id/attachment')
+  async getAttachment(
+    @Req() req,
+    @Res() response: Response,
+    @Param('id') id: string,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    const attachment = await this.messagesService.getAttachment(
+      req.user,
+      id,
+      organizationId,
+    );
+    response.setHeader(
+      'Content-Type',
+      attachment.fileType || 'application/octet-stream',
+    );
+    response.setHeader('Cache-Control', 'private, max-age=3600');
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="${attachment.fileName.replace(/["\\\r\n]/g, '_')}"`,
+    );
+    response.send(attachment.content);
   }
 
   @Post(':id/reactions')

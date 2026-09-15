@@ -2580,6 +2580,8 @@ export class ProjectsService {
           'project.id',
           'project.title',
           'project.description',
+          'project.status',
+          'project.due_date',
         ]);
 
       switch (type) {
@@ -3981,6 +3983,12 @@ export class ProjectsService {
         throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
       }
 
+      if (!Array.isArray(emails) || emails.length === 0) {
+        throw new HttpException(
+          'At least one email is required',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       // const userProfile = await this.profileRepository.findOne({
       //   where: { user: foundUser },
       // });
@@ -4122,7 +4130,7 @@ export class ProjectsService {
 
           if (checkUserAccount) {
             // User exists and is in organization
-            peerEmail = `You just received a project invitation from ${user.firstname} ${user.lastname} via the TailPoint platform. Sign in to your account to view the project invitation.`;
+            peerEmail = `You just received a project invitation from ${user.first_name} ${user.last_name} via the TailPoint platform. Sign in to your account to view the project invitation.`;
             eventLink = InviteLinks.projectLogin();
             peerAccount = true;
 
@@ -4142,7 +4150,7 @@ export class ProjectsService {
             // Create notification
             const notification = {
               title: 'Project Invitation',
-              message: `${user.firstname} ${user.lastname} invited you to join the project "${project.title}"`,
+              message: `${foundUser.first_name} ${foundUser.last_name} invited you to join the project "${project.title}"`,
               sender: user,
               recipient: checkUserAccount,
               type: NOTIFICATION_TYPES.PROJECT_PEER_REQUEST,
@@ -4155,7 +4163,7 @@ export class ProjectsService {
             );
           } else {
             // User doesn't exist - invite them to both platform and project
-            peerEmail = `You just received a project invitation and an invite to join the TailPoint platform from ${user.firstname} ${user.lastname}. Accept the invite to onboard and view the project.`;
+            peerEmail = `You just received a project invitation and an invite to join the TailPoint platform from ${foundUser.first_name} ${foundUser.last_name}. Accept the invite to onboard and view the project.`;
             eventLink = InviteLinks.projectInvite(inviteCode, project.id);
             peerAccount = false;
 
@@ -4358,7 +4366,12 @@ export class ProjectsService {
           'project.organization_id = :organizationId',
           { organizationId },
         )
-        .select(['status.id', 'status.title', 'status.color'])
+        .select([
+          'status.id',
+          'status.title',
+          'status.color',
+          'status.isTerminal',
+        ])
         .where('status.project.id = :projectId', { projectId: project.id })
         .getMany();
 
@@ -4398,6 +4411,7 @@ export class ProjectsService {
           'status.id',
           'status.title',
           'status.color',
+          'status.isTerminal',
           'assignees.id',
           'assignees.first_name',
           'assignees.last_name',
@@ -4443,6 +4457,13 @@ export class ProjectsService {
       );
 
       return {
+        project: {
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          status: project.status,
+          due_date: project.due_date,
+        },
         projectPeers:
           project.projectPeers?.map((peer) => ({
             id: peer.user.id,
@@ -4458,6 +4479,7 @@ export class ProjectsService {
           id: s.id,
           title: s.title,
           color: s.color,
+          isTerminal: s.isTerminal,
         })),
         priorityChartData,
       };

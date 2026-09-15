@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, IsEmail, IsEnum, IsOptional } from 'class-validator';
 import { PaginationMetaDto } from 'src/common/openapi/api-contract.dto';
 import { ProjectRole } from 'src/utils/constants/projectRole';
 
@@ -71,8 +72,12 @@ export class ProjectOperationResponseDto {
 
 export class ProjectInviteRequestDto {
   @ApiProperty({ type: [String], format: 'email' })
+  @IsArray()
+  @IsEmail({}, { each: true })
   emails: string[];
 
   @ApiPropertyOptional({ enum: ProjectRole })
+  @IsOptional()
+  @IsEnum(ProjectRole)
   role?: ProjectRole;
 }

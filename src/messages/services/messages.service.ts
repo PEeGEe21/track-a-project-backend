@@ -1653,6 +1653,33 @@ export class MessagesService {
     };
   }
 
+  async getAttachment(user: any, messageId: string, organizationId: string) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound) throw new NotFoundException('User not found');
+
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId, organization_id: organizationId },
+    });
+    if (!message?.fileUrl) throw new NotFoundException('Attachment not found');
+
+    const participant = await this.participantRepository.findOne({
+      where: {
+        conversationId: message.conversationId,
+        userId: Number(userFound.id),
+        isActive: true,
+        organization_id: organizationId,
+      },
+    });
+    if (!participant)
+      throw new BadRequestException('You are not part of this conversation');
+
+    return {
+      content: await this.storageService.downloadFile(message.fileUrl),
+      fileType: message.fileType ?? null,
+      fileName: message.fileUrl.split('/').pop() || 'attachment',
+    };
+  }
+
   async addReaction(
     user: any,
     messageId: string,

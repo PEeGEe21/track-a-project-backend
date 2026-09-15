@@ -65,9 +65,15 @@ export class ObjectStorageService implements StorageService {
     try {
       this.assertEnabled();
 
-      await this.client.putObject(this.bucketName, path, file.buffer, file.size, {
-        'Content-Type': file.mimetype,
-      });
+      await this.client.putObject(
+        this.bucketName,
+        path,
+        file.buffer,
+        file.size,
+        {
+          'Content-Type': file.mimetype,
+        },
+      );
 
       return this.buildObjectUrl(path);
     } catch (error: any) {
@@ -106,7 +112,9 @@ export class ObjectStorageService implements StorageService {
       );
     } catch (error: any) {
       throw new HttpException(
-        `Failed to generate signed URL: ${error?.message || 'Unknown storage error'}`,
+        `Failed to generate signed URL: ${
+          error?.message || 'Unknown storage error'
+        }`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -198,7 +206,9 @@ export class ObjectStorageService implements StorageService {
       );
     } catch (error: any) {
       throw new HttpException(
-        `Failed to get file metadata: ${error?.message || 'Unknown storage error'}`,
+        `Failed to get file metadata: ${
+          error?.message || 'Unknown storage error'
+        }`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -227,6 +237,16 @@ export class ObjectStorageService implements StorageService {
       const endpointPrefix = `${this.endpoint}/${this.bucketName}/`;
       if (filePath.startsWith(endpointPrefix)) {
         return filePath.slice(endpointPrefix.length);
+      }
+
+      try {
+        const parsedPath = new URL(filePath).pathname.replace(/^\/+/, '');
+        const bucketPrefix = `${this.bucketName}/`;
+        if (parsedPath.startsWith(bucketPrefix)) {
+          return parsedPath.slice(bucketPrefix.length);
+        }
+      } catch {
+        // Plain object keys are handled below.
       }
     }
 

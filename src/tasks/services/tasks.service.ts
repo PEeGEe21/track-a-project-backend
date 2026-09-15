@@ -150,6 +150,9 @@ export class TasksService {
     organizationId: string,
   ) {
     if (!(await this.customFieldsEnabled(actor, organizationId))) return task;
+    if (!task.project?.id) {
+      return Object.assign(task, { customFields: [] });
+    }
     const customFields = await this.customFieldsService.serializeTaskValues(
       organizationId,
       task.project.id,
@@ -169,9 +172,16 @@ export class TasksService {
     ) {
       return tasks;
     }
+    const tasksWithProjects = tasks.filter((task) => Boolean(task.project?.id));
+    if (!tasksWithProjects.length) {
+      return tasks.map((task) => Object.assign(task, { customFields: [] }));
+    }
     const serialized = await this.customFieldsService.serializeTasks(
       organizationId,
-      tasks.map((task) => ({ id: task.id, projectId: task.project.id })),
+      tasksWithProjects.map((task) => ({
+        id: task.id,
+        projectId: task.project.id,
+      })),
     );
     return tasks.map((task) =>
       Object.assign(task, { customFields: serialized.get(task.id) ?? [] }),
@@ -393,21 +403,22 @@ export class TasksService {
   }
 
   async findTasks(actor: AuthUser, organizationId: string) {
-    const scope = await this.authorizationService.getProjectAccessScope(
-      actor,
-      organizationId,
-    );
-    const query = this.taskRepository
-      .createQueryBuilder('task')
-      .leftJoinAndSelect('task.project', 'project')
-      .leftJoinAndSelect('task.tags', 'tags')
-      .leftJoinAndSelect('task.status', 'status')
-      .leftJoinAndSelect('task.assignees', 'assignees')
-      .where('task.organization_id = :organizationId', { organizationId });
+    try {
+      const scope = await this.authorizationService.getProjectAccessScope(
+        actor,
+        organizationId,
+      );
+      const query = this.taskRepository
+        .createQueryBuilder('task')
+        .innerJoinAndSelect('task.project', 'project')
+        .leftJoinAndSelect('task.tags', 'tags')
+        .leftJoinAndSelect('task.status', 'status')
+        .leftJoinAndSelect('task.assignees', 'assignees')
+        .where('task.organization_id = :organizationId', { organizationId });
 
-    if (!scope.canAccessAllProjects) {
-      query.andWhere(
-        `(
+      if (!scope.canAccessAllProjects) {
+        query.andWhere(
+          `(
           project.user_id = :userId
           OR EXISTS (
             SELECT 1
@@ -419,27 +430,31 @@ export class TasksService {
               AND access_peer.is_confirmed = :peerConfirmed
           )
         )`,
-        {
-          userId: scope.userId,
-          organizationId,
-          peerStatus: ProjectPeerStatus.CONNECTED,
-          peerConfirmed: true,
-        },
+          {
+            userId: scope.userId,
+            organizationId,
+            peerStatus: ProjectPeerStatus.CONNECTED,
+            peerConfirmed: true,
+          },
+        );
+      }
+
+      const tasks = await this.attachCustomFieldsToTasks(
+        await query.getMany(),
+        actor,
+        organizationId,
       );
+
+      const res = {
+        success: 'success',
+        message: 'successful',
+        data: tasks,
+      };
+
+      return res;
+    } catch (err) {
+      console.log(err, 'error');
     }
-
-    const tasks = await this.attachCustomFieldsToTasks(
-      await query.getMany(),
-      actor,
-      organizationId,
-    );
-    const res = {
-      success: 'success',
-      message: 'successful',
-      data: tasks,
-    };
-
-    return res;
   }
 
   private applyProductivityFilters(
