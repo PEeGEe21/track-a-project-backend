@@ -6,6 +6,7 @@ import { CustomFieldType } from 'src/custom-fields/custom-field-type';
 describe('TasksService', () => {
   let service: TasksService;
   const taskRepository = { findOne: jest.fn(), find: jest.fn() };
+  const statusRepository = { findOne: jest.fn() };
   const dataSource = { transaction: jest.fn() };
   const userRepository = { findOneBy: jest.fn(), find: jest.fn() };
   const projectActivitiesService = { createActivity: jest.fn() };
@@ -55,7 +56,7 @@ describe('TasksService', () => {
       {} as any,
       {} as any,
       taskRepository as any,
-      {} as any,
+      statusRepository as any,
       {} as any,
       {} as any,
       authorizationService as any,
@@ -163,6 +164,50 @@ describe('TasksService', () => {
         before: expect.objectContaining({ title: 'Before' }),
         after: expect.objectContaining({ title: 'After' }),
       }),
+    );
+  });
+
+  it('can assign a status while updating a legacy task without one', async () => {
+    const actor = { userId: 2 };
+    const user = { id: 2, fullName: 'Task editor', email: 'editor@test' };
+    const task = {
+      id: 56,
+      title: 'Legacy task',
+      priority: 0,
+      due_date: null,
+      project: { id: 7 },
+      status: null,
+      user,
+      assignees: [],
+    };
+    const repository = {
+      findOne: jest.fn().mockResolvedValue(task),
+      save: jest.fn().mockImplementation(async (value) => value),
+    };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(repository),
+    };
+    dataSource.transaction.mockImplementation(async (work) => work(manager));
+    taskRepository.findOne.mockResolvedValue(task);
+    userRepository.findOneBy.mockResolvedValue(user);
+    statusRepository.findOne.mockResolvedValue({ id: 4 });
+    authorizationService.assertProjectPermission.mockResolvedValue({
+      project: task.project,
+      role: 'editor',
+    });
+    jest
+      .spyOn(service as any, 'getHydratedTaskForResponse')
+      .mockResolvedValue({ id: 56, status: { id: 4 } });
+
+    await expect(
+      service.updateTask(56, { status: 4 }, actor, 'org-1'),
+    ).resolves.toMatchObject({ success: true });
+    expect(customWorkflowsService.transitionTask).toHaveBeenCalledWith(
+      manager,
+      actor,
+      'org-1',
+      task,
+      4,
     );
   });
 

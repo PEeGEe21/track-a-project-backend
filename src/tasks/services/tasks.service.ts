@@ -1002,7 +1002,7 @@ export class TasksService {
           await repository.save(lockedTask);
         }
 
-        if (statusEntity && lockedTask.status.id !== statusEntity.id) {
+        if (statusEntity && lockedTask.status?.id !== statusEntity.id) {
           await this.customWorkflowsService.transitionTask(
             manager,
             user,
@@ -1349,7 +1349,7 @@ export class TasksService {
             false,
           );
         }
-        if (destinationStatusId && task.status.id !== destinationStatusId) {
+        if (destinationStatusId && task.status?.id !== destinationStatusId) {
           await this.customWorkflowsService.transitionTask(
             manager,
             user,
