@@ -1767,140 +1767,153 @@ export class TasksService {
   ) {
     await this.assertTaskWriteAccess(taskId, user, organizationId);
     const auditEnabled = await this.advancedAuditEnabled(user, organizationId);
-    return await this.dataSource.transaction(async (manager) => {
-      const userFound = await manager.getRepository(User).findOne({
-        where: { id: user.userId },
-      });
-      if (!userFound) {
-        throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
-      }
-
-      // Find task with project and status
-      const task = await manager.getRepository(Task).findOne({
-        where: { id: taskId },
-        relations: [
-          'status',
-          'project',
-          'project.user',
-          'project.projectPeers',
-          'project.projectPeers.user',
-          'assignees',
-          'user',
-        ],
-      });
-      if (!task)
-        throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
-
-      const previousStatus = task.status;
-
-      // if (task.project.user.id !== userFound.id) {
-      //   throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
-      // }
-
-      // If task is moving to a new status
-      if (task.status.id !== updateDto.statusId) {
-        const newStatus = await manager.getRepository(Status).findOne({
-          where: { id: updateDto.statusId },
+    const transactionResult = await this.dataSource.transaction(
+      async (manager) => {
+        const userFound = await manager.getRepository(User).findOne({
+          where: { id: user.userId },
         });
-        if (!newStatus) {
-          throw new HttpException('Status not found', HttpStatus.NOT_FOUND);
+        if (!userFound) {
+          throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
         }
 
-        await this.customWorkflowsService.transitionTask(
-          manager,
-          user,
-          organizationId,
-          task,
-          newStatus.id,
-        );
-      }
-
-      await this.bulkUpdateTaskPositions(
-        manager,
-        updateDto.sourceTaskIds,
-        task.project.id,
-      );
-      await this.bulkUpdateTaskPositions(
-        manager,
-        updateDto.targetTaskIds,
-        task.project.id,
-      );
-
-      // Return updated task with relations
-      const updatedTask = await manager.getRepository(Task).findOne({
-        where: { id: taskId },
-        relations: [
-          'status',
-          'project',
-          'project.user',
-          'project.projectPeers',
-          'project.projectPeers.user',
-          'assignees',
-          'user',
-        ],
-      });
-
-      await this.projectActivitiesService.createActivity({
-        organization_id: organizationId,
-        projectId: updatedTask.project.id,
-        userId: userFound.id,
-        activityType: ActivityType.STATUS_CHANGE,
-        description: `${userFound.fullName} changed task status: ${
-          updatedTask.title ?? ''
-        } to ${updatedTask.status.title}`,
-        entityType: 'task',
-        entityId: updatedTask.id,
-        metadata: { taskTitle: updatedTask.title ?? '' },
-      });
-
-      await this.sendTaskTerminalStatusNotifications({
-        actor: userFound,
-        previousStatus,
-        task: updatedTask,
-        organizationId,
-      });
-
-      if (!previousStatus.isTerminal && updatedTask.status.isTerminal) {
-        await this.recurringTasksService.generateAfterCompletion(
-          updatedTask.id,
-        );
-      }
-
-      if (auditEnabled && previousStatus.id !== updatedTask.status.id) {
-        await this.auditWriter.append(manager, {
-          organizationId,
-          projectId: updatedTask.project.id,
-          action: AuditAction.TASK_STATUS_CHANGED,
-          actor: this.humanAuditActor(userFound),
-          subject: {
-            type: AuditSubjectType.TASK,
-            id: updatedTask.id,
-            label: updatedTask.title,
-          },
-          source: AuditSource.API,
-          correlationId: this.auditWriter.correlationId(),
-          before: { status_id: previousStatus.id },
-          after: { status_id: updatedTask.status.id },
+        // Find task with project and status
+        const task = await manager.getRepository(Task).findOne({
+          where: { id: taskId },
+          relations: [
+            'status',
+            'project',
+            'project.user',
+            'project.projectPeers',
+            'project.projectPeers.user',
+            'assignees',
+            'user',
+          ],
         });
-      }
+        if (!task)
+          throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
 
-      return {
-        success: true,
-        message: 'Task status and order updated successfully',
-        data: {
-          id: updatedTask.id,
-          title: updatedTask.title,
-          description: updatedTask.description,
-          priority: updatedTask.priority,
-          dueDate: updatedTask.due_date,
-          status: {
-            id: updatedTask.status.id,
-            title: updatedTask.status.title,
-            color: updatedTask.status.color,
+        const previousStatus = task.status;
+
+        // if (task.project.user.id !== userFound.id) {
+        //   throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+        // }
+
+        // If task is moving to a new status
+        if (task.status.id !== updateDto.statusId) {
+          const newStatus = await manager.getRepository(Status).findOne({
+            where: { id: updateDto.statusId },
+          });
+          if (!newStatus) {
+            throw new HttpException('Status not found', HttpStatus.NOT_FOUND);
+          }
+
+          await this.customWorkflowsService.transitionTask(
+            manager,
+            user,
+            organizationId,
+            task,
+            newStatus.id,
+          );
+        }
+
+        await this.bulkUpdateTaskPositions(
+          manager,
+          updateDto.sourceTaskIds,
+          task.project.id,
+        );
+        await this.bulkUpdateTaskPositions(
+          manager,
+          updateDto.targetTaskIds,
+          task.project.id,
+        );
+
+        // Return updated task with relations
+        const updatedTask = await manager.getRepository(Task).findOne({
+          where: { id: taskId },
+          relations: [
+            'status',
+            'project',
+            'project.user',
+            'project.projectPeers',
+            'project.projectPeers.user',
+            'assignees',
+            'user',
+          ],
+        });
+
+        if (auditEnabled && previousStatus.id !== updatedTask.status.id) {
+          await this.auditWriter.append(manager, {
+            organizationId,
+            projectId: updatedTask.project.id,
+            action: AuditAction.TASK_STATUS_CHANGED,
+            actor: this.humanAuditActor(userFound),
+            subject: {
+              type: AuditSubjectType.TASK,
+              id: updatedTask.id,
+              label: updatedTask.title,
+            },
+            source: AuditSource.API,
+            correlationId: this.auditWriter.correlationId(),
+            before: { status_id: previousStatus.id },
+            after: { status_id: updatedTask.status.id },
+          });
+        }
+
+        return {
+          userFound,
+          previousStatus,
+          updatedTask,
+          response: {
+            success: true,
+            message: 'Task status and order updated successfully',
+            data: {
+              id: updatedTask.id,
+              title: updatedTask.title,
+              description: updatedTask.description,
+              priority: updatedTask.priority,
+              dueDate: updatedTask.due_date,
+              status: {
+                id: updatedTask.status.id,
+                title: updatedTask.status.title,
+                color: updatedTask.status.color,
+              },
+            },
           },
-        },
-      };
+        };
+      },
+    );
+
+    const { userFound, previousStatus, updatedTask } = transactionResult;
+
+    // These services use their own repositories/connections. Running them from
+    // inside the task transaction can make them wait on the uncommitted task
+    // update while the transaction waits for them, eventually timing out the
+    // caller. Commit the move first, then perform the follow-up work.
+    await this.projectActivitiesService.createActivity({
+      organization_id: organizationId,
+      projectId: updatedTask.project.id,
+      userId: userFound.id,
+      activityType: ActivityType.STATUS_CHANGE,
+      description: `${userFound.fullName} changed task status: ${
+        updatedTask.title ?? ''
+      } to ${updatedTask.status.title}`,
+      entityType: 'task',
+      entityId: updatedTask.id,
+      metadata: { taskTitle: updatedTask.title ?? '' },
     });
+
+    await this.sendTaskTerminalStatusNotifications({
+      actor: userFound,
+      previousStatus,
+      task: updatedTask,
+      organizationId,
+    });
+
+    if (!previousStatus.isTerminal && updatedTask.status.isTerminal) {
+      await this.recurringTasksService.generateAfterCompletion(updatedTask.id);
+    }
+
+    return transactionResult.response;
   }
 
   private async bulkUpdateTaskPositions(
