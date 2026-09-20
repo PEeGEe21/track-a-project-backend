@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import {
   UpdateGithubConnectionDto,
   LinkGithubArtifactDto,
   MoveGithubArtifactDto,
+  GithubActivityQueryDto,
 } from './dto/github-integration.dto';
 import { GithubService } from './github.service';
 
@@ -109,6 +111,16 @@ export class GithubController {
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
     return this.service.linkDiagnostics(req.user, org, projectId);
+  }
+  @Get('projects/:projectId/activity')
+  @UseGuards(JwtAuthGuard, OrganizationAccessGuard)
+  activity(
+    @Req() req: any,
+    @Headers('x-organization-id') org: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Query() query: GithubActivityQueryDto,
+  ) {
+    return this.service.projectActivity(req.user, org, projectId, query);
   }
   @Delete('tasks/:taskId/links/:artifactId')
   @UseGuards(JwtAuthGuard, OrganizationAccessGuard)

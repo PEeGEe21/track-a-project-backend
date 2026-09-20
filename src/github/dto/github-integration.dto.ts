@@ -1,11 +1,13 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
   Length,
   Matches,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -33,4 +35,17 @@ export class LinkGithubArtifactDto {
 }
 export class MoveGithubArtifactDto {
   @Type(() => Number) @IsInt() @Min(1) targetTaskId: number;
+}
+
+export class GithubActivityQueryDto {
+  @IsOptional() @IsString() @MaxLength(200) search?: string;
+  @IsOptional()
+  @IsIn(['issue', 'pull_request', 'commit', 'deployment', 'release'])
+  type?: string;
+  @IsOptional()
+  @IsIn(['all', 'linked', 'unlinked'])
+  linked?: 'all' | 'linked' | 'unlinked' = 'all';
+  @IsOptional() @IsString() @MaxLength(36) connectionId?: string;
+  @IsOptional() @IsString() @MaxLength(500) cursor?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 25;
 }

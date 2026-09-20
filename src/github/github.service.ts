@@ -54,6 +54,7 @@ import {
   CreateGithubConnectionDto,
   RotateGithubSecretDto,
   UpdateGithubConnectionDto,
+  GithubActivityQueryDto,
 } from './dto/github-integration.dto';
 
 type ArtifactInput = {
@@ -489,6 +490,144 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
         token: row.token,
         createdAt: row.created_at,
       })),
+    };
+  }
+  async projectActivity(
+    user: any,
+    org: string,
+    projectId: number,
+    query: GithubActivityQueryDto,
+  ) {
+    await this.entitlements.assertCapability(
+      user,
+      org,
+      CapabilityKey.GITHUB_INTEGRATION,
+    );
+    await this.authorization.assertProjectPermission(
+      user,
+      org,
+      projectId,
+      ProjectPermission.VIEW,
+    );
+    const limit = Math.min(Math.max(Number(query.limit) || 25, 1), 100);
+    const qb = this.artifacts
+      .createQueryBuilder('a')
+      .innerJoin(GithubConnection, 'c', 'c.id=a.connection_id')
+      .where('a.organization_id=:org AND a.project_id=:projectId', {
+        org,
+        projectId,
+      });
+    if (query.type) qb.andWhere('a.artifact_type=:type', { type: query.type });
+    if (query.connectionId)
+      qb.andWhere('a.connection_id=:connectionId', {
+        connectionId: query.connectionId,
+      });
+    if (query.search?.trim())
+      qb.andWhere(
+        '(LOWER(a.title) LIKE :search OR LOWER(a.reference) LIKE :search OR LOWER(a.actor_label) LIKE :search OR LOWER(c.repository_full_name) LIKE :search)',
+        { search: `%${query.search.trim().toLowerCase()}%` },
+      );
+    if (query.linked === 'linked')
+      qb.andWhere(
+        "EXISTS (SELECT 1 FROM github_task_links gl WHERE gl.artifact_id=a.id AND gl.state='active')",
+      );
+    if (query.linked === 'unlinked')
+      qb.andWhere(
+        "NOT EXISTS (SELECT 1 FROM github_task_links gl WHERE gl.artifact_id=a.id AND gl.state='active')",
+      );
+    if (query.cursor) {
+      try {
+        const [timestamp, id] = Buffer.from(query.cursor, 'base64url')
+          .toString('utf8')
+          .split('|');
+        const date = new Date(timestamp);
+        if (!id || Number.isNaN(date.getTime())) throw new Error();
+        qb.andWhere(
+          '(COALESCE(a.provider_updated_at,a.updated_at) < :cursorDate OR (COALESCE(a.provider_updated_at,a.updated_at) = :cursorDate AND a.id < :cursorId))',
+          { cursorDate: date, cursorId: id },
+        );
+      } catch {
+        throw new BadRequestException('Invalid GitHub activity cursor');
+      }
+    }
+    const raw = await qb
+      .select([
+        'a.id AS id',
+        'a.artifact_type AS type',
+        'a.reference AS reference',
+        'a.title AS title',
+        'a.state AS state',
+        'a.url AS url',
+        'a.actor_label AS actor',
+        'a.metadata AS metadata',
+        'a.provider_updated_at AS providerUpdatedAt',
+        'a.updated_at AS updatedAt',
+        'c.repository_full_name AS repository',
+        'c.archived_at AS connectionArchivedAt',
+      ])
+      .orderBy('COALESCE(a.provider_updated_at,a.updated_at)', 'DESC')
+      .addOrderBy('a.id', 'DESC')
+      .limit(limit + 1)
+      .getRawMany();
+    const hasMore = raw.length > limit;
+    const page = raw.slice(0, limit);
+    const artifactIds = page.map((row) => row.id);
+    const linkRows = artifactIds.length
+      ? await this.links
+          .createQueryBuilder('l')
+          .innerJoin(Task, 't', 't.id=l.task_id')
+          .select([
+            'l.artifact_id AS artifactId',
+            'l.task_id AS taskId',
+            'l.source AS source',
+            't.title AS taskTitle',
+          ])
+          .where("l.artifact_id IN (:...artifactIds) AND l.state='active'", {
+            artifactIds,
+          })
+          .andWhere('l.organization_id=:org AND l.project_id=:projectId', {
+            org,
+            projectId,
+          })
+          .getRawMany()
+      : [];
+    const linksByArtifact = new Map<string, any[]>();
+    for (const link of linkRows)
+      linksByArtifact.set(link.artifactId, [
+        ...(linksByArtifact.get(link.artifactId) || []),
+        {
+          taskId: Number(link.taskId),
+          taskTitle: link.taskTitle,
+          source: link.source,
+        },
+      ]);
+    const last = page.at(-1);
+    const lastDate = last?.providerUpdatedAt ?? last?.updatedAt;
+    return {
+      success: true,
+      data: page.map((row) => ({
+        id: row.id,
+        type: row.type,
+        reference: row.reference,
+        title: row.title,
+        state: row.state,
+        url: row.url,
+        actor: row.actor,
+        metadata: row.metadata,
+        updatedAt: row.providerUpdatedAt ?? row.updatedAt,
+        repository: row.repository,
+        connectionArchived: Boolean(row.connectionArchivedAt),
+        links: linksByArtifact.get(row.id) || [],
+      })),
+      meta: {
+        hasMore,
+        nextCursor:
+          hasMore && last && lastDate
+            ? Buffer.from(
+                `${new Date(lastDate).toISOString()}|${last.id}`,
+              ).toString('base64url')
+            : null,
+      },
     };
   }
   async unlinkTaskArtifact(

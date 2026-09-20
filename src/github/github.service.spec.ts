@@ -17,6 +17,7 @@ describe('GithubService', () => {
   let service: GithubService;
   let connections: any;
   let deliveries: any;
+  let artifacts: any;
   let tasks: any;
   let links: any;
   let authorization: any;
@@ -27,13 +28,16 @@ describe('GithubService', () => {
   beforeEach(() => {
     connections = repo();
     deliveries = repo();
+    artifacts = repo();
     tasks = repo();
     links = repo();
     authorization = {
       resolveProjectOwnerIds: jest.fn().mockResolvedValue([4]),
+      assertProjectPermission: jest.fn().mockResolvedValue({}),
     };
     notifications = { enqueueNotification: jest.fn().mockResolvedValue({}) };
     entitlements = {
+      assertCapability: jest.fn().mockResolvedValue(undefined),
       resolveOrganization: jest
         .fn()
         .mockResolvedValue([{ key: 'github_integration', enabled: true }]),
@@ -46,7 +50,7 @@ describe('GithubService', () => {
     service = new GithubService(
       connections,
       deliveries,
-      repo() as any,
+      artifacts,
       links,
       tasks,
       authorization,
@@ -117,6 +121,72 @@ describe('GithubService', () => {
 
   it('ignores unsupported event families', () => {
     expect((service as any).normalize('member', {})).toEqual([]);
+  });
+
+  it('lists linked and unlinked project activity without crossing project scope', async () => {
+    const artifactQuery = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([
+        {
+          id: 'artifact-1',
+          type: 'commit',
+          reference: 'abc1234',
+          title: 'General maintenance',
+          state: 'pushed',
+          url: 'https://github.com/acme/repo/commit/abc1234',
+          actor: 'octocat',
+          metadata: { push_ref: 'main' },
+          providerUpdatedAt: new Date('2026-09-20T12:00:00Z'),
+          updatedAt: new Date('2026-09-20T12:00:00Z'),
+          repository: 'acme/repo',
+          connectionArchivedAt: null,
+        },
+      ]),
+    };
+    artifacts.createQueryBuilder.mockReturnValue(artifactQuery);
+    const linkQuery = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    links.createQueryBuilder.mockReturnValue(linkQuery);
+
+    await expect(
+      service.projectActivity({ userId: 4 }, 'org-1', 7, {
+        linked: 'unlinked',
+        limit: 25,
+      }),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          id: 'artifact-1',
+          repository: 'acme/repo',
+          links: [],
+        },
+      ],
+      meta: { hasMore: false, nextCursor: null },
+    });
+    expect(authorization.assertProjectPermission).toHaveBeenCalledWith(
+      { userId: 4 },
+      'org-1',
+      7,
+      'view',
+    );
+    expect(artifactQuery.where).toHaveBeenCalledWith(
+      'a.organization_id=:org AND a.project_id=:projectId',
+      { org: 'org-1', projectId: 7 },
+    );
+    expect(artifactQuery.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('NOT EXISTS'),
+    );
   });
 
   it('rejects unsafe artifact URL schemes', () => {
