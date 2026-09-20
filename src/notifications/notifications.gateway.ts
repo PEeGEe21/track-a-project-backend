@@ -136,22 +136,20 @@ export class NotificationsGateway
 
     this.logger.log(`Sending notification to user ${userId}`);
 
-    // Method 1: Using the Map
     const socketId = this.users.get(userId);
     if (socketId) {
-      this.logger.log(`Found socket ${socketId} for user ${userId}`);
-      this.server.to(socketId).emit('notification', notification);
-      return true;
+      this.logger.log(
+        `Found socket ${socketId} for user ${userId}; broadcasting to user room`,
+      );
+    } else {
+      this.logger.log(
+        `No direct socket found for user ${userId}; broadcasting to user room`,
+      );
     }
 
-    // Method 2: Using rooms (as backup and for multiple connections)
-    this.logger.log(
-      `No direct socket found for user ${userId}, trying room broadcast`,
-    );
-
+    // Every registered tab joins this room. Broadcasting to it keeps all open
+    // clients in sync instead of notifying only the most recently registered tab.
     this.server.to(`user_${userId}`).emit('notification', notification);
-
-    // We don't know if anyone is in the room, but we tried
     return true;
   }
 
