@@ -522,6 +522,26 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
       qb.andWhere('a.connection_id=:connectionId', {
         connectionId: query.connectionId,
       });
+    if (query.repository)
+      qb.andWhere('c.repository_full_name=:repository', {
+        repository: query.repository.toLowerCase(),
+      });
+    if (query.branch)
+      qb.andWhere(
+        "(JSON_UNQUOTE(JSON_EXTRACT(a.metadata, '$.push_ref'))=:branch OR JSON_UNQUOTE(JSON_EXTRACT(a.metadata, '$.head_ref'))=:branch)",
+        { branch: query.branch },
+      );
+    if (query.actor)
+      qb.andWhere('a.actor_label=:actor', { actor: query.actor });
+    if (query.state) qb.andWhere('a.state=:state', { state: query.state });
+    if (query.from)
+      qb.andWhere('COALESCE(a.provider_updated_at,a.updated_at)>=:from', {
+        from: new Date(query.from),
+      });
+    if (query.to)
+      qb.andWhere('COALESCE(a.provider_updated_at,a.updated_at)<=:to', {
+        to: new Date(query.to),
+      });
     if (query.search?.trim())
       qb.andWhere(
         '(LOWER(a.title) LIKE :search OR LOWER(a.reference) LIKE :search OR LOWER(a.actor_label) LIKE :search OR LOWER(c.repository_full_name) LIKE :search)',
@@ -560,6 +580,7 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
         'a.url AS url',
         'a.actor_label AS actor',
         'a.metadata AS metadata',
+        'a.last_delivery_id AS deliveryId',
         'a.provider_updated_at AS providerUpdatedAt',
         'a.updated_at AS updatedAt',
         'c.repository_full_name AS repository',
@@ -614,6 +635,7 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
         url: row.url,
         actor: row.actor,
         metadata: row.metadata,
+        deliveryId: row.deliveryId,
         updatedAt: row.providerUpdatedAt ?? row.updatedAt,
         repository: row.repository,
         connectionArchived: Boolean(row.connectionArchivedAt),
