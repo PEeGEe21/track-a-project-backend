@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -23,6 +24,7 @@ import {
   LinkGithubArtifactDto,
   MoveGithubArtifactDto,
   GithubActivityQueryDto,
+  ReplaceGithubArtifactTaskLinksDto,
 } from './dto/github-integration.dto';
 import { GithubService } from './github.service';
 
@@ -121,6 +123,23 @@ export class GithubController {
     @Query() query: GithubActivityQueryDto,
   ) {
     return this.service.projectActivity(req.user, org, projectId, query);
+  }
+  @Put('projects/:projectId/activity/:artifactId/task-links')
+  @UseGuards(JwtAuthGuard, OrganizationAccessGuard)
+  replaceActivityTaskLinks(
+    @Req() req: any,
+    @Headers('x-organization-id') org: string,
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('artifactId', ParseUUIDPipe) artifactId: string,
+    @Body() dto: ReplaceGithubArtifactTaskLinksDto,
+  ) {
+    return this.service.replaceArtifactTaskLinks(
+      req.user,
+      org,
+      projectId,
+      artifactId,
+      dto.taskIds,
+    );
   }
   @Delete('tasks/:taskId/links/:artifactId')
   @UseGuards(JwtAuthGuard, OrganizationAccessGuard)

@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -36,6 +39,16 @@ export class LinkGithubArtifactDto {
 }
 export class MoveGithubArtifactDto {
   @Type(() => Number) @IsInt() @Min(1) targetTaskId: number;
+}
+
+export class ReplaceGithubArtifactTaskLinksDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  taskIds: number[];
 }
 
 export class GithubActivityQueryDto {

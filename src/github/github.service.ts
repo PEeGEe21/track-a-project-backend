@@ -22,7 +22,7 @@ import {
 } from 'crypto';
 import { BlockList, isIP } from 'net';
 import { Queue, Worker } from 'bullmq';
-import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AuditWriterService } from 'src/audit/audit-writer.service';
 import {
@@ -663,7 +663,12 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
       relations: ['project'],
     });
     if (!task) throw new NotFoundException('Task not found');
-    await this.owner(user, org, task.project.id);
+    await this.authorization.assertProjectPermission(
+      user,
+      org,
+      task.project.id,
+      ProjectPermission.EDIT,
+    );
     const result = await this.links.update(
       { organization_id: org, task_id: taskId, artifact_id: artifactId },
       {
@@ -676,6 +681,81 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
     if (!result.affected)
       throw new NotFoundException('Development link not found');
     return { success: true };
+  }
+  async replaceArtifactTaskLinks(
+    user: any,
+    org: string,
+    projectId: number,
+    artifactId: string,
+    taskIds: number[],
+  ) {
+    await this.authorization.assertProjectPermission(
+      user,
+      org,
+      projectId,
+      ProjectPermission.EDIT,
+    );
+    const artifact = await this.artifacts.findOneBy({
+      id: artifactId,
+      organization_id: org,
+      project_id: projectId,
+    });
+    if (!artifact) throw new NotFoundException('GitHub activity not found');
+    const selectedTasks = taskIds.length
+      ? await this.tasks.find({
+          where: {
+            id: In(taskIds),
+            organization_id: org,
+            project: { id: projectId },
+          },
+        })
+      : [];
+    if (selectedTasks.length !== taskIds.length)
+      throw new BadRequestException(
+        'Every selected task must belong to this project',
+      );
+    const links = await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(GithubTaskLink);
+      await repository.update(
+        {
+          organization_id: org,
+          project_id: projectId,
+          artifact_id: artifactId,
+        },
+        {
+          state: 'suppressed',
+          source: 'manual',
+          created_by_user_id: Number(user.userId),
+          manually_overridden: true,
+        },
+      );
+      if (taskIds.length)
+        await repository.upsert(
+          taskIds.map((taskId) => ({
+            organization_id: org,
+            project_id: projectId,
+            artifact_id: artifactId,
+            task_id: taskId,
+            state: 'active',
+            source: 'manual',
+            source_artifact_id: null,
+            source_value: null,
+            created_by_user_id: Number(user.userId),
+            manually_overridden: true,
+            first_delivery_id: artifact.last_delivery_id,
+            last_delivery_id: artifact.last_delivery_id,
+          })),
+          ['artifact_id', 'task_id'],
+        );
+      return taskIds.map((taskId) => ({
+        taskId,
+        taskTitle:
+          selectedTasks.find((task) => Number(task.id) === taskId)?.title ||
+          'Untitled task',
+        source: 'manual',
+      }));
+    });
+    return { success: true, data: { links } };
   }
   async linkTaskArtifact(
     user: any,
