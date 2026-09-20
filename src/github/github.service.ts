@@ -959,8 +959,10 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
     }
     if (event === 'push')
       return (p.commits || []).slice(0, 100).map((c: any) => {
+        const pushRef = String(p.ref || '').replace(/^refs\/heads\//, '');
         const refs = this.references([
           { value: c.message, source: 'commit_message' },
+          { value: pushRef, source: 'push_branch' },
         ]);
         return {
           type: 'commit',
@@ -972,7 +974,7 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
           actor: c.author?.username || c.author?.name,
           updatedAt: c.timestamp,
           metadata: {
-            push_ref: String(p.ref || '').replace(/^refs\/heads\//, ''),
+            push_ref: pushRef,
           },
           taskIds: refs.map((ref) => ref.taskId),
           taskReferences: refs,

@@ -119,6 +119,35 @@ describe('GithubService', () => {
     expect(artifacts).toHaveLength(100);
   });
 
+  it('links every commit in a push to the task referenced by its branch', () => {
+    const artifacts = (service as any).normalize('push', {
+      ref: 'refs/heads/feature/TP-136-repository-activity',
+      commits: [
+        {
+          id: 'abc123',
+          message: 'Add the activity endpoint',
+          url: 'https://github.com/acme/repo/commit/abc123',
+        },
+        {
+          id: 'def456',
+          message: 'Polish the activity cards',
+          url: 'https://github.com/acme/repo/commit/def456',
+        },
+      ],
+    });
+
+    expect(artifacts).toHaveLength(2);
+    for (const artifact of artifacts) {
+      expect(artifact.metadata).toEqual({
+        push_ref: 'feature/TP-136-repository-activity',
+      });
+      expect(artifact.taskIds).toEqual([136]);
+      expect(artifact.taskReferences).toEqual([
+        { taskId: 136, source: 'push_branch', value: 'TP-136' },
+      ]);
+    }
+  });
+
   it('ignores unsupported event families', () => {
     expect((service as any).normalize('member', {})).toEqual([]);
   });
