@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -46,6 +47,12 @@ export class GithubActivityQueryDto {
   @IsIn(['all', 'linked', 'unlinked'])
   linked?: 'all' | 'linked' | 'unlinked' = 'all';
   @IsOptional() @IsString() @MaxLength(36) connectionId?: string;
+  @IsOptional() @IsString() @MaxLength(200) repository?: string;
+  @IsOptional() @IsString() @MaxLength(255) branch?: string;
+  @IsOptional() @IsString() @MaxLength(160) actor?: string;
+  @IsOptional() @IsString() @MaxLength(60) state?: string;
+  @IsOptional() @IsDateString() from?: string;
+  @IsOptional() @IsDateString() to?: string;
   @IsOptional() @IsString() @MaxLength(500) cursor?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 25;
 }

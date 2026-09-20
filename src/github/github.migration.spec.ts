@@ -1,5 +1,6 @@
 import { GithubIntegration1789900000000 } from 'src/migrations/1789900000000-GithubIntegration';
 import { GithubLinkHardening1789910000000 } from 'src/migrations/1789910000000-GithubLinkHardening';
+import { GithubProjectActivityIndexes1790100000000 } from 'src/migrations/1790100000000-GithubProjectActivityIndexes';
 
 describe('GithubIntegration migration', () => {
   it('creates all durable GitHub tables and uniqueness constraints', async () => {
@@ -49,5 +50,19 @@ describe('GithubLinkHardening migration', () => {
     expect(sql).toContain('source_artifact_id');
     expect(sql).toContain('github_link_diagnostics');
     expect(sql).toContain('UQ_github_link_diagnostic_delivery_token');
+  });
+});
+
+describe('GithubProjectActivityIndexes migration', () => {
+  it('adds reversible project feed and link lookup indexes', async () => {
+    const queries: string[] = [];
+    const runner = { query: jest.fn(async (sql: string) => queries.push(sql)) };
+    const migration = new GithubProjectActivityIndexes1790100000000();
+    await migration.up(runner as any);
+    expect(queries.join('\n')).toContain('IDX_github_artifact_project_activity');
+    expect(queries.join('\n')).toContain('IDX_github_task_link_artifact_state');
+    queries.length = 0;
+    await migration.down(runner as any);
+    expect(queries.join('\n')).toContain('DROP INDEX `IDX_github_artifact_project_activity`');
   });
 });
