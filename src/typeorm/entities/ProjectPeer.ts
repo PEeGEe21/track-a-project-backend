@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from './User';
 import { Project } from './Project';
@@ -15,6 +16,7 @@ import { Organization } from './Organization';
 import { ProjectRole } from '../../utils/constants/projectRole';
 
 @Entity({ name: 'project_peers' })
+@Index('UQ_project_peers_project_user', ['project', 'user'], { unique: true })
 export class ProjectPeer {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: number;

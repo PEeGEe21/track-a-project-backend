@@ -102,6 +102,12 @@ export const AUDIT_FIELD_ALLOWLISTS: Record<
     'removal_reason',
     'date_change_count',
   ]),
+  [AuditSubjectType.GITHUB_CONNECTION]: new Set([
+    'repository',
+    'active',
+    'archived_at',
+    'rotation_overlap_minutes',
+  ]),
 };
 
 @Injectable()

@@ -3838,6 +3838,11 @@ export class ProjectsService {
         'The project creator remains an owner',
         HttpStatus.BAD_REQUEST,
       );
+    if (Number(actor.id) === Number(targetUserId) && role !== ProjectRole.OWNER)
+      throw new HttpException(
+        'Project owners cannot demote themselves',
+        HttpStatus.BAD_REQUEST,
+      );
     const membership = await this.projectPeerRepository.findOne({
       where: {
         project: { id: projectId },

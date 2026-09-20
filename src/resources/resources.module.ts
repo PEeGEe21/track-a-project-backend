@@ -31,6 +31,7 @@ import { ProjectActivitiesModule } from 'src/project-activities/project-activiti
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageModule } from 'src/storage/storage.module';
+import { AuthorizationModule } from 'src/common/authorization/authorization.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { StorageModule } from 'src/storage/storage.module';
     forwardRef(() => UsersModule),
     ConfigModule,
     StorageModule,
+    AuthorizationModule,
     TypeOrmModule.forFeature([
       User,
       Profile,
@@ -65,15 +67,7 @@ import { StorageModule } from 'src/storage/storage.module';
     ]),
   ],
   controllers: [ResourcesController],
-  providers: [
-    ResourcesService,
-    FirebaseStorageService,
-    SimplePreviewService,
-  ],
-  exports: [
-    ResourcesService,
-    FirebaseStorageService,
-    SimplePreviewService,
-  ],
+  providers: [ResourcesService, FirebaseStorageService, SimplePreviewService],
+  exports: [ResourcesService, FirebaseStorageService, SimplePreviewService],
 })
 export class ResourcesModule {}

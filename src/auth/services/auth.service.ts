@@ -84,6 +84,7 @@ import { AuthUser } from 'src/types/users';
 import { SignupEmailVerification } from 'src/typeorm/entities/SignupEmailVerification';
 import { JoinWorkspaceDto } from 'src/organizations/dto/join-workspace.dto';
 import { DeleteWorkspaceDto } from 'src/organizations/dto/delete-workspace.dto';
+import { buildDefaultAvatarUrl } from 'src/users/default-avatar';
 // import {
 //   EmailVerification,
 //   EmailVerificationDocument,
@@ -881,6 +882,9 @@ export class AuthService {
   createUser(userDetails: CreateUserDto) {
     const newUser = this.userRepository.create({
       ...userDetails,
+      avatar:
+        (userDetails as CreateUserDto & { avatar?: string }).avatar ||
+        buildDefaultAvatarUrl(userDetails.email),
       created_at: new Date(),
     });
     return this.userRepository.save(newUser);
@@ -1899,6 +1903,7 @@ export class AuthService {
       // Create user
       const user = queryRunner.manager.create(User, {
         email: dto.email,
+        avatar: buildDefaultAvatarUrl(dto.email),
         password: hashedPassword,
         first_name: dto.first_name,
         last_name: dto.last_name,
@@ -2032,6 +2037,7 @@ export class AuthService {
     try {
       const user = queryRunner.manager.create(User, {
         email: dto.email,
+        avatar: buildDefaultAvatarUrl(dto.email),
         password: hashedPassword,
         first_name: dto.first_name,
         last_name: dto.last_name,

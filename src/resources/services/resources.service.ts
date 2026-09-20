@@ -27,6 +27,10 @@ import { ProjectActivitiesService } from 'src/project-activities/services/projec
 import { UserOrganization } from 'src/typeorm/entities/UserOrganization';
 import { Organization } from 'src/typeorm/entities/Organization';
 import { StorageService } from 'src/types/storage.interface';
+import {
+  AuthorizationService,
+  ProjectPermission,
+} from 'src/common/authorization/authorization.service';
 
 @Injectable()
 export class ResourcesService {
@@ -49,6 +53,7 @@ export class ResourcesService {
     private previewService: SimplePreviewService,
     private userService: UsersService,
     private projectActivitiesService: ProjectActivitiesService,
+    private authorizationService: AuthorizationService,
   ) {}
 
   private inferMimeType(
@@ -479,13 +484,12 @@ export class ResourcesService {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
 
-    if (
-      resource.createdBy.id !== userFound.id &&
-      resource.project.user.id !== userFound.id
-    ) {
-      throw new HttpException(
-        'Unauthorized to update this resource',
-        HttpStatus.FORBIDDEN,
+    if (resource.createdBy.id !== userFound.id) {
+      await this.authorizationService.assertProjectPermission(
+        user,
+        resource.organization_id ?? resource.project.organization_id,
+        resource.project.id,
+        ProjectPermission.EDIT,
       );
     }
 
@@ -503,13 +507,12 @@ export class ResourcesService {
       throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
     }
 
-    if (
-      resource.createdBy.id !== userFound.id &&
-      resource.project.user.id !== userFound.id
-    ) {
-      throw new HttpException(
-        'Unauthorized to delete this resource',
-        HttpStatus.FORBIDDEN,
+    if (resource.createdBy.id !== userFound.id) {
+      await this.authorizationService.assertProjectPermission(
+        user,
+        resource.organization_id ?? resource.project.organization_id,
+        resource.project.id,
+        ProjectPermission.EDIT,
       );
     }
 

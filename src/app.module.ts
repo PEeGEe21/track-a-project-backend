@@ -155,6 +155,12 @@ import { TaskWatcher } from './typeorm/entities/TaskWatcher';
 import { AuditModule } from './audit/audit.module';
 import { TaskDependency } from './typeorm/entities/TaskDependency';
 import { TaskDependenciesModule } from './task-dependencies/task-dependencies.module';
+import { GithubConnection } from './typeorm/entities/GithubConnection';
+import { GithubDelivery } from './typeorm/entities/GithubDelivery';
+import { GithubArtifact } from './typeorm/entities/GithubArtifact';
+import { GithubTaskLink } from './typeorm/entities/GithubTaskLink';
+import { GithubLinkDiagnostic } from './typeorm/entities/GithubLinkDiagnostic';
+import { GithubModule } from './github/github.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -367,6 +373,11 @@ import { TaskDependenciesModule } from './task-dependencies/task-dependencies.mo
       ApprovalResponse,
       ReusableTemplate,
       ReusableTemplateVersion,
+      GithubConnection,
+      GithubDelivery,
+      GithubArtifact,
+      GithubTaskLink,
+      GithubLinkDiagnostic,
     ]),
     UsersModule,
     ProjectsModule,
@@ -411,6 +422,7 @@ import { TaskDependenciesModule } from './task-dependencies/task-dependencies.mo
     AutomationsModule,
     AuditModule,
     TaskDependenciesModule,
+    GithubModule,
   ],
   controllers: [AppController],
   providers: [

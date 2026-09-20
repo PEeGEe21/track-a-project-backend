@@ -36,10 +36,16 @@ jobs:
       REDIS_ENABLED: 'false'
       RATE_LIMIT_DRIVER: memory
       QUEUE_DRIVER: inline
+      GITHUB_WEBHOOK_IP_ALLOWLIST: ""
+      HTTP_TRUST_PROXY_HOPS: "0"
+      GITHUB_FAILURE_ALERT_THRESHOLD: "3"
+      GITHUB_SILENCE_ALERT_HOURS: "168"
       STORAGE_DRIVER: minio
       S3_BUCKET_NAME: ci-files
       S3_ACCESS_KEY_ID: ci
       S3_SECRET_ACCESS_KEY: ci-only-not-a-secret
+      DICEBEAR_API_URL: https://api.dicebear.com
+      DICEBEAR_AVATAR_STYLE: shapes
       TRANSCRIPTION_ENABLED: 'false'
       AI_TEXT_PROVIDER: none
       AI_TRANSCRIPTION_PROVIDER: none

@@ -145,6 +145,37 @@ export class AuthorizationService {
     };
   }
 
+  async resolveProjectOwnerIds(
+    organizationId: string,
+    projectId: number,
+  ): Promise<number[]> {
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId, organization_id: organizationId },
+      relations: ['user'],
+    });
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const memberships = await this.projectPeerRepository.find({
+      where: {
+        project: { id: projectId },
+        organization_id: organizationId,
+        role: ProjectRole.OWNER,
+        status: ProjectPeerStatus.CONNECTED,
+        is_confirmed: true,
+      },
+      relations: ['user'],
+    });
+
+    return [
+      ...new Set([
+        Number(project.user.id),
+        ...memberships.map((membership) => Number(membership.user.id)),
+      ]),
+    ];
+  }
+
   async assertProjectPermission(
     actor: AuthUser,
     organizationId: string,

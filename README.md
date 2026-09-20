@@ -72,6 +72,7 @@ Required core values:
 - Supabase credentials when `STORAGE_DRIVER=supabase`
 - S3/MinIO credentials when `STORAGE_DRIVER=minio`
 - For local avatar/file display through direct MinIO URLs, set `S3_BUCKET_PUBLIC_READ=true`
+- New users receive a deterministic DiceBear avatar URL at account creation. Configure `DICEBEAR_API_URL` and `DICEBEAR_AVATAR_STYLE` to use a self-hosted API or another supported style; uploaded profile avatars replace this default normally.
 
 Important optional values:
 
@@ -181,8 +182,9 @@ Redis support is now wired through [src/redis/redis.service.ts](/var/www/html/tr
 
 - `REDIS_ENABLED=false` keeps the backend self-contained for local development.
 - `REDIS_ENABLED=true` plus `REDIS_URL` enables Redis health checks and Redis-backed throttling.
-- `QUEUE_DRIVER=inline` keeps current behavior in-process.
-- `QUEUE_DRIVER=redis` enables BullMQ-backed mail and notification delivery in Redis environments.
+- `QUEUE_DRIVER=inline` keeps local-development jobs in-process.
+- `QUEUE_DRIVER=redis` enables BullMQ-backed mail, notification, and GitHub delivery processing. It is required when GitHub integration is enabled in production.
+- `GITHUB_WEBHOOK_IP_ALLOWLIST` optionally accepts GitHub's comma-separated published `hooks` CIDRs. Configure `HTTP_TRUST_PROXY_HOPS` to the exact trusted reverse-proxy depth first.
 
 Installed packages:
 

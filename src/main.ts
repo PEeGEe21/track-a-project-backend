@@ -16,6 +16,9 @@ async function bootstrap() {
   bootTailpointMonitoring();
 
   const app = await NestFactory.create(AppModule, { rawBody: true });
+  const trustProxyHops = Number(process.env.HTTP_TRUST_PROXY_HOPS || 0);
+  if (Number.isInteger(trustProxyHops) && trustProxyHops > 0)
+    app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
 
   app.use(helmet());
   app.useGlobalPipes(

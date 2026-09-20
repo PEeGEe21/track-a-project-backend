@@ -18,6 +18,7 @@ describe('ProjectsService ingestion settings', () => {
   };
   const projectPeerRepository = {
     exists: jest.fn(),
+    findOne: jest.fn(),
   };
   const statusRepository = {
     findOne: jest.fn(),
@@ -86,6 +87,28 @@ describe('ProjectsService ingestion settings', () => {
         role: 'owner',
       }),
     );
+  });
+
+  it('prevents a co-owner from demoting themselves', async () => {
+    usersService.getUserAccountById.mockResolvedValue({ id: 10 });
+    projectRepository.findOne.mockResolvedValue({
+      id: 7,
+      user: { id: 1 },
+    });
+    projectPeerRepository.findOne.mockResolvedValue({
+      user: { id: 10 },
+      role: 'owner',
+    });
+
+    await expect(
+      service.updateProjectMemberRole(
+        { userId: 10, role: 'user' },
+        7,
+        10,
+        'editor' as any,
+        'org-1',
+      ),
+    ).rejects.toThrow('Project owners cannot demote themselves');
   });
 
   it('exports stable custom-field metadata and normalized values', async () => {

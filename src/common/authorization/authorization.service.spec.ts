@@ -4,7 +4,11 @@ import { AuthorizationService } from './authorization.service';
 
 describe('AuthorizationService', () => {
   const projectRepository = { findOne: jest.fn() };
-  const projectPeerRepository = { exists: jest.fn() };
+  const projectPeerRepository = {
+    exists: jest.fn(),
+    findOne: jest.fn(),
+    find: jest.fn(),
+  };
   const userOrganizationRepository = { findOne: jest.fn() };
   let service: AuthorizationService;
 
@@ -98,5 +102,27 @@ describe('AuthorizationService', () => {
     await expect(service.assertProjectAccess(params)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it('resolves the permanent creator and every confirmed connected co-owner', async () => {
+    projectRepository.findOne.mockResolvedValue({ id: 42, user: { id: 9 } });
+    projectPeerRepository.find.mockResolvedValue([
+      { user: { id: 7 } },
+      { user: { id: 9 } },
+      { user: { id: 11 } },
+    ]);
+
+    await expect(
+      service.resolveProjectOwnerIds(params.organizationId, params.projectId),
+    ).resolves.toEqual([9, 7, 11]);
+    expect(projectPeerRepository.find).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        organization_id: params.organizationId,
+        role: 'owner',
+        status: 'connected',
+        is_confirmed: true,
+      }),
+      relations: ['user'],
+    });
   });
 });

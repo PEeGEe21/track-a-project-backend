@@ -184,7 +184,8 @@ export class RequestFormsService {
         dto,
         { public: true, ip, userAgent },
       );
-    } catch {
+    } catch (e){
+      console.log(e, 'err');
       throw new BadRequestException('Unable to process this request');
     }
   }

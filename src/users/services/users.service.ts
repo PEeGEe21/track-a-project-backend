@@ -49,6 +49,7 @@ import { InviteLinks } from 'src/common/services/invite-links';
 import { StorageService } from 'src/types/storage.interface';
 import { NotificationPreferencesService } from 'src/notifications/services/notification-preferences.service';
 import { UpdateUserNotificationPreferencesDto } from '../dtos/UpdateUserNotificationPreferences.dto';
+import { buildDefaultAvatarUrl } from '../default-avatar';
 
 @Injectable()
 export class UsersService {
@@ -351,8 +352,14 @@ export class UsersService {
   }
 
   createUser(userDetails: CreateUserParams) {
+    const accountDetails = userDetails as CreateUserParams & {
+      email: string;
+      avatar?: string;
+    };
     const newUser = this.userRepository.create({
       ...userDetails,
+      avatar:
+        accountDetails.avatar || buildDefaultAvatarUrl(accountDetails.email),
       created_at: new Date(),
     });
     return this.userRepository.save(newUser);

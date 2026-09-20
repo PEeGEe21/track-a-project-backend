@@ -104,6 +104,11 @@ import { IntegrationEndpoint } from './typeorm/entities/IntegrationEndpoint';
 import { IntegrationPublisherCheckpoint } from './typeorm/entities/IntegrationPublisherCheckpoint';
 import { IntegrationDelivery } from './typeorm/entities/IntegrationDelivery';
 import { IntegrationDeliveryAttempt } from './typeorm/entities/IntegrationDeliveryAttempt';
+import { GithubConnection } from './typeorm/entities/GithubConnection';
+import { GithubDelivery } from './typeorm/entities/GithubDelivery';
+import { GithubArtifact } from './typeorm/entities/GithubArtifact';
+import { GithubTaskLink } from './typeorm/entities/GithubTaskLink';
+import { GithubLinkDiagnostic } from './typeorm/entities/GithubLinkDiagnostic';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -222,6 +227,11 @@ export const AppDataSource = new DataSource({
     IntegrationPublisherCheckpoint,
     IntegrationDelivery,
     IntegrationDeliveryAttempt,
+    GithubConnection,
+    GithubDelivery,
+    GithubArtifact,
+    GithubTaskLink,
+    GithubLinkDiagnostic,
   ],
   migrationsTransactionMode: 'each',
 });

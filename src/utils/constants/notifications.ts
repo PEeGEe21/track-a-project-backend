@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPES = {
   TASK_STATUS_CHANGE: 'task_status_change',
   TASK_INGESTED: 'task_ingested',
   DEADLINE_REMINDER: 'deadline_reminder',
+  GITHUB_CONNECTION_HEALTH: 'github_connection_health',
 };
 
 export const NOTIFICATION_PREFERENCE_DETAILS = {
@@ -58,6 +59,11 @@ export const NOTIFICATION_PREFERENCE_DETAILS = {
   [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {
     label: 'Deadline reminders',
     description: 'Upcoming due dates for work assigned to you or owned by you.',
+  },
+  [NOTIFICATION_TYPES.GITHUB_CONNECTION_HEALTH]: {
+    label: 'GitHub connection health',
+    description:
+      'Failures, silence, renames, and secret-rotation notices for connected repositories.',
   },
 } as const;
 
@@ -123,6 +129,12 @@ export const NOTIFICATION_DEFAULT_PREFERENCES = {
     sound: true,
   },
   [NOTIFICATION_TYPES.DEADLINE_REMINDER]: {
+    in_app: true,
+    email: true,
+    push: true,
+    sound: true,
+  },
+  [NOTIFICATION_TYPES.GITHUB_CONNECTION_HEALTH]: {
     in_app: true,
     email: true,
     push: true,

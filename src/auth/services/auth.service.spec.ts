@@ -28,6 +28,7 @@ describe('AuthService', () => {
   };
   const projectsService = {};
   const userRepository = {
+    create: jest.fn((value) => value),
     findOne: jest.fn(),
     findOneBy: jest.fn(),
     save: jest.fn(async (value) => value),
@@ -105,6 +106,22 @@ describe('AuthService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('assigns a DiceBear avatar when creating a user without one', async () => {
+    await service.createUser({
+      email: 'new@example.com',
+      password: 'hashed-password',
+    });
+
+    expect(userRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'new@example.com',
+        avatar: expect.stringContaining(
+          'https://api.dicebear.com/10.x/shapes/svg?seed=',
+        ),
+      }),
+    );
   });
 
   it('returns an account-scoped session when the user has no memberships', async () => {

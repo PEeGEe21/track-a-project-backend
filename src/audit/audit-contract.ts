@@ -40,6 +40,7 @@ export enum AuditSubjectType {
   INTEGRATION_ENDPOINT = 'integration_endpoint',
   INTEGRATION_DELIVERY = 'integration_delivery',
   TASK_DEPENDENCY = 'task_dependency',
+  GITHUB_CONNECTION = 'github_connection',
 }
 
 export enum AuditAction {
@@ -100,6 +101,10 @@ export enum AuditAction {
   INTEGRATION_ENDPOINT_UPDATED = 'integration_endpoint.updated',
   INTEGRATION_SECRET_ROTATED = 'integration_endpoint.secret_rotated',
   INTEGRATION_DELIVERY_REPLAYED = 'integration_delivery.replayed',
+  GITHUB_CONNECTION_CREATED = 'github_connection.created',
+  GITHUB_CONNECTION_UPDATED = 'github_connection.updated',
+  GITHUB_CONNECTION_SECRET_ROTATED = 'github_connection.secret_rotated',
+  GITHUB_CONNECTION_ARCHIVED = 'github_connection.archived',
   USER_IMPERSONATED = 'user.impersonated',
   SUBSCRIPTION_CHANGED = 'subscription.changed',
 }

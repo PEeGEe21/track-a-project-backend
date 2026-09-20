@@ -796,12 +796,15 @@ export class DecisionsService {
         is_confirmed: true,
       },
     });
-    const isOwner =
+    const isCreator =
       Number(project.user.id) === Number(user.id) ||
       actor.role === 'super_admin';
-    if (!isOwner && !peer)
+    if (!isCreator && !peer)
       throw new ForbiddenException('You do not have access to this project');
-    const role = isOwner ? ProjectRole.OWNER : peer?.role ?? ProjectRole.VIEWER;
+    const role = isCreator
+      ? ProjectRole.OWNER
+      : peer?.role ?? ProjectRole.VIEWER;
+    const isOwner = role === ProjectRole.OWNER;
     return {
       user,
       project,

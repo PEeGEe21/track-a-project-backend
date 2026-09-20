@@ -32,6 +32,12 @@ jobs:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       SENDGRID_INBOUND_ACCESS_TOKEN: ${{ secrets.SENDGRID_INBOUND_ACCESS_TOKEN }}
       WEBHOOK_SECRET_ENCRYPTION_KEY: ${{ secrets.WEBHOOK_SECRET_ENCRYPTION_KEY }}
+      GITHUB_WEBHOOK_IP_ALLOWLIST: ${{ vars.GITHUB_WEBHOOK_IP_ALLOWLIST || '' }}
+      HTTP_TRUST_PROXY_HOPS: ${{ vars.HTTP_TRUST_PROXY_HOPS || '0' }}
+      GITHUB_FAILURE_ALERT_THRESHOLD: ${{ vars.GITHUB_FAILURE_ALERT_THRESHOLD || '3' }}
+      GITHUB_SILENCE_ALERT_HOURS: ${{ vars.GITHUB_SILENCE_ALERT_HOURS || '168' }}
+      DICEBEAR_API_URL: ${{ vars.DICEBEAR_API_URL || 'https://api.dicebear.com' }}
+      DICEBEAR_AVATAR_STYLE: ${{ vars.DICEBEAR_AVATAR_STYLE || 'shapes' }}
     steps:
       - name: Validate AI deployment configuration
         run: |

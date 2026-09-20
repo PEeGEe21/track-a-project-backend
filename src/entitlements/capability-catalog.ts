@@ -19,6 +19,7 @@ export enum CapabilityKey {
   TASK_DEPENDENCIES = 'task_dependencies',
   ADVANCED_RECURRING_WORK = 'advanced_recurring_work',
   ADVANCED_APPROVALS = 'advanced_approvals',
+  GITHUB_INTEGRATION = 'github_integration',
 }
 
 export type CapabilityDefinition = {
@@ -166,6 +167,14 @@ export const CAPABILITY_CATALOG: Record<CapabilityKey, CapabilityDefinition> = {
     label: 'Advanced Approvals',
     description:
       'Sequential approval stages, thresholds, delegation, reminders, and escalation.',
+    minimumTier: SubscriptionTier.FREE,
+    defaultEnabled: false,
+  },
+  [CapabilityKey.GITHUB_INTEGRATION]: {
+    key: CapabilityKey.GITHUB_INTEGRATION,
+    label: 'GitHub Integration',
+    description:
+      'Verified GitHub webhooks and development links for project tasks.',
     minimumTier: SubscriptionTier.FREE,
     defaultEnabled: false,
   },
