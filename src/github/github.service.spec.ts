@@ -5,6 +5,7 @@ describe('GithubService', () => {
   const repo = () => ({
     find: jest.fn(),
     findOne: jest.fn(),
+    findOneBy: jest.fn(),
     findOneByOrFail: jest.fn(),
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => value),
@@ -717,9 +718,8 @@ describe('GithubService', () => {
     expect(linkRepository.createQueryBuilder).not.toHaveBeenCalled();
   });
 
-  it('lets an Owner explicitly remove a mistaken immutable artifact link', async () => {
+  it('lets a project editor explicitly remove a mistaken immutable artifact link', async () => {
     tasks.findOne.mockResolvedValue({ id: 42, project: { id: 7 } });
-    jest.spyOn(service as any, 'owner').mockResolvedValue(undefined);
     links.update.mockResolvedValue({ affected: 1 });
     await expect(
       service.unlinkTaskArtifact(
@@ -729,6 +729,12 @@ describe('GithubService', () => {
         '9d254074-676b-4eaf-a590-8c7138e6f401',
       ),
     ).resolves.toEqual({ success: true });
+    expect(authorization.assertProjectPermission).toHaveBeenCalledWith(
+      { userId: 4 },
+      'org-1',
+      7,
+      'edit',
+    );
     expect(links.update).toHaveBeenCalledWith(
       {
         organization_id: 'org-1',
@@ -740,6 +746,53 @@ describe('GithubService', () => {
         source: 'manual',
         manually_overridden: true,
       }),
+    );
+  });
+
+  it('atomically replaces an activity task selection', async () => {
+    artifacts.findOneBy.mockResolvedValue({
+      id: '9d254074-676b-4eaf-a590-8c7138e6f401',
+      last_delivery_id: 'delivery-1',
+    });
+    tasks.find.mockResolvedValue([
+      { id: 42, title: 'First task' },
+      { id: 43, title: 'Second task' },
+    ]);
+    const linkRepository = {
+      update: jest.fn().mockResolvedValue({ affected: 2 }),
+      upsert: jest.fn().mockResolvedValue({}),
+    };
+    dataSource.transaction.mockImplementation(async (work) =>
+      work({ getRepository: jest.fn().mockReturnValue(linkRepository) }),
+    );
+
+    await expect(
+      service.replaceArtifactTaskLinks(
+        { userId: 4 },
+        'org-1',
+        7,
+        '9d254074-676b-4eaf-a590-8c7138e6f401',
+        [42, 43],
+      ),
+    ).resolves.toEqual({
+      success: true,
+      data: {
+        links: [
+          { taskId: 42, taskTitle: 'First task', source: 'manual' },
+          { taskId: 43, taskTitle: 'Second task', source: 'manual' },
+        ],
+      },
+    });
+    expect(linkRepository.update).toHaveBeenCalledWith(
+      expect.objectContaining({ artifact_id: expect.any(String) }),
+      expect.objectContaining({ state: 'suppressed' }),
+    );
+    expect(linkRepository.upsert).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ task_id: 42, state: 'active' }),
+        expect.objectContaining({ task_id: 43, state: 'active' }),
+      ]),
+      ['artifact_id', 'task_id'],
     );
   });
 
