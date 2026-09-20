@@ -1193,6 +1193,29 @@ export class GithubService implements OnModuleInit, OnModuleDestroy {
       }
     }
     const normalized = this.normalize(event, body);
+    if (normalized.length === 0) {
+      await this.deliveries.update(
+        { connection_id: c.id, provider_delivery_id: deliveryId },
+        {
+          state: 'processed',
+          failure_code: null,
+          artifact_count: 0,
+          link_count: 0,
+          processed_at: new Date(),
+        },
+      );
+      await this.connections.update(c.id, {
+        last_delivery_at: new Date(),
+        last_delivery_state: 'processed',
+        health_state: 'healthy',
+        consecutive_failures: 0,
+        health_alerted_at: null,
+      });
+      return {
+        success: true,
+        data: { deliveryId, state: 'processed', artifacts: 0 },
+      };
+    }
     await this.connections.update(c.id, {
       last_delivery_at: new Date(),
       last_delivery_state: 'queued',

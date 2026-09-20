@@ -331,7 +331,19 @@ describe('GithubService', () => {
     const enqueue = jest
       .spyOn(service as any, 'enqueueDelivery')
       .mockResolvedValue(undefined);
-    const body = { repository: { id: 99, full_name: 'acme/repo' } };
+    const body = {
+      action: 'opened',
+      repository: { id: 99, full_name: 'acme/repo' },
+      issue: {
+        id: 102,
+        number: 13,
+        title: 'TRACK-13 interrupted delivery',
+        body: null,
+        state: 'open',
+        html_url: 'https://github.com/acme/repo/issues/13',
+        updated_at: '2026-09-20T13:00:00Z',
+      },
+    };
     const raw = Buffer.from(JSON.stringify(body));
     const signature = `sha256=${createHmac('sha256', secret)
       .update(raw)
@@ -341,7 +353,7 @@ describe('GithubService', () => {
         'key',
         {
           'x-github-delivery': 'delivery-interrupted',
-          'x-github-event': 'ping',
+          'x-github-event': 'issues',
           'x-hub-signature-256': signature,
         },
         body,
@@ -350,6 +362,67 @@ describe('GithubService', () => {
     ).resolves.toMatchObject({ data: { state: 'queued', accepted: true } });
     expect(enqueue).toHaveBeenCalledWith(
       expect.objectContaining({ deliveryId: 'delivery-interrupted' }),
+    );
+  });
+
+  it('processes GitHub ping deliveries without waiting for the queue', async () => {
+    const secret = 'secret';
+    const encrypted = (service as any).encrypt(secret);
+    connections.createQueryBuilder.mockReturnValue({
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({
+        id: 'connection-1',
+        active: true,
+        organization_id: 'org-1',
+        project_id: 7,
+        repository_full_name: 'acme/repo',
+        provider_repository_id: '99',
+        secret_ciphertext: encrypted,
+        previous_secret_ciphertext: null,
+        previous_secret_expires_at: null,
+      }),
+    });
+    deliveries.insert.mockResolvedValue({});
+    deliveries.update.mockResolvedValue({ affected: 1 });
+    connections.update.mockResolvedValue({ affected: 1 });
+    const enqueue = jest.spyOn(service as any, 'enqueueDelivery');
+    const body = { repository: { id: 99, full_name: 'acme/repo' } };
+    const raw = Buffer.from(JSON.stringify(body));
+    const signature = `sha256=${createHmac('sha256', secret)
+      .update(raw)
+      .digest('hex')}`;
+
+    await expect(
+      service.receive(
+        'key',
+        {
+          'x-github-delivery': 'ping-delivery',
+          'x-github-event': 'ping',
+          'x-hub-signature-256': signature,
+        },
+        body,
+        raw,
+      ),
+    ).resolves.toEqual({
+      success: true,
+      data: { deliveryId: 'ping-delivery', state: 'processed', artifacts: 0 },
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(deliveries.update).toHaveBeenCalledWith(
+      {
+        connection_id: 'connection-1',
+        provider_delivery_id: 'ping-delivery',
+      },
+      expect.objectContaining({ state: 'processed', artifact_count: 0 }),
+    );
+    expect(connections.update).toHaveBeenCalledWith(
+      'connection-1',
+      expect.objectContaining({
+        last_delivery_state: 'processed',
+        health_state: 'healthy',
+        consecutive_failures: 0,
+      }),
     );
   });
 
