@@ -35,7 +35,7 @@ export class SidebarProjectsController {
   @UseGuards(SidebarProjectMutationRateLimitGuard)
   async pin(
     @Req() req: any,
-    @Res() response: Response,
+    @Res({ passthrough: true }) response: Response,
     @Headers('x-organization-id') organizationId: string,
     @Param('projectId', ParseIntPipe) projectId: number,
   ) {
@@ -44,7 +44,8 @@ export class SidebarProjectsController {
       organizationId,
       projectId,
     );
-    return response.status(result.created ? HttpStatus.CREATED : HttpStatus.OK).json(result);
+    response.status(result.created ? HttpStatus.CREATED : HttpStatus.OK);
+    return result;
   }
 
   @Delete(':projectId')
