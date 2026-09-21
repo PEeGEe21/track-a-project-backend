@@ -2717,7 +2717,7 @@ export class ProjectsService {
           id: id,
           organization_id: organizationId, // Verify organization
         },
-        relations: ['project'],
+        relations: ['project', 'project.organization'],
       });
 
       if (!invite) {
@@ -2764,6 +2764,8 @@ export class ProjectsService {
             success: true,
             invite_status: invite.status,
             message: 'Invite has been Accepted',
+            organization_slug: invite.project.organization?.slug ?? null,
+            project_id: invite.project.id,
           };
         }
       }
