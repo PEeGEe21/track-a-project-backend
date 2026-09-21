@@ -552,6 +552,35 @@ export class ProjectsService {
     }
   }
 
+  async getQuickTaskOptions(user: any, organizationId: string) {
+    const scope = await this.authorizationService.getProjectAccessScope(
+      user,
+      organizationId,
+    );
+    const query = this.projectRepository
+      .createQueryBuilder('project')
+      .leftJoin('project.user', 'owner')
+      .leftJoin(
+        'project.projectPeers',
+        'peer',
+        'peer.user_id = :userId AND peer.organization_id = :organizationId AND peer.status = :connected AND peer.is_confirmed = 1',
+      )
+      .where('project.organization_id = :organizationId', { organizationId })
+      .setParameters({ userId: scope.userId, connected: 'connected' });
+    if (!scope.canAccessAllProjects)
+      query.andWhere('(owner.id = :userId OR peer.id IS NOT NULL)');
+    const projects = await query
+      .select([
+        'project.id AS id',
+        'project.title AS title',
+        'project.default_ingestion_status_id AS default_ingestion_status_id',
+      ])
+      .distinct(true)
+      .orderBy('project.title', 'ASC')
+      .getRawMany();
+    return { success: true, data: projects };
+  }
+
   async updateProject(
     id: number,
     updateProjectDetails: UpdateProjectDto,
