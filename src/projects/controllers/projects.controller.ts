@@ -120,6 +120,15 @@ export class ProjectsController {
     );
   }
 
+  @Get('/quick-task-options')
+  @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)
+  getQuickTaskOptions(
+    @Req() req: any,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.projectService.getQuickTaskOptions(req.user, organizationId);
+  }
+
   @Get('/project-peer-invites')
   @ApiContractOperation('List project invitations', ProjectOperationResponseDto)
   @UseGuards(OrganizationAccessGuard, RolesGuard, SubscriptionGuard)

@@ -641,6 +641,17 @@ export class TasksService {
       .leftJoin('task.status', 'status')
       .where('task.organization_id = :organizationId', { organizationId });
 
+    // Every productivity view is personal: date/status filters narrow the
+    // current user's assignments rather than exposing all accessible tasks.
+    baseQuery.andWhere(
+      `EXISTS (
+        SELECT 1 FROM task_assignees productivity_assignment
+        WHERE productivity_assignment.task_id = task.id
+          AND productivity_assignment.user_id = :productivityUserId
+      )`,
+      { productivityUserId: scope.userId },
+    );
+
     if (!scope.canAccessAllProjects) {
       baseQuery.andWhere(
         `(
