@@ -54,6 +54,9 @@ export class ConversationParticipant {
   @Column({ type: 'timestamp', nullable: true })
   pinnedAt: Date;
 
+  @Column({ type: 'int', nullable: true })
+  pinnedPosition: number | null;
+
   @Column({ default: false })
   isArchived: boolean;
 

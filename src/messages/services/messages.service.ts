@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   forwardRef,
   HttpException,
   HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Message } from 'src/typeorm/entities/Message';
@@ -34,6 +36,7 @@ import { ProjectPeerStatus } from 'src/utils/constants/projectPeerEnums';
 
 @Injectable()
 export class MessagesService {
+  private static readonly MAX_PINNED_CONVERSATIONS = 10;
   constructor(
     private usersService: UsersService,
     private notificationService: NotificationsService,
@@ -131,6 +134,13 @@ export class MessagesService {
         const rightPinned = right.preferences?.isPinned ? 1 : 0;
         if (leftPinned !== rightPinned) {
           return rightPinned - leftPinned;
+        }
+
+        if (leftPinned && rightPinned) {
+          return (
+            (left.preferences?.pinnedPosition ?? Number.MAX_SAFE_INTEGER) -
+            (right.preferences?.pinnedPosition ?? Number.MAX_SAFE_INTEGER)
+          );
         }
 
         const leftArchived = left.preferences?.isArchived ? 1 : 0;
@@ -449,6 +459,7 @@ export class MessagesService {
               isMuted: currentParticipant.isMuted,
               isPinned: currentParticipant.isPinned,
               pinnedAt: currentParticipant.pinnedAt,
+              pinnedPosition: currentParticipant.pinnedPosition,
               isArchived: currentParticipant.isArchived,
               archivedAt: currentParticipant.archivedAt,
               isDeleted: currentParticipant.isDeleted,
@@ -1093,15 +1104,55 @@ export class MessagesService {
     }
 
     const now = new Date();
+    const wasArchived = participant.isArchived;
 
     if (typeof payload.isPinned === 'boolean') {
-      participant.isPinned = payload.isPinned;
-      participant.pinnedAt = payload.isPinned ? now : null;
+      if (payload.isPinned && !participant.isPinned) {
+        const pinnedCount = await this.participantRepository.countBy({
+          userId: Number(userFound.id),
+          organization_id: organizationId,
+          isActive: true,
+          isDeleted: false,
+          isPinned: true,
+        });
+        if (pinnedCount >= MessagesService.MAX_PINNED_CONVERSATIONS) {
+          throw new ConflictException({
+            message: `You can pin up to ${MessagesService.MAX_PINNED_CONVERSATIONS} conversations`,
+            limit: MessagesService.MAX_PINNED_CONVERSATIONS,
+          });
+        }
+        const maxPosition = await this.participantRepository.maximum(
+          'pinnedPosition',
+          {
+            userId: Number(userFound.id),
+            organization_id: organizationId,
+            isPinned: true,
+          },
+        );
+        participant.isPinned = true;
+        participant.pinnedAt = now;
+        participant.pinnedPosition = (maxPosition ?? -1) + 1;
+      } else if (!payload.isPinned) {
+        participant.isPinned = false;
+        participant.pinnedAt = null;
+        participant.pinnedPosition = null;
+      }
     }
 
     if (typeof payload.isArchived === 'boolean') {
       participant.isArchived = payload.isArchived;
       participant.archivedAt = payload.isArchived ? now : null;
+      if (!payload.isArchived && wasArchived && participant.isPinned) {
+        const maxPosition = await this.participantRepository.maximum(
+          'pinnedPosition',
+          {
+            userId: Number(userFound.id),
+            organization_id: organizationId,
+            isPinned: true,
+          },
+        );
+        participant.pinnedPosition = (maxPosition ?? -1) + 1;
+      }
     }
 
     if (typeof payload.isDeleted === 'boolean') {
@@ -1120,6 +1171,7 @@ export class MessagesService {
           isMuted: savedParticipant.isMuted,
           isPinned: savedParticipant.isPinned,
           pinnedAt: savedParticipant.pinnedAt,
+          pinnedPosition: savedParticipant.pinnedPosition,
           isArchived: savedParticipant.isArchived,
           archivedAt: savedParticipant.archivedAt,
           isDeleted: savedParticipant.isDeleted,
@@ -1130,6 +1182,76 @@ export class MessagesService {
         },
       },
     };
+  }
+
+  async getSidebarConversations(user: any, organizationId: string) {
+    const response = await this.getUserConversations(user, organizationId);
+    return {
+      ...response,
+      limit: MessagesService.MAX_PINNED_CONVERSATIONS,
+      data: response.data
+        .filter(
+          (conversation: any) =>
+            conversation.preferences?.isPinned &&
+            !conversation.preferences?.isArchived &&
+            !conversation.preferences?.isDeleted,
+        )
+        .sort(
+          (left: any, right: any) =>
+            (left.preferences?.pinnedPosition ?? Number.MAX_SAFE_INTEGER) -
+            (right.preferences?.pinnedPosition ?? Number.MAX_SAFE_INTEGER),
+        ),
+    };
+  }
+
+  async reorderSidebarConversations(
+    user: any,
+    organizationId: string,
+    conversationIds: string[],
+  ) {
+    const userFound = await this.usersService.getUserAccountById(user.userId);
+    if (!userFound)
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+
+    const pins = await this.participantRepository.find({
+      where: {
+        userId: Number(userFound.id),
+        organization_id: organizationId,
+        isActive: true,
+        isDeleted: false,
+        isPinned: true,
+        isArchived: false,
+      },
+      select: { conversationId: true },
+    });
+    const currentIds = pins.map((pin) => pin.conversationId).sort();
+    const requestedIds = [...conversationIds].sort();
+    if (
+      currentIds.length !== requestedIds.length ||
+      currentIds.some((id, index) => id !== requestedIds[index])
+    ) {
+      throw new UnprocessableEntityException(
+        'conversationIds must contain the complete current pin set',
+      );
+    }
+
+    await this.participantRepository.manager.transaction(async (manager) => {
+      await Promise.all(
+        conversationIds.map((conversationId, pinnedPosition) =>
+          manager.update(
+            ConversationParticipant,
+            {
+              conversationId,
+              userId: Number(userFound.id),
+              organization_id: organizationId,
+              isPinned: true,
+            },
+            { pinnedPosition },
+          ),
+        ),
+      );
+    });
+    return this.getSidebarConversations(user, organizationId);
   }
 
   /**

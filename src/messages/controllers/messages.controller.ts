@@ -24,6 +24,7 @@ import { MulterFile } from 'src/types/multer.types';
 import { UploadMessageAttachmentDto } from '../dto/upload-message-attachment.dto';
 import { AddMessageReactionDto } from '../dto/add-message-reaction.dto';
 import { UpdateConversationPreferencesDto } from '../dto/update-conversation-preferences.dto';
+import { ReorderPinnedConversationsDto } from '../dto/reorder-pinned-conversations.dto';
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard, OrganizationAccessGuard)
@@ -36,6 +37,27 @@ export class MessagesController {
     @Headers('x-organization-id') organizationId: string,
   ) {
     return this.messagesService.getUserConversations(req.user, organizationId);
+  }
+
+  @Get('sidebar-conversations')
+  getSidebarConversations(
+    @Req() req,
+    @Headers('x-organization-id') organizationId: string,
+  ) {
+    return this.messagesService.getSidebarConversations(req.user, organizationId);
+  }
+
+  @Post('sidebar-conversations/order')
+  reorderSidebarConversations(
+    @Req() req,
+    @Headers('x-organization-id') organizationId: string,
+    @Body(ValidationPipe) dto: ReorderPinnedConversationsDto,
+  ) {
+    return this.messagesService.reorderSidebarConversations(
+      req.user,
+      organizationId,
+      dto.conversationIds,
+    );
   }
 
   @Get('search')
