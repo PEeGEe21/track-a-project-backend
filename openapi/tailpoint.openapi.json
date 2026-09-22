@@ -1445,6 +1445,74 @@
         ]
       }
     },
+    "/api/projects/quick-task-options": {
+      "get": {
+        "operationId": "Projects_getQuickTaskOptions",
+        "parameters": [
+          {
+            "name": "x-organization-id",
+            "in": "header",
+            "description": "Active organization UUID.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/projects/project-peer-invites": {
       "get": {
         "operationId": "Projects_findProjectPeersInvite",
@@ -11563,6 +11631,56 @@
         }
       }
     },
+    "/api/messages/sidebar-conversations": {
+      "get": {
+        "operationId": "Messages_getSidebarConversations",
+        "parameters": [
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/messages/sidebar-conversations/order": {
+      "post": {
+        "operationId": "Messages_reorderSidebarConversations",
+        "parameters": [
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderPinnedConversationsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/messages/search": {
       "get": {
         "operationId": "Messages_search",
@@ -18734,6 +18852,80 @@
         }
       }
     },
+    "/api/github/projects/{projectId}/activity": {
+      "get": {
+        "operationId": "Github_activity",
+        "parameters": [
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/github/projects/{projectId}/activity/{artifactId}/task-links": {
+      "put": {
+        "operationId": "Github_replaceActivityTaskLinks",
+        "parameters": [
+          {
+            "name": "x-organization-id",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "artifactId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceGithubArtifactTaskLinksDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/github/tasks/{taskId}/links/{artifactId}": {
       "delete": {
         "operationId": "Github_unlink",
@@ -20611,6 +20803,10 @@
           "url"
         ]
       },
+      "ReorderPinnedConversationsDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateMessageDto": {
         "type": "object",
         "properties": {}
@@ -21696,6 +21892,10 @@
         "properties": {}
       },
       "RotateGithubSecretDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReplaceGithubArtifactTaskLinksDto": {
         "type": "object",
         "properties": {}
       },
