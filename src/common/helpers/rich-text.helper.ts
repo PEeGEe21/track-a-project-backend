@@ -114,11 +114,14 @@ export function normalizeRichTextDescription(input: {
     return null;
   }
 
-  const sourceHtml =
-    rawHtml !== undefined ? rawHtml : wrapPlainTextAsHtml(rawPlain ?? '');
+  const sourceHtml = rawHtml?.trim()
+    ? rawHtml
+    : wrapPlainTextAsHtml(rawPlain ?? '');
   const $ = cheerio.load(`<body>${sourceHtml}</body>`);
 
-  $('script, style, iframe, object, embed, form, input, button, textarea, select').remove();
+  $(
+    'script, style, iframe, object, embed, form, input, button, textarea, select',
+  ).remove();
 
   $('*').each((_, element) => {
     const current = $(element);

@@ -205,6 +205,17 @@ export class MessagesGateway
 
     client.join(`conversation_${conversationId}`);
 
+    const activeCall = [...this.activeCalls.values()].find(
+      (call) =>
+        call.conversationId === conversationId &&
+        (call.callerId === Number(userId) ||
+          call.recipientId === Number(userId)) &&
+        (call.status === 'ringing' || call.status === 'connected'),
+    );
+    if (activeCall) {
+      client.emit('call:available', this.serializeCall(activeCall));
+    }
+
     return {
       status: 'joined',
       conversationId,
@@ -333,10 +344,12 @@ export class MessagesGateway
   }
 
   notifyReactionAdded(conversationId: string, payload: any) {
-    this.server.to(`conversation_${conversationId}`).emit('message_reaction_added', {
-      conversationId,
-      ...payload,
-    });
+    this.server
+      .to(`conversation_${conversationId}`)
+      .emit('message_reaction_added', {
+        conversationId,
+        ...payload,
+      });
   }
 
   notifyReactionRemoved(conversationId: string, payload: any) {
@@ -370,7 +383,9 @@ export class MessagesGateway
     }
 
     if (!data?.callId || !data?.conversationId || !data?.roomName) {
-      throw new WsException('Call ID, conversation ID, and room name are required');
+      throw new WsException(
+        'Call ID, conversation ID, and room name are required',
+      );
     }
 
     if (this.activeCalls.has(data.callId)) {
@@ -383,7 +398,10 @@ export class MessagesGateway
     );
 
     const recipientId = callContext.peerUserId;
-    if (this.findUserActiveCall(recipientId) || this.findUserActiveCall(callerId)) {
+    if (
+      this.findUserActiveCall(recipientId) ||
+      this.findUserActiveCall(callerId)
+    ) {
       this.server.to(`user_${callerId}`).emit('call:error', {
         message: 'Either you or the recipient is already in another call.',
       });
@@ -411,8 +429,24 @@ export class MessagesGateway
     }, this.callTimeoutMs);
     this.activeCalls.set(call.callId, call);
 
-    this.server.to(`user_${callerId}`).emit('call:outgoing', this.serializeCall(call));
-    this.server.to(`user_${recipientId}`).emit('call:incoming', this.serializeCall(call));
+    void this.messagesService
+      .notifyIncomingCall(
+        callerId,
+        recipientId,
+        call.organizationId,
+        call.callType,
+        call.conversationId,
+      )
+      .catch((error) =>
+        this.logger.error('Failed to send incoming call notification', error),
+      );
+
+    this.server
+      .to(`user_${callerId}`)
+      .emit('call:outgoing', this.serializeCall(call));
+    this.server
+      .to(`user_${recipientId}`)
+      .emit('call:incoming', this.serializeCall(call));
 
     return { status: 'ringing', callId: call.callId };
   }
@@ -438,7 +472,9 @@ export class MessagesGateway
     }
 
     if (call.recipientId !== userId) {
-      throw new WsException('Only the invited participant can accept this call');
+      throw new WsException(
+        'Only the invited participant can accept this call',
+      );
     }
 
     this.clearCallTimer(call);
@@ -474,7 +510,9 @@ export class MessagesGateway
     }
 
     if (call.recipientId !== userId) {
-      throw new WsException('Only the invited participant can reject this call');
+      throw new WsException(
+        'Only the invited participant can reject this call',
+      );
     }
 
     this.clearCallTimer(call);
@@ -606,7 +644,9 @@ export class MessagesGateway
 
   // Check if user is online
   async isUserOnline(userId: number): Promise<boolean> {
-    const client = await this.redisService.getConnectedClient().catch(() => null);
+    const client = await this.redisService
+      .getConnectedClient()
+      .catch(() => null);
     if (client) {
       const key = this.getPresenceKey(userId);
       const count = await client.scard(key).catch(() => 0);
@@ -620,12 +660,16 @@ export class MessagesGateway
   async getOnlineStatusMap(userIds: number[]): Promise<Map<number, boolean>> {
     const statusMap = new Map<number, boolean>();
     const uniqueIds = [...new Set(userIds)];
-    const client = await this.redisService.getConnectedClient().catch(() => null);
+    const client = await this.redisService
+      .getConnectedClient()
+      .catch(() => null);
 
     if (client) {
       await Promise.all(
         uniqueIds.map(async (userId) => {
-          const count = await client.scard(this.getPresenceKey(userId)).catch(() => 0);
+          const count = await client
+            .scard(this.getPresenceKey(userId))
+            .catch(() => 0);
           statusMap.set(userId, count > 0);
         }),
       );
@@ -663,7 +707,9 @@ export class MessagesGateway
   }
 
   private async registerPresence(userId: number, socketId: string) {
-    const client = await this.redisService.getConnectedClient().catch(() => null);
+    const client = await this.redisService
+      .getConnectedClient()
+      .catch(() => null);
     if (!client) {
       return;
     }
@@ -674,7 +720,9 @@ export class MessagesGateway
   }
 
   private async unregisterPresence(userId: number, socketId: string) {
-    const client = await this.redisService.getConnectedClient().catch(() => null);
+    const client = await this.redisService
+      .getConnectedClient()
+      .catch(() => null);
     if (!client) {
       return (this.onlineUsers.get(userId)?.size ?? 0) > 0;
     }
@@ -801,7 +849,9 @@ export class MessagesGateway
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+        error instanceof Error
+          ? error.message.toLowerCase()
+          : String(error).toLowerCase();
 
       if (!message.includes('already exists')) {
         const trace = error instanceof Error ? error.stack : undefined;

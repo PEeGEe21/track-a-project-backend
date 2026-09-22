@@ -69,6 +69,33 @@ export class MessagesService {
     private readonly organizationRepository: Repository<Organization>,
   ) {}
 
+  async notifyIncomingCall(
+    callerId: number,
+    recipientId: number,
+    organizationId: string,
+    callType: 'voice' | 'video',
+    conversationId: string,
+  ) {
+    const [caller, recipient] = await Promise.all([
+      this.usersService.getUserAccountById(callerId),
+      this.usersService.getUserAccountById(recipientId),
+    ]);
+    if (!caller || !recipient) return;
+
+    await this.notificationService.createNotification(
+      caller,
+      {
+        recipient,
+        sender: caller,
+        title: `Incoming ${callType} call`,
+        message: `${caller.fullName || 'A teammate'} is calling you`,
+        type: NOTIFICATION_TYPES.INCOMING_CALL,
+        metadata: { conversationId, callType },
+      },
+      organizationId,
+    );
+  }
+
   /**
    * Get all conversations for the current user within their organization
    */

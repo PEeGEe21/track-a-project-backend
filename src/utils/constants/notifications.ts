@@ -6,6 +6,7 @@ export const NOTIFICATION_TYPES = {
   COMMENT: 'comment',
   PROJECT_COMMENT: 'project_comment',
   PEER_MESSAGE: 'peer_message',
+  INCOMING_CALL: 'incoming_call',
   TASK_ASSIGNMENT: 'task_assignment',
   TASK_STATUS_CHANGE: 'task_status_change',
   TASK_INGESTED: 'task_ingested',
@@ -41,6 +42,10 @@ export const NOTIFICATION_PREFERENCE_DETAILS = {
   [NOTIFICATION_TYPES.PEER_MESSAGE]: {
     label: 'Chat messages',
     description: 'Direct chat messages and one-to-one conversation activity.',
+  },
+  [NOTIFICATION_TYPES.INCOMING_CALL]: {
+    label: 'Incoming calls',
+    description: 'Voice and video calls from chats and project rooms.',
   },
   [NOTIFICATION_TYPES.TASK_ASSIGNMENT]: {
     label: 'Task assignments',
@@ -105,6 +110,12 @@ export const NOTIFICATION_DEFAULT_PREFERENCES = {
     sound: true,
   },
   [NOTIFICATION_TYPES.PEER_MESSAGE]: {
+    in_app: true,
+    email: false,
+    push: true,
+    sound: true,
+  },
+  [NOTIFICATION_TYPES.INCOMING_CALL]: {
     in_app: true,
     email: false,
     push: true,

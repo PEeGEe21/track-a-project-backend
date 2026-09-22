@@ -197,6 +197,16 @@ export class ProjectsGateway
     }
 
     this.joinProjectRoom(client, userId, projectId);
+    const activeCall = [...this.activeCalls.values()].find(
+      (call) =>
+        call.projectId === Number(projectId) &&
+        (call.callerId === Number(userId) ||
+          call.participantIds.includes(Number(userId))) &&
+        (call.status === 'ringing' || call.status === 'connected'),
+    );
+    if (activeCall) {
+      client.emit('call:available', this.serializeCall(activeCall));
+    }
     return { status: 'joined', projectId };
   }
 
@@ -454,6 +464,21 @@ export class ProjectsGateway
     }, this.callTimeoutMs);
 
     this.activeCalls.set(call.callId, call);
+
+    if (call.organizationId) {
+      void this.projectService
+        .notifyIncomingProjectCall({
+          callerId,
+          recipientIds: participantIds,
+          organizationId: call.organizationId,
+          projectId: call.projectId,
+          projectName: call.projectName,
+          callType: call.callType,
+        })
+        .catch((error) =>
+          this.logger.error('Failed to send project call notifications', error),
+        );
+    }
 
     await this.projectService.createSystemProjectComment({
       projectId: call.projectId,

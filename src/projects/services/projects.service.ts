@@ -142,6 +142,43 @@ export class ProjectsService {
     // @InjectRepository(Post) private postRepository: Repository<Post>,
   ) {}
 
+  async notifyIncomingProjectCall(input: {
+    callerId: number;
+    recipientIds: number[];
+    organizationId: string;
+    projectId: number;
+    projectName: string;
+    callType: 'voice' | 'video';
+  }) {
+    const caller = await this.usersService.getUserAccountById(input.callerId);
+    if (!caller) return;
+
+    await Promise.all(
+      input.recipientIds.map(async (recipientId) => {
+        const recipient =
+          await this.usersService.getUserAccountById(recipientId);
+        if (!recipient) return;
+        await this.notificationService.createNotification(
+          caller,
+          {
+            recipient,
+            sender: caller,
+            title: `Incoming ${input.callType} call`,
+            message: `${caller.fullName || 'A teammate'} started a call in ${
+              input.projectName
+            }`,
+            type: NOTIFICATION_TYPES.INCOMING_CALL,
+            metadata: {
+              projectId: input.projectId,
+              callType: input.callType,
+            },
+          },
+          input.organizationId,
+        );
+      }),
+    );
+  }
+
   async recordProjectNavigation(
     actor: any,
     organizationId: string,
