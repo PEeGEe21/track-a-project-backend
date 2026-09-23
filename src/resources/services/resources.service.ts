@@ -498,6 +498,41 @@ export class ResourcesService {
     return await this.resourceRepository.save(resource);
   }
 
+  async attachToTask(
+    id: number,
+    taskId: number,
+    user: any,
+  ): Promise<Resource> {
+    const resource = await this.findOne(id);
+    const userFound = await this.userRepository.findOneBy({ id: user.userId });
+    if (!userFound) {
+      throw new HttpException('User not found', HttpStatus.BAD_REQUEST);
+    }
+
+    if (resource.createdBy.id !== userFound.id) {
+      await this.authorizationService.assertProjectPermission(
+        user,
+        resource.organization_id ?? resource.project.organization_id,
+        resource.project.id,
+        ProjectPermission.EDIT,
+      );
+    }
+
+    const task = await this.taskRepository.findOne({
+      where: {
+        id: taskId,
+        project: { id: resource.project.id },
+        organization_id: resource.organization_id,
+      },
+    });
+    if (!task) {
+      throw new NotFoundException('Task was not found in this project');
+    }
+
+    resource.task = task;
+    return this.resourceRepository.save(resource);
+  }
+
   async remove(id: number, user: any): Promise<void> {
     const resource = await this.findOne(id);
 

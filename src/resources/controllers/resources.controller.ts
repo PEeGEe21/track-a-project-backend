@@ -20,6 +20,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ResourcesService } from '../services/resources.service';
 import { CreateResourceDto } from '../dto/create-resource.dto';
 import { UpdateResourceDto } from '../dto/update-resource.dto';
+import { AttachResourceTaskDto } from '../dto/attach-resource-task.dto';
 import { UploadFileDto } from '../dto/upload-file.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { MulterFile } from '../../types/multer.types';
@@ -170,6 +171,16 @@ export class ResourcesController {
     @Req() req: any,
   ) {
     return this.resourcesService.update(id, updateResourceDto, req.user);
+  }
+
+  @Patch(':id/task')
+  @ApiContractOperation('Attach a resource to a task', ResourceResponseDto)
+  attachToTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AttachResourceTaskDto,
+    @Req() req: any,
+  ) {
+    return this.resourcesService.attachToTask(id, dto.taskId, req.user);
   }
 
   @Delete(':id')
