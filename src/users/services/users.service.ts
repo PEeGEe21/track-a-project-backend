@@ -1558,6 +1558,11 @@ export class UsersService {
         taskCompletionTrend,
         activityHeatmap,
         topCollaborators,
+        overdueTasks,
+        upcomingDeadlines,
+        activePeers,
+        projectTrend,
+        taskTrend,
       ] = await Promise.all([
         // 1. Get user's owned projects (recent 8)
         this.getOwnedProjects(foundUser.id, organizationId),
@@ -1591,6 +1596,13 @@ export class UsersService {
 
         // 11. Top collaborators
         this.getTopCollaborators(foundUser.id, organizationId),
+
+        // 12-16. Remaining dashboard metrics
+        this.getOverdueTasks(foundUser.id, organizationId),
+        this.getUpcomingDeadlines(foundUser.id, organizationId),
+        this.getActivePeers(foundUser.id, organizationId),
+        this.calculateProjectTrend(foundUser.id, organizationId),
+        this.calculateTaskTrend(foundUser.id, organizationId),
       ]);
 
       // Combine owned and peer projects for full project list
@@ -1598,19 +1610,6 @@ export class UsersService {
 
       // Calculate key metrics
       const totalProjects = allProjects.length;
-      const overdueTasks = await this.getOverdueTasks(
-        foundUser.id,
-        organizationId,
-      );
-      const upcomingDeadlines = await this.getUpcomingDeadlines(
-        foundUser.id,
-        organizationId,
-      );
-      const activePeers = await this.getActivePeers(
-        foundUser.id,
-        organizationId,
-      );
-
       return {
         success: true,
         message: 'Successfully fetched user dashboard data!',
@@ -1624,14 +1623,8 @@ export class UsersService {
             overdueTasks,
             activePeers,
             trendsVsLastPeriod: {
-              projects: await this.calculateProjectTrend(
-                foundUser.id,
-                organizationId,
-              ),
-              tasks: await this.calculateTaskTrend(
-                foundUser.id,
-                organizationId,
-              ),
+              projects: projectTrend,
+              tasks: taskTrend,
             },
           },
 

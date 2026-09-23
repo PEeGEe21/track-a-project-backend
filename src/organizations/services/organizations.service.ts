@@ -331,7 +331,8 @@ export class OrganizationsService {
       const currentTierLevel = tierHierarchy[organization.subscription_tier];
 
       // Sort and add access control info
-      const menusWithAccess = organization.organization_menus
+      const menusWithAccess = (organization.organization_menus ?? [])
+        .filter((menu) => Boolean(menu?.global_menu))
         .map((menu) => {
           const requiredTierLevel =
             tierHierarchy[menu.global_menu.required_tier];
