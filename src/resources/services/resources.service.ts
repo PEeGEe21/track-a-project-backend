@@ -498,11 +498,7 @@ export class ResourcesService {
     return await this.resourceRepository.save(resource);
   }
 
-  async attachToTask(
-    id: number,
-    taskId: number,
-    user: any,
-  ): Promise<Resource> {
+  async attachToTask(id: number, taskId: number, user: any): Promise<Resource> {
     const resource = await this.findOne(id);
     const userFound = await this.userRepository.findOneBy({ id: user.userId });
     if (!userFound) {
@@ -533,7 +529,7 @@ export class ResourcesService {
     return this.resourceRepository.save(resource);
   }
 
-  async remove(id: number, user: any): Promise<void> {
+  async remove(id: number, user: any) {
     const resource = await this.findOne(id);
 
     // Verify user has permission (created by user or project owner)
@@ -551,37 +547,45 @@ export class ResourcesService {
       );
     }
 
+    console.log(resource, 'resource');
     // Delete file from Firebase if it exists
     if (resource.file_path) {
       try {
         // Extract file path from Firebase URL
-        const url = new URL(resource.file_path);
-        const filePath = url.pathname.split('/o/')[1]?.split('?')[0];
-        if (filePath) {
-          await this.firebaseStorageService.deleteFile(
-            decodeURIComponent(filePath),
-          );
-        }
+        // const url = new URL(resource.file_path);
+        // const filePath = url.pathname.split('/o/')[1]?.split('?')[0];
+        // console.log(filePath)
+        // if (filePath) {
+        // await this.firebaseStorageService.deleteFile(
+        //   decodeURIComponent(filePath),
+        // );
+
+        await this.storageService.deleteFile(resource.file_path);
+
+        await this.projectActivitiesService.createActivity({
+          organization_id: resource.organization_id,
+          projectId: resource.project.id,
+          userId: userFound.id,
+          activityType: ActivityType.RESOURCE_DELETED,
+          description: `${userFound.fullName} deleted a resource: ${
+            resource.title ?? ''
+          }`,
+          entityType: 'resource',
+          entityId: resource.id,
+          metadata: { resourceTitle: resource.title ?? '' },
+        });
+
+        await this.resourceRepository.remove(resource);
+
+        return { success: true, message: 'completed' };
+        // }
       } catch (error) {
         console.error('Failed to delete file from Firebase:', error);
         // Continue with database deletion even if file deletion fails
       }
     }
 
-    await this.projectActivitiesService.createActivity({
-      organization_id: resource.organization_id,
-      projectId: resource.project.id,
-      userId: userFound.id,
-      activityType: ActivityType.RESOURCE_DELETED,
-      description: `${userFound.fullName} deleted a resource: ${
-        resource.title ?? ''
-      }`,
-      entityType: 'resource',
-      entityId: resource.id,
-      metadata: { resourceTitle: resource.title ?? '' },
-    });
-
-    await this.resourceRepository.remove(resource);
+    return { success: false, message: 'Failed to delete' };
   }
 
   /**
